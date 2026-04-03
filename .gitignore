@@ -1,13 +1,47 @@
+# Python
 __pycache__/
-*.pyc
-.venv/
+*.py[cod]
+*$py.class
+*.so
 *.egg-info/
+*.egg
 dist/
 build/
+wheels/
+*.whl
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Testing
 .pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Project runtime
 catalog.db
 docs/features.md
 docs/monitoring_report.md
+.env
+.env.local
+
+# Parquet fixtures (keep test ones)
 *.parquet
 !tests/fixtures/*.parquet
-.env
+
+# mypy
+.mypy_cache/
+
+# ruff
+.ruff_cache/

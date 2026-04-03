@@ -1,5 +1,10 @@
 # featcat
 
+![CI](https://github.com/codepawl/featcat/actions/workflows/ci.yml/badge.svg)
+![PyPI](https://img.shields.io/pypi/v/featcat)
+![Python](https://img.shields.io/pypi/pyversions/featcat)
+![License](https://img.shields.io/pypi/l/featcat)
+
 **AI-Powered Feature Catalog for Data Science Teams**
 
 featcat là một Feature Catalog nhẹ, được thiết kế cho các team Data Science. Đây **không phải** là Feature Store (không có online serving) - mà là một công cụ quản lý metadata + AI layer để tìm kiếm, document, và giám sát chất lượng features.

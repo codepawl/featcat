@@ -1,36 +1,78 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "featcat"
-version = "0.3.0"
-description = "Lightweight AI-powered Feature Catalog for Data Science teams"
+dynamic = ["version"]
+description = "AI-Powered Feature Catalog for Data Science teams"
+readme = "README.md"
+license = {text = "MIT"}
 requires-python = ">=3.10"
-authors = [
-    {name = "Codepawl"},
+authors = [{name = "Codepawl", email = "hi@codepawl.dev"}]
+keywords = ["feature-catalog", "feature-store", "data-science", "mlops", "ai"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
-    "typer>=0.9.0",
-    "rich>=13.0.0",
-    "pyarrow>=14.0.0",
-    "pydantic>=2.0.0",
-    "pydantic-settings>=2.0.0",
+    "typer>=0.9",
+    "rich>=13.0",
+    "pyarrow>=14.0",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "httpx>=0.25",
+    "rapidfuzz>=3.0",
+    "scipy>=1.11",
+    "numpy>=1.24",
 ]
 
 [project.optional-dependencies]
-s3 = ["s3fs>=2023.10.0"]
-tui = ["textual>=0.50.0"]
-search = ["rapidfuzz>=3.0.0"]
+tui = ["textual>=0.50"]
+s3 = ["s3fs>=2024.0"]
+all = ["featcat[tui,s3]"]
 dev = [
-    "pytest>=7.0.0",
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "pytest-asyncio>=0.21",
     "pytest-tmp-files>=0.0.2",
-    "moto[s3]>=5.0.0",
-    "boto3>=1.28.0",
+    "moto[s3]>=5.0",
+    "boto3>=1.28",
+    "ruff>=0.4",
+    "mypy>=1.8",
+    "pre-commit>=3.0",
 ]
 
 [project.urls]
 Homepage = "https://github.com/codepawl/featcat"
+Documentation = "https://github.com/codepawl/featcat/tree/main/docs"
+Repository = "https://github.com/codepawl/featcat"
+Issues = "https://github.com/codepawl/featcat/issues"
+Changelog = "https://github.com/codepawl/featcat/blob/main/CHANGELOG.md"
 
 [project.scripts]
 featcat = "featcat.cli:app"
 
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+[tool.hatch.version]
+path = "featcat/__init__.py"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "A", "SIM", "TCH"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=featcat --cov-report=term-missing --cov-report=xml"
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+ignore_missing_imports = true

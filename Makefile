@@ -1,12 +1,34 @@
-.PHONY: install test lint clean
+.PHONY: install lint format type-check test test-cov build clean check release-check
 
 install:
-	uv pip install -e ".[dev]"
+	pip install -e ".[dev,tui,s3]"
+	pre-commit install
+
+lint:
+	ruff check .
+	ruff format --check .
+
+format:
+	ruff check --fix .
+	ruff format .
+
+type-check:
+	mypy featcat/
 
 test:
-	pytest tests/ -v
+	pytest
+
+test-cov:
+	pytest --cov=featcat --cov-report=html
+	@echo "Open htmlcov/index.html to view coverage report"
+
+build:
+	python -m build
 
 clean:
-	rm -f catalog.db
-	rm -rf __pycache__ .pytest_cache
-	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+	rm -rf dist/ build/ *.egg-info .pytest_cache .mypy_cache .ruff_cache htmlcov .coverage coverage.xml
+
+check: lint type-check test
+
+release-check: clean check build
+	twine check dist/*
