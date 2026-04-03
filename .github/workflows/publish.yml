@@ -12,15 +12,6 @@
 # 3. In GitHub repo Settings > Environments:
 #    - Create "pypi" environment with required reviewers (optional but recommended)
 #    - Create "testpypi" environment (no protection needed)
-#
-# RELEASING:
-# 1. Update version in featcat/__init__.py
-# 2. Update CHANGELOG.md
-# 3. Commit: git commit -am "release: v0.1.0"
-# 4. Tag: git tag v0.1.0
-# 5. Push: git push && git push --tags
-# 6. Create GitHub Release from the tag
-# 7. Pipeline runs automatically: test -> build -> testpypi -> verify -> pypi
 
 name: Publish to PyPI
 
@@ -37,7 +28,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - run: uv pip install --system -e ".[dev,tui,s3]"
+      - run: uv pip install --system -e ".[dev,tui]"
       - run: pytest --cov=featcat --cov-report=xml --cov-report=term-missing
 
   build:
