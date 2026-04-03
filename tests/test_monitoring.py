@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
-from typing import Iterator, Optional
+from typing import TYPE_CHECKING
 
 import pytest
 
 from featcat.catalog.db import CatalogDB
 from featcat.catalog.models import DataSource, Feature
-from featcat.llm.base import BaseLLM
 from featcat.plugins.monitoring import MonitoringPlugin, export_monitoring_report
 from featcat.utils.statistics import (
     check_null_spike,
@@ -20,6 +18,8 @@ from featcat.utils.statistics import (
     compute_psi,
 )
 
+if TYPE_CHECKING:
+    from pathlib import Path
 
 # --- Statistics utility tests ---
 
@@ -59,14 +59,18 @@ class TestPSI:
 class TestNullSpike:
     def test_spike_detected(self):
         result = check_null_spike(
-            {"null_ratio": 0.01}, {"null_ratio": 0.10}, threshold=0.05,
+            {"null_ratio": 0.01},
+            {"null_ratio": 0.10},
+            threshold=0.05,
         )
         assert result is not None
         assert result["issue"] == "null_spike"
 
     def test_no_spike(self):
         result = check_null_spike(
-            {"null_ratio": 0.01}, {"null_ratio": 0.03}, threshold=0.05,
+            {"null_ratio": 0.01},
+            {"null_ratio": 0.03},
+            threshold=0.05,
         )
         assert result is None
 
@@ -146,6 +150,7 @@ def db_with_baselines(tmp_path: Path) -> CatalogDB:
 
     # Compute baselines with original stats
     from datetime import datetime, timezone
+
     now = datetime.now(timezone.utc)
 
     baseline_stable = {"mean": 50.0, "std": 10.0, "min": 20, "max": 80, "null_ratio": 0.01}
@@ -170,10 +175,15 @@ class TestMonitoringPlugin:
         db.init_db()
         source = DataSource(name="src", path="/data/test.parquet")
         db.add_source(source)
-        db.upsert_feature(Feature(
-            name="src.x", data_source_id=source.id, column_name="x",
-            dtype="double", stats={"mean": 5, "std": 1},
-        ))
+        db.upsert_feature(
+            Feature(
+                name="src.x",
+                data_source_id=source.id,
+                column_name="x",
+                dtype="double",
+                stats={"mean": 5, "std": 1},
+            )
+        )
 
         plugin = MonitoringPlugin()
         result = plugin.execute(db, None, action="baseline")

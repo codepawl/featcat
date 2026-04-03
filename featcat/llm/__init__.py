@@ -1,8 +1,10 @@
 """LLM backends for featcat."""
 
-from .base import BaseLLM, LLMConnectionError, LLMTimeoutError
-from .ollama import OllamaLLM
-from .llamacpp import LlamaCppLLM
+from .base import BaseLLM as BaseLLM
+from .base import LLMConnectionError as LLMConnectionError
+from .base import LLMTimeoutError as LLMTimeoutError
+from .llamacpp import LlamaCppLLM as LlamaCppLLM
+from .ollama import OllamaLLM as OllamaLLM
 
 
 def create_llm(backend: str = "ollama", **kwargs) -> BaseLLM:

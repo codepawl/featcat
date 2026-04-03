@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import json
 import time
-from typing import Iterator, Optional
+from typing import TYPE_CHECKING
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
 from .base import BaseLLM, LLMConnectionError, LLMTimeoutError
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 
 class LlamaCppLLM(BaseLLM):
@@ -28,7 +31,7 @@ class LlamaCppLLM(BaseLLM):
     def generate(
         self,
         prompt: str,
-        system: Optional[str] = None,
+        system: str | None = None,
         temperature: float = 0.3,
     ) -> str:
         """Generate a complete response from llama.cpp server."""
@@ -45,7 +48,7 @@ class LlamaCppLLM(BaseLLM):
     def stream(
         self,
         prompt: str,
-        system: Optional[str] = None,
+        system: str | None = None,
         temperature: float = 0.3,
     ) -> Iterator[str]:
         """Stream response chunks from llama.cpp server."""
@@ -83,9 +86,7 @@ class LlamaCppLLM(BaseLLM):
                 f"Error: {e}"
             ) from e
         except TimeoutError as e:
-            raise LLMTimeoutError(
-                f"llama.cpp request timed out after {self.timeout}s"
-            ) from e
+            raise LLMTimeoutError(f"llama.cpp request timed out after {self.timeout}s") from e
 
     def health_check(self) -> bool:
         """Check if llama.cpp server is running."""
@@ -99,7 +100,7 @@ class LlamaCppLLM(BaseLLM):
     def _request_with_retry(self, endpoint: str, payload: dict) -> dict:
         """POST with exponential backoff retry."""
         body = json.dumps(payload).encode("utf-8")
-        last_error: Optional[Exception] = None
+        last_error: Exception | None = None
 
         for attempt in range(self.max_retries):
             req = Request(
@@ -120,8 +121,6 @@ class LlamaCppLLM(BaseLLM):
             except TimeoutError as e:
                 last_error = e
                 if attempt < self.max_retries - 1:
-                    time.sleep(2 ** attempt)
+                    time.sleep(2**attempt)
 
-        raise LLMTimeoutError(
-            f"llama.cpp request failed after {self.max_retries} attempts. Last error: {last_error}"
-        )
+        raise LLMTimeoutError(f"llama.cpp request failed after {self.max_retries} attempts. Last error: {last_error}")

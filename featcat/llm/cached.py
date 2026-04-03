@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Iterator, Optional
+from typing import TYPE_CHECKING
 
 from .base import BaseLLM
-from ..utils.cache import ResponseCache
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+    from ..utils.cache import ResponseCache
 
 
 class CachedLLM(BaseLLM):
@@ -27,9 +31,9 @@ class CachedLLM(BaseLLM):
     def generate(
         self,
         prompt: str,
-        system: Optional[str] = None,
+        system: str | None = None,
         temperature: float = 0.3,
-        ttl: Optional[int] = None,
+        ttl: int | None = None,
     ) -> str:
         """Generate with cache lookup."""
         cached = self.cache.get(prompt, system)
@@ -43,7 +47,7 @@ class CachedLLM(BaseLLM):
     def stream(
         self,
         prompt: str,
-        system: Optional[str] = None,
+        system: str | None = None,
         temperature: float = 0.3,
     ) -> Iterator[str]:
         """Stream is not cached — passes through directly."""

@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any
 
-from ..catalog.db import CatalogDB
-from ..catalog.models import Feature
-from ..llm.base import BaseLLM
 from ..utils.catalog_context import get_feature_detail
 from ..utils.prompts import MONITORING_ANALYSIS_PROMPT, MONITORING_SYSTEM
 from ..utils.statistics import (
@@ -19,6 +17,11 @@ from ..utils.statistics import (
     compute_psi,
 )
 from .base import BasePlugin, PluginResult
+
+if TYPE_CHECKING:
+    from ..catalog.db import CatalogDB
+    from ..catalog.models import Feature
+    from ..llm.base import BaseLLM
 
 
 class MonitoringPlugin(BasePlugin):
@@ -64,7 +67,7 @@ class MonitoringPlugin(BasePlugin):
     def _compute_baseline(
         self,
         db: CatalogDB,
-        feature_name: Optional[str] = None,
+        feature_name: str | None = None,
     ) -> PluginResult:
         """Save current feature stats as baselines."""
         if feature_name:
@@ -95,7 +98,7 @@ class MonitoringPlugin(BasePlugin):
         self,
         db: CatalogDB,
         llm: BaseLLM,
-        feature_name: Optional[str] = None,
+        feature_name: str | None = None,
         refresh_baseline: bool = False,
         use_llm: bool = False,
     ) -> PluginResult:
@@ -130,10 +133,8 @@ class MonitoringPlugin(BasePlugin):
         # LLM analysis for issues
         issues = [d for d in details if d["severity"] != "healthy"]
         if use_llm and issues:
-            try:
+            with contextlib.suppress(Exception):
                 self._add_llm_analysis(db, llm, issues)
-            except Exception:
-                pass  # Graceful degradation
 
         if refresh_baseline:
             self._compute_baseline(db)
@@ -150,7 +151,7 @@ class MonitoringPlugin(BasePlugin):
 
         return PluginResult(status="success", data=report)
 
-    def _get_baseline(self, db: CatalogDB, feature_id: str) -> Optional[dict]:
+    def _get_baseline(self, db: CatalogDB, feature_id: str) -> dict | None:
         """Retrieve baseline stats for a feature."""
         row = db.conn.execute(
             "SELECT baseline_stats FROM monitoring_baselines WHERE feature_id = ?",
@@ -202,9 +203,7 @@ class MonitoringPlugin(BasePlugin):
     ) -> None:
         """Add LLM analysis to issue details."""
         drift_report = json.dumps(issues, indent=2)
-        feature_context = "\n\n".join(
-            get_feature_detail(db, issue["feature"]) for issue in issues
-        )
+        feature_context = "\n\n".join(get_feature_detail(db, issue["feature"]) for issue in issues)
 
         prompt = MONITORING_ANALYSIS_PROMPT.format(
             drift_report=drift_report,

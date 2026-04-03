@@ -5,7 +5,10 @@ from __future__ import annotations
 import json
 import re
 from abc import ABC, abstractmethod
-from typing import Iterator, Optional
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 
 class LLMConnectionError(Exception):
@@ -23,7 +26,7 @@ class BaseLLM(ABC):
     def generate(
         self,
         prompt: str,
-        system: Optional[str] = None,
+        system: str | None = None,
         temperature: float = 0.3,
     ) -> str:
         """Generate a text response from the LLM."""
@@ -32,7 +35,7 @@ class BaseLLM(ABC):
     def stream(
         self,
         prompt: str,
-        system: Optional[str] = None,
+        system: str | None = None,
         temperature: float = 0.3,
     ) -> Iterator[str]:
         """Stream response chunks from the LLM."""
@@ -44,7 +47,7 @@ class BaseLLM(ABC):
     def generate_json(
         self,
         prompt: str,
-        system: Optional[str] = None,
+        system: str | None = None,
         temperature: float = 0.1,
         max_retries: int = 2,
     ) -> dict:
@@ -71,7 +74,7 @@ class BaseLLM(ABC):
         raise ValueError(f"Failed to parse JSON after {max_retries + 1} attempts. Last response: {response[:500]}")
 
 
-def _extract_json(text: str) -> Optional[dict]:
+def _extract_json(text: str) -> dict | None:
     """Try to extract a JSON object from text that may contain markdown fences."""
     # Try direct parse first
     text = text.strip()

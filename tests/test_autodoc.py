@@ -3,49 +3,56 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
-from typing import Iterator, Optional
+from typing import TYPE_CHECKING
 
 import pytest
 
 from featcat.catalog.db import CatalogDB
 from featcat.catalog.models import DataSource, Feature
 from featcat.llm.base import BaseLLM
-from featcat.plugins.autodoc import AutodocPlugin, get_doc, get_doc_stats, export_docs_markdown
+from featcat.plugins.autodoc import AutodocPlugin, export_docs_markdown, get_doc, get_doc_stats
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+    from pathlib import Path
 
 
 class MockAutodocLLM(BaseLLM):
     """Mock LLM that returns autodoc responses."""
 
-    def generate(self, prompt: str, system: Optional[str] = None, temperature: float = 0.3) -> str:
+    def generate(self, prompt: str, system: str | None = None, temperature: float = 0.3) -> str:
         if "batch" in prompt.lower() or "following features" in prompt.lower():
-            return json.dumps([
-                {
-                    "feature_name": "src.age",
-                    "short_description": "Customer age",
-                    "long_description": "Age of the customer in years.",
-                    "expected_range": "18-100",
-                    "potential_issues": "Missing values for new customers",
-                    "suggested_tags": ["demographic"],
-                },
-                {
-                    "feature_name": "src.revenue",
-                    "short_description": "Monthly revenue",
-                    "long_description": "Revenue from the customer in the last month.",
-                    "expected_range": ">= 0",
-                    "potential_issues": "Outliers from enterprise accounts",
-                    "suggested_tags": ["financial"],
-                },
-            ])
-        return json.dumps({
-            "short_description": "Customer age in years",
-            "long_description": "Age of the customer. Used for segmentation.",
-            "expected_range": "18-100",
-            "potential_issues": "Nulls for new signups",
-            "suggested_tags": ["demographic", "user"],
-        })
+            return json.dumps(
+                [
+                    {
+                        "feature_name": "src.age",
+                        "short_description": "Customer age",
+                        "long_description": "Age of the customer in years.",
+                        "expected_range": "18-100",
+                        "potential_issues": "Missing values for new customers",
+                        "suggested_tags": ["demographic"],
+                    },
+                    {
+                        "feature_name": "src.revenue",
+                        "short_description": "Monthly revenue",
+                        "long_description": "Revenue from the customer in the last month.",
+                        "expected_range": ">= 0",
+                        "potential_issues": "Outliers from enterprise accounts",
+                        "suggested_tags": ["financial"],
+                    },
+                ]
+            )
+        return json.dumps(
+            {
+                "short_description": "Customer age in years",
+                "long_description": "Age of the customer. Used for segmentation.",
+                "expected_range": "18-100",
+                "potential_issues": "Nulls for new signups",
+                "suggested_tags": ["demographic", "user"],
+            }
+        )
 
-    def stream(self, prompt: str, system: Optional[str] = None, temperature: float = 0.3) -> Iterator[str]:
+    def stream(self, prompt: str, system: str | None = None, temperature: float = 0.3) -> Iterator[str]:
         yield self.generate(prompt, system, temperature)
 
     def health_check(self) -> bool:
@@ -59,13 +66,15 @@ def db_with_features(tmp_path: Path) -> CatalogDB:
     source = DataSource(name="src", path="/data/test.parquet")
     db.add_source(source)
     for col, dtype in [("age", "int64"), ("revenue", "double")]:
-        db.upsert_feature(Feature(
-            name=f"src.{col}",
-            data_source_id=source.id,
-            column_name=col,
-            dtype=dtype,
-            stats={"mean": 30, "std": 10, "null_ratio": 0.05},
-        ))
+        db.upsert_feature(
+            Feature(
+                name=f"src.{col}",
+                data_source_id=source.id,
+                column_name=col,
+                dtype=dtype,
+                stats={"mean": 30, "std": 10, "null_ratio": 0.05},
+            )
+        )
     return db
 
 

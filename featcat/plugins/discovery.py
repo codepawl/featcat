@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from ..catalog.db import CatalogDB
-from ..llm.base import BaseLLM
 from ..utils.catalog_context import get_all_sources_schema, get_feature_summary
 from ..utils.prompts import DISCOVERY_PROMPT, DISCOVERY_SYSTEM
 from .base import BasePlugin, PluginResult
+
+if TYPE_CHECKING:
+    from ..catalog.db import CatalogDB
+    from ..llm.base import BaseLLM
 
 
 class DiscoveryPlugin(BasePlugin):

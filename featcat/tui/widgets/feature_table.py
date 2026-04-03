@@ -38,10 +38,7 @@ class FeatureTable(DataTable):
             return
 
         q = query.lower()
-        filtered = [
-            row for row in self._all_rows
-            if any(q in str(cell).lower() for cell in row)
-        ]
+        filtered = [row for row in self._all_rows if any(q in str(cell).lower() for cell in row)]
         self._refresh_rows(filtered)
 
     def _refresh_rows(self, rows: list[tuple]) -> None:

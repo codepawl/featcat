@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
-import json
-from typing import Iterator, Optional
-from unittest.mock import MagicMock, patch
+from typing import TYPE_CHECKING
 
 import pytest
 
-from featcat.llm.base import BaseLLM, LLMConnectionError, LLMTimeoutError, _extract_json
-from featcat.llm.ollama import OllamaLLM
-from featcat.llm.llamacpp import LlamaCppLLM
 from featcat.llm import create_llm
+from featcat.llm.base import BaseLLM, LLMConnectionError, _extract_json
+from featcat.llm.llamacpp import LlamaCppLLM
+from featcat.llm.ollama import OllamaLLM
 
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 # --- Mock LLM for testing ---
 
@@ -24,12 +24,12 @@ class MockLLM(BaseLLM):
         self._responses = responses or ['{"key": "value"}']
         self._call_count = 0
 
-    def generate(self, prompt: str, system: Optional[str] = None, temperature: float = 0.3) -> str:
+    def generate(self, prompt: str, system: str | None = None, temperature: float = 0.3) -> str:
         idx = min(self._call_count, len(self._responses) - 1)
         self._call_count += 1
         return self._responses[idx]
 
-    def stream(self, prompt: str, system: Optional[str] = None, temperature: float = 0.3) -> Iterator[str]:
+    def stream(self, prompt: str, system: str | None = None, temperature: float = 0.3) -> Iterator[str]:
         response = self.generate(prompt, system, temperature)
         for word in response.split():
             yield word + " "

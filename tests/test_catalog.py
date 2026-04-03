@@ -2,17 +2,19 @@
 
 from __future__ import annotations
 
-import json
-import os
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 from typer.testing import CliRunner
 
-from featcat.catalog.db import CatalogDB
-from featcat.catalog.models import DataSource, Feature, ColumnInfo
+from featcat.catalog.models import ColumnInfo, DataSource, Feature
 from featcat.catalog.scanner import scan_source
 from featcat.cli import app
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from featcat.catalog.db import CatalogDB
 
 runner = CliRunner()
 
@@ -52,7 +54,7 @@ class TestDB:
 
     def test_duplicate_source_fails(self, db: CatalogDB):
         db.add_source(DataSource(name="dup", path="/a"))
-        with pytest.raises(Exception):
+        with pytest.raises(Exception, match="UNIQUE constraint"):
             db.add_source(DataSource(name="dup", path="/b"))
 
     def test_list_sources(self, db: CatalogDB):

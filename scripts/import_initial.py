@@ -89,7 +89,7 @@ def main() -> None:
             columns = scan_source(path)
         except FileNotFoundError:
             print(f"  WARNING: Path not found: {path}. Skipping scan.")
-            print(f"  (Update the path in this script to match your actual data location)")
+            print("  (Update the path in this script to match your actual data location)")
             continue
 
         for col in columns:

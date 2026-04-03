@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import time
-from pathlib import Path
-from typing import Iterator, Optional
+from typing import TYPE_CHECKING
 
 import pytest
 
 from featcat.llm.base import BaseLLM
 from featcat.llm.cached import CachedLLM
 from featcat.utils.cache import ResponseCache
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+    from pathlib import Path
 
 
 class CountingLLM(BaseLLM):
@@ -20,11 +23,11 @@ class CountingLLM(BaseLLM):
         self.call_count = 0
         self._response = response
 
-    def generate(self, prompt: str, system: Optional[str] = None, temperature: float = 0.3) -> str:
+    def generate(self, prompt: str, system: str | None = None, temperature: float = 0.3) -> str:
         self.call_count += 1
         return self._response
 
-    def stream(self, prompt: str, system: Optional[str] = None, temperature: float = 0.3) -> Iterator[str]:
+    def stream(self, prompt: str, system: str | None = None, temperature: float = 0.3) -> Iterator[str]:
         yield self._response
 
     def health_check(self) -> bool:

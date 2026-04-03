@@ -3,31 +3,36 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
-from typing import Iterator, Optional
+from typing import TYPE_CHECKING
 
 import pytest
 
 from featcat.catalog.db import CatalogDB
 from featcat.catalog.models import DataSource, Feature
 from featcat.llm.base import BaseLLM
-from featcat.plugins.nl_query import NLQueryPlugin, _is_vietnamese, _fuzzy_search
+from featcat.plugins.nl_query import NLQueryPlugin, _fuzzy_search, _is_vietnamese
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+    from pathlib import Path
 
 
 class MockNLQueryLLM(BaseLLM):
-    RESPONSE = json.dumps({
-        "results": [
-            {"feature": "src.session_count", "score": 0.95, "reason": "Counts user sessions"},
-            {"feature": "src.data_usage", "score": 0.80, "reason": "Measures data consumption"},
-        ],
-        "interpretation": "Looking for user behavior features",
-        "follow_up": "Try: features related to churn",
-    })
+    RESPONSE = json.dumps(
+        {
+            "results": [
+                {"feature": "src.session_count", "score": 0.95, "reason": "Counts user sessions"},
+                {"feature": "src.data_usage", "score": 0.80, "reason": "Measures data consumption"},
+            ],
+            "interpretation": "Looking for user behavior features",
+            "follow_up": "Try: features related to churn",
+        }
+    )
 
-    def generate(self, prompt: str, system: Optional[str] = None, temperature: float = 0.3) -> str:
+    def generate(self, prompt: str, system: str | None = None, temperature: float = 0.3) -> str:
         return self.RESPONSE
 
-    def stream(self, prompt: str, system: Optional[str] = None, temperature: float = 0.3) -> Iterator[str]:
+    def stream(self, prompt: str, system: str | None = None, temperature: float = 0.3) -> Iterator[str]:
         yield self.RESPONSE
 
     def health_check(self) -> bool:
@@ -46,13 +51,15 @@ def db_with_features(tmp_path: Path) -> CatalogDB:
         ("churn_label", ["target", "churn"]),
         ("device_id", ["identifier"]),
     ]:
-        db.upsert_feature(Feature(
-            name=f"src.{col}",
-            data_source_id=source.id,
-            column_name=col,
-            dtype="int64",
-            tags=tags,
-        ))
+        db.upsert_feature(
+            Feature(
+                name=f"src.{col}",
+                data_source_id=source.id,
+                column_name=col,
+                dtype="int64",
+                tags=tags,
+            )
+        )
     return db
 
 

@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
-from textual.app import ComposeResult
+from typing import TYPE_CHECKING
+
 from textual.containers import Vertical
 from textual.screen import Screen
 from textual.widgets import Footer, Header, Static
 
 from ..widgets.alert_list import AlertList
 from ..widgets.stats_bar import StatsBar
+
+if TYPE_CHECKING:
+    from textual.app import ComposeResult
 
 
 class DashboardScreen(Screen):
@@ -60,6 +64,7 @@ class DashboardScreen(Screen):
             alert_list = self.query_one("#alert-list", AlertList)
             try:
                 from ...plugins.monitoring import MonitoringPlugin
+
                 plugin = MonitoringPlugin()
                 result = plugin.execute(db, None, action="check")
                 details = result.data.get("details", [])

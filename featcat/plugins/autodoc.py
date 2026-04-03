@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-import json
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any
 
-from ..catalog.db import CatalogDB
-from ..catalog.models import Feature
-from ..llm.base import BaseLLM
-from ..utils.catalog_context import get_features_for_source
 from ..utils.prompts import AUTODOC_PROMPT_BATCH, AUTODOC_PROMPT_SINGLE, AUTODOC_SYSTEM
 from .base import BasePlugin, PluginResult
+
+if TYPE_CHECKING:
+    from ..catalog.db import CatalogDB
+    from ..catalog.models import Feature
+    from ..llm.base import BaseLLM
 
 
 class AutodocPlugin(BasePlugin):
@@ -38,7 +38,7 @@ class AutodocPlugin(BasePlugin):
             batch_size: Max features per LLM call (default 10).
             progress_callback: Optional callable(current, total) for progress.
         """
-        feature_name: Optional[str] = kwargs.get("feature_name")
+        feature_name: str | None = kwargs.get("feature_name")
         batch_size: int = kwargs.get("batch_size", 10)
         progress_callback = kwargs.get("progress_callback")
 
@@ -156,6 +156,7 @@ class AutodocPlugin(BasePlugin):
                WHERE fd.feature_id IS NULL OR f.updated_at > fd.generated_at"""
         ).fetchall()
         from ..catalog.db import _row_to_feature
+
         return [_row_to_feature(r) for r in rows]
 
     def _format_batch(self, features: list[Feature]) -> str:
@@ -181,7 +182,8 @@ class AutodocPlugin(BasePlugin):
         db.conn.execute("DELETE FROM feature_docs WHERE feature_id = ?", (feature_id,))
         db.conn.execute(
             """INSERT INTO feature_docs
-               (feature_id, short_description, long_description, expected_range, potential_issues, generated_at, model_used)
+               (feature_id, short_description, long_description,
+                expected_range, potential_issues, generated_at, model_used)
                VALUES (?, ?, ?, ?, ?, ?, ?)""",
             (
                 feature_id,
@@ -196,15 +198,13 @@ class AutodocPlugin(BasePlugin):
         db.conn.commit()
 
 
-def get_doc(db: CatalogDB, feature_name: str) -> Optional[dict]:
+def get_doc(db: CatalogDB, feature_name: str) -> dict | None:
     """Retrieve documentation for a feature."""
     feature = db.get_feature_by_name(feature_name)
     if feature is None:
         return None
 
-    row = db.conn.execute(
-        "SELECT * FROM feature_docs WHERE feature_id = ?", (feature.id,)
-    ).fetchone()
+    row = db.conn.execute("SELECT * FROM feature_docs WHERE feature_id = ?", (feature.id,)).fetchone()
     if row is None:
         return None
     return dict(row)
@@ -213,9 +213,7 @@ def get_doc(db: CatalogDB, feature_name: str) -> Optional[dict]:
 def get_doc_stats(db: CatalogDB) -> dict:
     """Get documentation coverage statistics."""
     total = db.conn.execute("SELECT COUNT(*) FROM features").fetchone()[0]
-    documented = db.conn.execute(
-        "SELECT COUNT(DISTINCT feature_id) FROM feature_docs"
-    ).fetchone()[0]
+    documented = db.conn.execute("SELECT COUNT(DISTINCT feature_id) FROM feature_docs").fetchone()[0]
     return {
         "total_features": total,
         "documented": documented,
@@ -227,7 +225,7 @@ def get_doc_stats(db: CatalogDB) -> dict:
 def export_docs_markdown(db: CatalogDB) -> str:
     """Export all feature documentation to Markdown."""
     features = db.list_features()
-    lines = ["# Feature Documentation", "", f"*Generated from featcat catalog*", ""]
+    lines = ["# Feature Documentation", "", "*Generated from featcat catalog*", ""]
 
     # Group by source
     by_source: dict[str, list] = {}
@@ -240,9 +238,7 @@ def export_docs_markdown(db: CatalogDB) -> str:
         lines.append("")
 
         for f in feats:
-            row = db.conn.execute(
-                "SELECT * FROM feature_docs WHERE feature_id = ?", (f.id,)
-            ).fetchone()
+            row = db.conn.execute("SELECT * FROM feature_docs WHERE feature_id = ?", (f.id,)).fetchone()
 
             lines.append(f"### {f.name}")
             lines.append("")
@@ -251,9 +247,11 @@ def export_docs_markdown(db: CatalogDB) -> str:
             lines.append(f"- **Tags:** {', '.join(f.tags) if f.tags else '(none)'}")
 
             if f.stats:
-                lines.append(f"- **Stats:** mean={f.stats.get('mean', '?')}, "
-                           f"std={f.stats.get('std', '?')}, "
-                           f"null_ratio={f.stats.get('null_ratio', '?')}")
+                lines.append(
+                    f"- **Stats:** mean={f.stats.get('mean', '?')}, "
+                    f"std={f.stats.get('std', '?')}, "
+                    f"null_ratio={f.stats.get('null_ratio', '?')}"
+                )
 
             if row:
                 doc = dict(row)

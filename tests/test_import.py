@@ -10,7 +10,6 @@ from featcat.catalog.db import CatalogDB
 from featcat.catalog.models import DataSource, Feature
 from featcat.catalog.scanner import scan_source
 
-
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 

@@ -3,11 +3,8 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import sqlite3
 import time
-from datetime import datetime, timezone
-from typing import Optional
 
 CACHE_SCHEMA = """\
 CREATE TABLE IF NOT EXISTS llm_cache (
@@ -28,7 +25,7 @@ class ResponseCache:
         self.conn.execute(CACHE_SCHEMA)
         self.conn.commit()
 
-    def get(self, prompt: str, system: Optional[str] = None) -> Optional[str]:
+    def get(self, prompt: str, system: str | None = None) -> str | None:
         """Look up a cached response. Returns None if missing or expired."""
         key = self._hash(prompt, system)
         row = self.conn.execute(
@@ -52,7 +49,7 @@ class ResponseCache:
         prompt: str,
         response: str,
         ttl_seconds: int,
-        system: Optional[str] = None,
+        system: str | None = None,
     ) -> None:
         """Store a response in the cache."""
         key = self._hash(prompt, system)
@@ -95,12 +92,12 @@ class ResponseCache:
         self.conn.close()
 
     @staticmethod
-    def _hash(prompt: str, system: Optional[str] = None) -> str:
+    def _hash(prompt: str, system: str | None = None) -> str:
         content = f"{system or ''}|||{prompt}"
         return hashlib.sha256(content.encode()).hexdigest()
 
 
 # TTL constants (seconds)
 TTL_AUTODOC = 7 * 24 * 3600  # 7 days
-TTL_NL_QUERY = 3600           # 1 hour
-TTL_MONITORING = 3600          # 1 hour
+TTL_NL_QUERY = 3600  # 1 hour
+TTL_MONITORING = 3600  # 1 hour

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from pathlib import Path
 
 import pyarrow as pa
@@ -18,16 +19,13 @@ def scan_source(path: str) -> list[ColumnInfo]:
     resolved = resolve_parquet_path(path)
 
     # S3 paths go straight to read; local paths may be directories
-    if resolved.startswith("s3://"):
-        actual_path = resolved
-    else:
-        actual_path = _find_parquet_file(resolved)
+    actual_path = resolved if resolved.startswith("s3://") else _find_parquet_file(resolved)
 
     schema = read_parquet_schema(actual_path)
     table = read_parquet_sample(actual_path)
 
     columns: list[ColumnInfo] = []
-    for i, field in enumerate(schema):
+    for _i, field in enumerate(schema):
         col_array = table.column(field.name) if table.num_rows > 0 else None
         stats = _compute_stats(col_array, field.type) if col_array else {}
         columns.append(
@@ -66,10 +64,8 @@ def _compute_stats(col: pa.ChunkedArray, dtype: pa.DataType) -> dict:
     }
 
     # Unique count (works for all types)
-    try:
+    with contextlib.suppress(Exception):
         stats["unique_count"] = pc.count_distinct(col).as_py()
-    except Exception:
-        pass
 
     # Numeric stats
     if pa.types.is_integer(dtype) or pa.types.is_floating(dtype):

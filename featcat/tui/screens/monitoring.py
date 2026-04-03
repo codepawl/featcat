@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
-from textual.app import ComposeResult
+from typing import TYPE_CHECKING
+
 from textual.screen import Screen
 from textual.widgets import DataTable, Footer, Header, Static
+
+if TYPE_CHECKING:
+    from textual.app import ComposeResult
 
 
 class MonitoringScreen(Screen):

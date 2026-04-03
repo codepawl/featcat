@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import TYPE_CHECKING
 
-from ..catalog.db import CatalogDB
+if TYPE_CHECKING:
+    from ..catalog.db import CatalogDB
 
 
 def get_feature_summary(db: CatalogDB, max_features: int = 100) -> str:
@@ -26,10 +27,7 @@ def get_feature_summary(db: CatalogDB, max_features: int = 100) -> str:
     for f in features[:max_features]:
         tags = ", ".join(f.tags) if f.tags else ""
         null_ratio = f.stats.get("null_ratio", "?")
-        if isinstance(null_ratio, (int, float)):
-            null_str = f"{null_ratio:.1%}"
-        else:
-            null_str = str(null_ratio)
+        null_str = f"{null_ratio:.1%}" if isinstance(null_ratio, (int, float)) else str(null_ratio)
         lines.append(f"{f.name:<40} {f.dtype:<10} {tags:<30} {null_str}")
 
     if len(features) > max_features:

@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import math
-from typing import Any, Optional
+from typing import Any
 
 
 def compute_psi(
     baseline_stats: dict[str, Any],
     current_stats: dict[str, Any],
     buckets: int = 10,
-) -> Optional[float]:
+) -> float | None:
     """Compute Population Stability Index between baseline and current distributions.
 
     Uses a simplified PSI based on mean/std shift when full distributions are unavailable.
@@ -55,7 +55,7 @@ def check_null_spike(
     baseline_stats: dict[str, Any],
     current_stats: dict[str, Any],
     threshold: float = 0.05,
-) -> Optional[dict]:
+) -> dict | None:
     """Detect if null ratio increased significantly vs baseline."""
     b_null = baseline_stats.get("null_ratio")
     c_null = current_stats.get("null_ratio")
@@ -79,7 +79,7 @@ def check_range_violation(
     baseline_stats: dict[str, Any],
     current_stats: dict[str, Any],
     n_std: float = 3.0,
-) -> Optional[dict]:
+) -> dict | None:
     """Detect if current min/max are outside baseline range +/- n_std."""
     b_min = baseline_stats.get("min")
     b_max = baseline_stats.get("max")
@@ -109,7 +109,7 @@ def check_range_violation(
     return None
 
 
-def check_zero_variance(current_stats: dict[str, Any]) -> Optional[dict]:
+def check_zero_variance(current_stats: dict[str, Any]) -> dict | None:
     """Detect if a feature has become constant (std = 0)."""
     c_std = current_stats.get("std")
     if c_std is not None and c_std == 0:
@@ -120,7 +120,7 @@ def check_zero_variance(current_stats: dict[str, Any]) -> Optional[dict]:
     return None
 
 
-def classify_severity(psi: Optional[float], issues: list[dict]) -> str:
+def classify_severity(psi: float | None, issues: list[dict]) -> str:
     """Classify overall severity for a feature.
 
     Returns: "healthy", "warning", or "critical"

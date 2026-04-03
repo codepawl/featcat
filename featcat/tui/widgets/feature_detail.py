@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from textual.widgets import Static
 
-from ...catalog.models import Feature
+if TYPE_CHECKING:
+    from ...catalog.models import Feature
 
 
 class FeatureDetail(Static):

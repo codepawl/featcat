@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
-from textual.app import ComposeResult
+from typing import TYPE_CHECKING
+
 from textual.screen import Screen
 from textual.widgets import Footer, Header, Input
 
 from ..widgets.chat_messages import ChatMessages
+
+if TYPE_CHECKING:
+    from textual.app import ComposeResult
 
 
 class ChatScreen(Screen):
@@ -52,7 +56,6 @@ class ChatScreen(Screen):
         try:
             from ...catalog.db import CatalogDB
             from ...config import load_settings
-            from ...llm import create_llm
             from ...llm.base import LLMConnectionError
 
             settings = load_settings()
@@ -176,6 +179,7 @@ class ChatScreen(Screen):
     def _create_llm(self, settings):
         try:
             from ...llm import create_llm
+
             llm = create_llm(
                 backend=settings.llm_backend,
                 model=settings.llm_model,

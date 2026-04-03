@@ -5,8 +5,6 @@ from __future__ import annotations
 import json
 import sqlite3
 from datetime import datetime, timezone
-from pathlib import Path
-from typing import Optional
 
 from .models import DataSource, Feature
 
@@ -110,20 +108,16 @@ class CatalogDB:
         self.conn.commit()
         return source
 
-    def get_source_by_name(self, name: str) -> Optional[DataSource]:
+    def get_source_by_name(self, name: str) -> DataSource | None:
         """Look up a data source by its unique name."""
-        row = self.conn.execute(
-            "SELECT * FROM data_sources WHERE name = ?", (name,)
-        ).fetchone()
+        row = self.conn.execute("SELECT * FROM data_sources WHERE name = ?", (name,)).fetchone()
         if row is None:
             return None
         return DataSource(**dict(row))
 
     def list_sources(self) -> list[DataSource]:
         """Return all registered data sources."""
-        rows = self.conn.execute(
-            "SELECT * FROM data_sources ORDER BY created_at DESC"
-        ).fetchall()
+        rows = self.conn.execute("SELECT * FROM data_sources ORDER BY created_at DESC").fetchall()
         return [DataSource(**dict(r)) for r in rows]
 
     # --- Feature CRUD ---
@@ -155,7 +149,7 @@ class CatalogDB:
         self.conn.commit()
         return feature
 
-    def list_features(self, source_name: Optional[str] = None) -> list[Feature]:
+    def list_features(self, source_name: str | None = None) -> list[Feature]:
         """Return features, optionally filtered by source name."""
         if source_name:
             rows = self.conn.execute(
@@ -166,16 +160,12 @@ class CatalogDB:
                 (source_name,),
             ).fetchall()
         else:
-            rows = self.conn.execute(
-                "SELECT * FROM features ORDER BY name"
-            ).fetchall()
+            rows = self.conn.execute("SELECT * FROM features ORDER BY name").fetchall()
         return [_row_to_feature(r) for r in rows]
 
-    def get_feature_by_name(self, name: str) -> Optional[Feature]:
+    def get_feature_by_name(self, name: str) -> Feature | None:
         """Look up a feature by name. Returns the first match."""
-        row = self.conn.execute(
-            "SELECT * FROM features WHERE name = ?", (name,)
-        ).fetchone()
+        row = self.conn.execute("SELECT * FROM features WHERE name = ?", (name,)).fetchone()
         if row is None:
             return None
         return _row_to_feature(row)

@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
-from pydantic import Field
 from pydantic_settings import BaseSettings
 
 
@@ -26,9 +23,9 @@ class Settings(BaseSettings):
     max_context_features: int = 100
 
     # S3 / MinIO
-    s3_endpoint_url: Optional[str] = None
-    s3_access_key: Optional[str] = None
-    s3_secret_key: Optional[str] = None
+    s3_endpoint_url: str | None = None
+    s3_access_key: str | None = None
+    s3_secret_key: str | None = None
     s3_region: str = "us-east-1"
 
     # Monitoring

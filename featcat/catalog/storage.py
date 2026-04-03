@@ -3,15 +3,14 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-
 # ---------------------------------------------------------------------------
 # Local storage
 # ---------------------------------------------------------------------------
+
 
 def resolve_parquet_path(path: str) -> str:
     """Validate and resolve a data source path.
@@ -58,7 +57,8 @@ def read_parquet_sample(path: str, n_rows: int = 10_000) -> pa.Table:
 # S3 storage
 # ---------------------------------------------------------------------------
 
-def _get_s3_filesystem() -> "pyarrow.fs.S3FileSystem":
+
+def _get_s3_filesystem() -> pa.fs.S3FileSystem:
     """Create a PyArrow S3FileSystem from featcat settings."""
     from ..config import load_settings
 
@@ -80,6 +80,7 @@ def _get_s3_filesystem() -> "pyarrow.fs.S3FileSystem":
         kwargs["endpoint_override"] = settings.s3_endpoint_url.replace("http://", "")
 
     from pyarrow.fs import S3FileSystem
+
     return S3FileSystem(**kwargs)
 
 

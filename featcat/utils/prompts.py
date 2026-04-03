@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 """Prompt templates for all AI plugins."""
 
 from __future__ import annotations

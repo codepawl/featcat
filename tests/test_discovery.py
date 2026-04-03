@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
-from typing import Iterator, Optional
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -13,30 +12,36 @@ from featcat.catalog.models import DataSource, Feature
 from featcat.llm.base import BaseLLM
 from featcat.plugins.discovery import DiscoveryPlugin
 
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+    from pathlib import Path
+
 
 class MockDiscoveryLLM(BaseLLM):
     """Mock LLM that returns a discovery response."""
 
-    RESPONSE = json.dumps({
-        "existing_features": [
-            {"name": "src.session_count", "relevance": 0.95, "reason": "Session count is key for churn"},
-            {"name": "src.complaint_count", "relevance": 0.85, "reason": "Complaints predict churn"},
-        ],
-        "new_feature_suggestions": [
-            {
-                "name": "session_trend_7d",
-                "source": "src",
-                "column_expression": "slope of session_count over 7 days",
-                "reason": "Captures declining engagement",
-            },
-        ],
-        "summary": "Focus on behavioral and complaint features for churn prediction",
-    })
+    RESPONSE = json.dumps(
+        {
+            "existing_features": [
+                {"name": "src.session_count", "relevance": 0.95, "reason": "Session count is key for churn"},
+                {"name": "src.complaint_count", "relevance": 0.85, "reason": "Complaints predict churn"},
+            ],
+            "new_feature_suggestions": [
+                {
+                    "name": "session_trend_7d",
+                    "source": "src",
+                    "column_expression": "slope of session_count over 7 days",
+                    "reason": "Captures declining engagement",
+                },
+            ],
+            "summary": "Focus on behavioral and complaint features for churn prediction",
+        }
+    )
 
-    def generate(self, prompt: str, system: Optional[str] = None, temperature: float = 0.3) -> str:
+    def generate(self, prompt: str, system: str | None = None, temperature: float = 0.3) -> str:
         return self.RESPONSE
 
-    def stream(self, prompt: str, system: Optional[str] = None, temperature: float = 0.3) -> Iterator[str]:
+    def stream(self, prompt: str, system: str | None = None, temperature: float = 0.3) -> Iterator[str]:
         yield self.RESPONSE
 
     def health_check(self) -> bool:
@@ -50,14 +55,16 @@ def db_with_features(tmp_path: Path) -> CatalogDB:
     source = DataSource(name="src", path="/data/test.parquet")
     db.add_source(source)
     for col in ["session_count", "complaint_count", "data_usage", "churn_label"]:
-        db.upsert_feature(Feature(
-            name=f"src.{col}",
-            data_source_id=source.id,
-            column_name=col,
-            dtype="int64",
-            tags=["behavior"],
-            stats={"mean": 10, "std": 5, "null_ratio": 0.01},
-        ))
+        db.upsert_feature(
+            Feature(
+                name=f"src.{col}",
+                data_source_id=source.id,
+                column_name=col,
+                dtype="int64",
+                tags=["behavior"],
+                stats={"mean": 10, "std": 5, "null_ratio": 0.01},
+            )
+        )
     return db
 
 

@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any
 
-from ..catalog.db import CatalogDB
-from ..llm.base import BaseLLM
 from ..utils.catalog_context import get_feature_summary
 from ..utils.prompts import NL_QUERY_PROMPT, NL_QUERY_SYSTEM, NL_QUERY_SYSTEM_VI
 from .base import BasePlugin, PluginResult
+
+if TYPE_CHECKING:
+    from ..catalog.db import CatalogDB
+    from ..llm.base import BaseLLM
 
 
 def _is_vietnamese(text: str) -> bool:
@@ -29,26 +31,26 @@ def _fuzzy_search(db: CatalogDB, query: str) -> list[dict]:
     """
     try:
         from rapidfuzz import fuzz
+
         features = db.list_features()
         scored = []
         for f in features:
             searchable = f"{f.name} {f.description} {' '.join(f.tags)} {f.column_name}"
             score = fuzz.partial_ratio(query.lower(), searchable.lower())
             if score >= 40:
-                scored.append({
-                    "feature": f.name,
-                    "score": round(score / 100, 2),
-                    "reason": f"Fuzzy match (score: {score})",
-                })
+                scored.append(
+                    {
+                        "feature": f.name,
+                        "score": round(score / 100, 2),
+                        "reason": f"Fuzzy match (score: {score})",
+                    }
+                )
         scored.sort(key=lambda x: x["score"], reverse=True)
         return scored[:20]
     except ImportError:
         # Fall back to SQL LIKE search
         results = db.search_features(query)
-        return [
-            {"feature": f.name, "score": 0.5, "reason": "Keyword match"}
-            for f in results
-        ]
+        return [{"feature": f.name, "score": 0.5, "reason": "Keyword match"} for f in results]
 
 
 class NLQueryPlugin(BasePlugin):

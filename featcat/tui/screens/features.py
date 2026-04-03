@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
-from textual.app import ComposeResult
+from typing import TYPE_CHECKING
+
 from textual.containers import Horizontal
 from textual.screen import Screen
 from textual.widgets import Footer, Header, Input
 
 from ..widgets.feature_detail import FeatureDetail
 from ..widgets.feature_table import FeatureTable
+
+if TYPE_CHECKING:
+    from textual.app import ComposeResult
 
 
 class FeaturesScreen(Screen):

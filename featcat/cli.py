@@ -5,14 +5,13 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Optional
 
 import typer
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from .catalog.db import CatalogDB, DEFAULT_DB
+from .catalog.db import DEFAULT_DB, CatalogDB
 from .catalog.models import DataSource, Feature
 from .catalog.scanner import scan_source
 from .config import load_settings
@@ -53,6 +52,7 @@ def _get_llm(use_cache: bool = True):
         if use_cache:
             from .llm.cached import CachedLLM
             from .utils.cache import ResponseCache
+
             cache = ResponseCache(settings.catalog_db_path)
             return CachedLLM(llm, cache)
         return llm
@@ -72,6 +72,7 @@ def init() -> None:
     db.init_db()
     # Also create cache table
     from .utils.cache import ResponseCache
+
     ResponseCache(DEFAULT_DB).close()
     db.close()
     console.print(f"[green]Catalog initialized:[/green] {DEFAULT_DB}")
@@ -107,12 +108,14 @@ def doctor() -> None:
 
         # Doc coverage
         from .plugins.autodoc import get_doc_stats
+
         doc_stats = get_doc_stats(db)
         has_docs = doc_stats["documented"] > 0
         _print_check(has_docs, f"{doc_stats['documented']} features have docs ({doc_stats['coverage']:.1f}%)")
 
         # Monitoring alerts
         from .plugins.monitoring import MonitoringPlugin
+
         plugin = MonitoringPlugin()
         result = plugin.execute(db, None, action="check")
         warnings = result.data.get("warnings", 0)
@@ -133,6 +136,7 @@ def doctor() -> None:
     # Ollama
     try:
         from .llm.ollama import OllamaLLM
+
         ollama = OllamaLLM(model=settings.llm_model, base_url=settings.ollama_url)
         reachable = ollama.health_check()
         _print_check(reachable, f"Ollama running at {settings.ollama_url}")
@@ -140,6 +144,7 @@ def doctor() -> None:
             # Check model availability
             import json
             from urllib.request import urlopen
+
             resp = urlopen(f"{settings.ollama_url}/api/tags", timeout=5)
             data = json.loads(resp.read())
             model_names = [m.get("name", "") for m in data.get("models", [])]
@@ -158,6 +163,7 @@ def doctor() -> None:
     # Cache stats
     try:
         from .utils.cache import ResponseCache
+
         cache = ResponseCache(settings.catalog_db_path)
         cs = cache.stats()
         cache.close()
@@ -181,9 +187,11 @@ def stats() -> None:
     sources = db.list_sources()
 
     from .plugins.autodoc import get_doc_stats
+
     doc_stats = get_doc_stats(db)
 
     from .plugins.monitoring import MonitoringPlugin
+
     plugin = MonitoringPlugin()
     result = plugin.execute(db, None, action="check")
     report = result.data
@@ -196,7 +204,9 @@ def stats() -> None:
 
     cov = doc_stats["coverage"]
     cov_color = "green" if cov >= 80 else "yellow" if cov >= 50 else "red"
-    console.print(f"  Doc coverage: [{cov_color}]{cov:.1f}%[/{cov_color}] ({doc_stats['documented']}/{doc_stats['total_features']})")
+    documented = doc_stats["documented"]
+    total = doc_stats["total_features"]
+    console.print(f"  Doc coverage: [{cov_color}]{cov:.1f}%[/{cov_color}] ({documented}/{total})")
 
     checked = report.get("checked", 0)
     healthy = report.get("healthy", 0)
@@ -204,7 +214,11 @@ def stats() -> None:
     critical = report.get("critical", 0)
 
     if checked > 0:
-        console.print(f"  Monitoring:   [green]{healthy}[/green] healthy, [yellow]{warnings}[/yellow] warnings, [red]{critical}[/red] critical")
+        console.print(
+            f"  Monitoring:   [green]{healthy}[/green] healthy,"
+            f" [yellow]{warnings}[/yellow] warnings,"
+            f" [red]{critical}[/red] critical"
+        )
     else:
         console.print("  Monitoring:   [dim]no baselines[/dim]")
 
@@ -216,7 +230,7 @@ def stats() -> None:
         table.add_column("Type")
         table.add_column("Features", justify="right")
         for s in sources:
-            feat_count = len(db.list_features(source_name=s.name)) if False else len([f for f in features if f.name.startswith(s.name + ".")])
+            feat_count = sum(1 for f in features if f.name.startswith(s.name + "."))
             table.add_row(s.name, s.storage_type, str(feat_count))
         console.print(table)
 
@@ -225,15 +239,15 @@ def stats() -> None:
 
 @app.command(name="export")
 def export_catalog(
-    format: str = typer.Option("json", help="Output format: json, csv, markdown"),
-    output: Optional[str] = typer.Option(None, "--output", "-o", help="Output file (default: stdout)"),
+    fmt: str = typer.Option("json", "--format", help="Output format: json, csv, markdown"),
+    output: str | None = typer.Option(None, "--output", "-o", help="Output file (default: stdout)"),
 ) -> None:
     """Export catalog data."""
     db = _get_db()
     features = db.list_features()
     db.close()
 
-    if format == "json":
+    if fmt == "json":
         data = [
             {
                 "name": f.name,
@@ -248,7 +262,7 @@ def export_catalog(
         ]
         text = json.dumps(data, indent=2, default=str)
 
-    elif format == "csv":
+    elif fmt == "csv":
         lines = ["name,column_name,dtype,tags,owner,null_ratio"]
         for f in features:
             tags = "|".join(f.tags)
@@ -256,9 +270,9 @@ def export_catalog(
             lines.append(f"{f.name},{f.column_name},{f.dtype},{tags},{f.owner},{null_ratio}")
         text = "\n".join(lines)
 
-    elif format == "markdown":
+    elif fmt == "markdown":
         lines = ["# Feature Catalog Export", ""]
-        lines.append(f"| Name | Dtype | Tags | Owner | Null Ratio |")
+        lines.append("| Name | Dtype | Tags | Owner | Null Ratio |")
         lines.append("|------|-------|------|-------|------------|")
         for f in features:
             tags = ", ".join(f.tags) if f.tags else ""
@@ -267,7 +281,7 @@ def export_catalog(
             lines.append(f"| {f.name} | {f.dtype} | {tags} | {f.owner} | {nr_str} |")
         text = "\n".join(lines)
     else:
-        console.print(f"[red]Unknown format:[/red] {format}. Use json, csv, or markdown.")
+        console.print(f"[red]Unknown format:[/red] {fmt}. Use json, csv, or markdown.")
         raise typer.Exit(1)
 
     if output:
@@ -287,7 +301,7 @@ def export_catalog(
 def source_add(
     name: str = typer.Argument(help="Unique name for this data source"),
     path: str = typer.Argument(help="Local path or s3:// URI"),
-    format: str = typer.Option("parquet", help="File format: parquet or csv"),
+    fmt: str = typer.Option("parquet", "--format", help="File format: parquet or csv"),
     description: str = typer.Option("", help="Optional description"),
 ) -> None:
     """Register a new data source."""
@@ -300,7 +314,7 @@ def source_add(
         name=name,
         path=path,
         storage_type=storage_type,
-        format=format,
+        format=fmt,
         description=description,
     )
     db = _get_db()
@@ -309,7 +323,7 @@ def source_add(
         console.print(f"[green]Source added:[/green] {name} -> {path}")
     except Exception as e:
         console.print(f"[red]Error:[/red] {e}")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
     finally:
         db.close()
 
@@ -357,7 +371,7 @@ def source_scan(
     except Exception as e:
         console.print(f"[red]Scan failed:[/red] {e}")
         db.close()
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
 
     registered = 0
     for col in columns:
@@ -373,9 +387,7 @@ def source_scan(
         registered += 1
 
     db.close()
-    console.print(
-        f"[green]Done:[/green] {registered} features registered from [cyan]{name}[/cyan]"
-    )
+    console.print(f"[green]Done:[/green] {registered} features registered from [cyan]{name}[/cyan]")
 
 
 # =========================================================================
@@ -385,7 +397,7 @@ def source_scan(
 
 @feature_app.command("list")
 def feature_list(
-    source: Optional[str] = typer.Option(None, "--source", "-s", help="Filter by source name"),
+    source: str | None = typer.Option(None, "--source", "-s", help="Filter by source name"),
 ) -> None:
     """List all features."""
     db = _get_db()
@@ -445,7 +457,7 @@ def feature_info(
 @feature_app.command("tag")
 def feature_tag(
     name: str = typer.Argument(help="Feature name"),
-    tags: list[str] = typer.Argument(help="Tags to add"),
+    tags: list[str] = typer.Argument(help="Tags to add"),  # noqa: B008
 ) -> None:
     """Add tags to a feature."""
     db = _get_db()
@@ -506,11 +518,15 @@ def discover(
     settings = load_settings()
 
     from .plugins.discovery import DiscoveryPlugin
+
     plugin = DiscoveryPlugin()
 
     with console.status("[blue]Analyzing catalog..."):
         result = plugin.execute(
-            db, llm, use_case=use_case, max_features=settings.max_context_features,
+            db,
+            llm,
+            use_case=use_case,
+            max_features=settings.max_context_features,
         )
     db.close()
 
@@ -565,6 +581,7 @@ def ask(
     llm = _get_llm(use_cache=not no_cache)
 
     from .plugins.nl_query import NLQueryPlugin
+
     plugin = NLQueryPlugin()
     fallback = llm is None
 
@@ -614,7 +631,7 @@ def ask(
 
 @doc_app.command("generate")
 def doc_generate(
-    name: Optional[str] = typer.Argument(None, help="Feature name (or omit for all)"),
+    name: str | None = typer.Argument(None, help="Feature name (or omit for all)"),
     no_cache: bool = typer.Option(False, "--no-cache", help="Bypass response cache"),
 ) -> None:
     """Generate AI documentation for features."""
@@ -626,7 +643,9 @@ def doc_generate(
     db = _get_db()
 
     from rich.progress import Progress
+
     from .plugins.autodoc import AutodocPlugin
+
     plugin = AutodocPlugin()
 
     if name:
@@ -662,6 +681,7 @@ def doc_show(
     """Display documentation for a feature."""
     db = _get_db()
     from .plugins.autodoc import get_doc
+
     doc = get_doc(db, name)
     db.close()
 
@@ -691,6 +711,7 @@ def doc_export(
     """Export all feature documentation to Markdown."""
     db = _get_db()
     from .plugins.autodoc import export_docs_markdown
+
     markdown = export_docs_markdown(db)
     db.close()
 
@@ -704,10 +725,11 @@ def doc_stats() -> None:
     """Show documentation coverage statistics."""
     db = _get_db()
     from .plugins.autodoc import get_doc_stats
+
     s = get_doc_stats(db)
     db.close()
 
-    console.print(f"\n[bold]Documentation Coverage[/bold]")
+    console.print("\n[bold]Documentation Coverage[/bold]")
     console.print(f"  Total features:  {s['total_features']}")
     console.print(f"  Documented:      {s['documented']}")
     console.print(f"  Undocumented:    {s['undocumented']}")
@@ -728,6 +750,7 @@ def monitor_baseline() -> None:
     """Compute and save baseline statistics for all features."""
     db = _get_db()
     from .plugins.monitoring import MonitoringPlugin
+
     plugin = MonitoringPlugin()
     result = plugin.execute(db, None, action="baseline")
     db.close()
@@ -736,7 +759,7 @@ def monitor_baseline() -> None:
 
 @monitor_app.command("check")
 def monitor_check(
-    name: Optional[str] = typer.Argument(None, help="Feature name (or omit for all)"),
+    name: str | None = typer.Argument(None, help="Feature name (or omit for all)"),
     refresh_baseline: bool = typer.Option(False, "--refresh-baseline", help="Update baseline after check"),
     use_llm: bool = typer.Option(False, "--llm", help="Include LLM analysis for issues"),
 ) -> None:
@@ -745,11 +768,15 @@ def monitor_check(
     llm = _get_llm() if use_llm else None
 
     from .plugins.monitoring import MonitoringPlugin
+
     plugin = MonitoringPlugin()
 
     with console.status("[blue]Running quality checks..."):
         result = plugin.execute(
-            db, llm, action="check", feature_name=name,
+            db,
+            llm,
+            action="check",
+            feature_name=name,
             refresh_baseline=refresh_baseline,
             use_llm=use_llm and llm is not None,
         )
@@ -761,7 +788,7 @@ def monitor_check(
     warnings = report.get("warnings", 0)
     critical = report.get("critical", 0)
 
-    console.print(f"\n[bold]Quality Check Results[/bold]")
+    console.print("\n[bold]Quality Check Results[/bold]")
     console.print(f"  Checked:  {checked}")
     console.print(f"  [green]Healthy:  {healthy}[/green]")
     if warnings:
@@ -800,6 +827,7 @@ def monitor_report(
     """Export monitoring report to Markdown."""
     db = _get_db()
     from .plugins.monitoring import MonitoringPlugin, export_monitoring_report
+
     plugin = MonitoringPlugin()
     result = plugin.execute(db, None, action="check")
     db.close()
@@ -820,10 +848,11 @@ def cache_stats() -> None:
     """Show cache statistics."""
     settings = load_settings()
     from .utils.cache import ResponseCache
+
     cache = ResponseCache(settings.catalog_db_path)
     s = cache.stats()
     cache.close()
-    console.print(f"\n[bold]LLM Response Cache[/bold]")
+    console.print("\n[bold]LLM Response Cache[/bold]")
     console.print(f"  Total entries: {s['total']}")
     console.print(f"  Active:        {s['active']}")
     console.print(f"  Expired:       {s['expired']}")
@@ -835,6 +864,7 @@ def cache_clear() -> None:
     """Clear all cached LLM responses."""
     settings = load_settings()
     from .utils.cache import ResponseCache
+
     cache = ResponseCache(settings.catalog_db_path)
     count = cache.clear()
     cache.close()
@@ -851,11 +881,12 @@ def ui() -> None:
     """Launch the Terminal UI."""
     try:
         from .tui.app import FeatcatApp
+
         app_instance = FeatcatApp()
         app_instance.run()
     except ImportError:
         console.print("[red]TUI requires textual.[/red] Install with: pip install 'featcat[tui]'")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
 
 
 # =========================================================================

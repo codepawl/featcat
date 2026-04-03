@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
-from ..catalog.db import CatalogDB
-from ..llm.base import BaseLLM
+if TYPE_CHECKING:
+    from ..catalog.db import CatalogDB
+    from ..llm.base import BaseLLM
 
 
 class PluginResult(BaseModel):
