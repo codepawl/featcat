@@ -1,8 +1,10 @@
-# Hướng dẫn Admin cho featcat
+# Admin Guide
 
-## Cấu hình S3 / MinIO
+[Tiếng Việt](admin-guide-vi.md)
 
-featcat hỗ trợ đọc Parquet trực tiếp từ S3 hoặc MinIO (S3-compatible).
+## Configuring S3 / MinIO
+
+featcat supports reading Parquet directly from S3 or MinIO (S3-compatible).
 
 ### AWS S3
 
@@ -15,7 +17,7 @@ featcat source add s3_data s3://my-bucket/features/data.parquet
 featcat source scan s3_data
 ```
 
-### MinIO (self-hosted)
+### MinIO (Self-Hosted)
 
 ```bash
 export FEATCAT_S3_ENDPOINT_URL=http://minio.internal:9000
@@ -26,52 +28,52 @@ featcat source add minio_data s3://data-lake/features/data.parquet
 featcat source scan minio_data
 ```
 
-> **Lưu ý**: featcat chỉ đọc metadata và sample (10k rows đầu). Không bao giờ copy toàn bộ data.
+> **Note**: featcat only reads metadata and a sample (first 10k rows). It never copies the full dataset.
 
-## Thay đổi LLM model
+## Changing the LLM Model
 
-### Dùng model khác trên Ollama
+### Using a Different Model on Ollama
 
 ```bash
-# Pull model mới
+# Pull a new model
 ollama pull llama3.1:8b
 
-# Cấu hình featcat
+# Configure featcat
 export FEATCAT_LLM_MODEL=llama3.1:8b
 
-# Kiểm tra
+# Verify
 featcat doctor
 ```
 
-### Dùng llama.cpp server
+### Using llama.cpp Server
 
 ```bash
-# Khởi động llama.cpp server
+# Start llama.cpp server
 ./server -m model.gguf --host 0.0.0.0 --port 8080
 
-# Cấu hình featcat
+# Configure featcat
 export FEATCAT_LLM_BACKEND=llamacpp
 export FEATCAT_LLAMACPP_URL=http://localhost:8080
 ```
 
-### Khuyến nghị model
+### Recommended Models
 
-| Model | RAM | Tốc độ | Chất lượng |
-|-------|-----|--------|------------|
-| `qwen2.5:3b` | 4GB | Nhanh | Tạm ổn |
-| `qwen2.5:7b` | 8GB | Trung bình | Tốt |
-| `llama3.1:8b` | 8GB | Trung bình | Tốt |
-| `qwen2.5:14b` | 16GB | Chậm | Rất tốt |
+| Model | RAM | Speed | Quality |
+|-------|-----|-------|---------|
+| `qwen2.5:3b` | 4GB | Fast | Decent |
+| `qwen2.5:7b` | 8GB | Medium | Good |
+| `llama3.1:8b` | 8GB | Medium | Good |
+| `qwen2.5:14b` | 16GB | Slow | Excellent |
 
-## Backup và restore
+## Backup and Restore
 
 ### Backup
 
 ```bash
-# Chỉ cần copy file catalog.db
+# Just copy catalog.db
 cp catalog.db catalog.db.backup.$(date +%Y%m%d)
 
-# Hoặc dùng SQLite backup
+# Or use SQLite backup
 sqlite3 catalog.db ".backup 'catalog_backup.db'"
 ```
 
@@ -81,107 +83,107 @@ sqlite3 catalog.db ".backup 'catalog_backup.db'"
 cp catalog_backup.db catalog.db
 ```
 
-### Xuất data trước khi backup
+### Export Data Before Backup
 
 ```bash
-# Xuất JSON
+# Export JSON
 featcat export --format json --output backup/features.json
 
-# Xuất Markdown docs
+# Export Markdown docs
 featcat doc export --output backup/features.md
 
-# Xuất monitoring report
+# Export monitoring report
 featcat monitor report --output backup/monitoring.md
 ```
 
 ## Troubleshooting
 
-### Ollama không kết nối được
+### Ollama Connection Failed
 
 ```
 [red]LLM unavailable.[/red] Ensure Ollama is running: ollama serve
 ```
 
-**Nguyên nhân**: Ollama chưa khởi động hoặc đang chạy trên port khác.
+**Cause**: Ollama is not running or is on a different port.
 
-**Cách xử lý**:
+**Fix**:
 ```bash
-# Kiểm tra Ollama đang chạy?
+# Check if Ollama is running
 curl http://localhost:11434/api/tags
 
-# Nếu không, khởi động
+# If not, start it
 ollama serve
 
-# Nếu port khác
+# If on a different port
 export FEATCAT_OLLAMA_URL=http://localhost:12345
 
-# Kiểm tra toàn bộ
+# Verify everything
 featcat doctor
 ```
 
-### LLM trả lời chậm
+### LLM Responds Slowly
 
-**Nguyên nhân**: Model quá lớn, hoặc máy không đủ RAM.
+**Cause**: Model too large, or insufficient RAM.
 
-**Cách xử lý**:
-- Dùng model nhỏ hơn: `export FEATCAT_LLM_MODEL=qwen2.5:3b`
-- Tăng timeout: `export FEATCAT_LLM_TIMEOUT=300`
-- Giảm số features gửi cho LLM: `export FEATCAT_MAX_CONTEXT_FEATURES=50`
-- Sử dụng cache (mặc định bật, chỉ cần chạy lại cùng query)
+**Fix**:
+- Use a smaller model: `export FEATCAT_LLM_MODEL=qwen2.5:3b`
+- Increase timeout: `export FEATCAT_LLM_TIMEOUT=300`
+- Reduce features sent to LLM: `export FEATCAT_MAX_CONTEXT_FEATURES=50`
+- Use cache (enabled by default — just re-run the same query)
 
-### Feature không tìm thấy
+### Feature Not Found
 
 ```
 [red]Feature not found:[/red] cpu_usage
 ```
 
-**Cách xử lý**: Feature name bao gồm cả source name prefix:
+**Fix**: Feature names include the source name as a prefix:
 ```bash
-# Sai
+# Wrong
 featcat feature info cpu_usage
 
-# Đúng
+# Correct
 featcat feature info device_perf.cpu_usage
 
-# Tìm nếu không nhớ tên chính xác
+# Search if you don't remember the exact name
 featcat feature search cpu
 ```
 
-### S3 permission denied
+### S3 Permission Denied
 
 ```
 botocore.exceptions.ClientError: Access Denied
 ```
 
-**Cách xử lý**:
+**Fix**:
 ```bash
-# Kiểm tra credentials
+# Check credentials
 echo $FEATCAT_S3_ACCESS_KEY
 
-# Test trực tiếp với aws cli
+# Test directly with aws cli
 aws s3 ls s3://bucket/path/ --endpoint-url $FEATCAT_S3_ENDPOINT_URL
 
-# Với MinIO, đảm bảo endpoint URL đúng
+# For MinIO, make sure the endpoint URL is correct
 export FEATCAT_S3_ENDPOINT_URL=http://minio.internal:9000
 ```
 
-### Database bị lỗi
+### Database Corrupted
 
 ```bash
-# Kiểm tra integrity
+# Check integrity
 sqlite3 catalog.db "PRAGMA integrity_check"
 
-# Nếu bị lỗi, restore từ backup
+# If corrupted, restore from backup
 cp catalog.db.backup catalog.db
 
-# Hoặc khởi tạo lại và re-import
+# Or reinitialize and re-import
 featcat init
 python scripts/import_initial.py
 ```
 
-## Monitoring tự động (cron)
+## Automated Monitoring (cron)
 
 ```bash
-# Chạy quality check mỗi 6 tiếng
+# Run quality check every 6 hours
 echo "0 */6 * * * cd /path/to/project && .venv/bin/featcat monitor check --refresh-baseline >> /var/log/featcat-monitor.log 2>&1" | crontab -
 ```

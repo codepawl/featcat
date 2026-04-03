@@ -1,122 +1,124 @@
-# Hướng dẫn sử dụng featcat
+# User Guide
+
+[Tiếng Việt](user-guide-vi.md)
 
 ## CLI Reference
 
-### Quản lý data sources
+### Managing Data Sources
 
 ```bash
-# Đăng ký data source local
-featcat source add <tên> <đường_dẫn>
+# Register a local data source
+featcat source add <name> <path>
 featcat source add device_perf /data/features/device_performance.parquet
 
-# Đăng ký data source S3
+# Register an S3 data source
 featcat source add user_logs s3://bucket/path/file.parquet
 
-# Xem danh sách
+# List all sources
 featcat source list
 
-# Scan source -> tự động tạo features
+# Scan source -> auto-create features
 featcat source scan device_perf
 ```
 
-### Quản lý features
+### Managing Features
 
 ```bash
-# Xem tất cả features
+# List all features
 featcat feature list
 
-# Lọc theo source
+# Filter by source
 featcat feature list --source device_perf
 
-# Xem chi tiết 1 feature
+# View feature details
 featcat feature info device_perf.cpu_usage
 
-# Thêm tags
+# Add tags
 featcat feature tag device_perf.cpu_usage performance infra
 
-# Tìm kiếm (keyword)
+# Search (keyword)
 featcat feature search "cpu"
 ```
 
 ### AI Discovery
 
 ```bash
-# Gợi ý features cho use case
-featcat discover "churn prediction cho khách hàng telecom"
+# Suggest features for a use case
+featcat discover "churn prediction for telecom customers"
 
-# Tiếng Việt cũng được
+# Vietnamese queries also work
 featcat discover "dự đoán khách hàng rời mạng dựa trên hành vi sử dụng"
 ```
 
-Output gồm:
-1. **Existing Features** - features hiện có phù hợp, xếp hạng theo relevance
-2. **New Feature Suggestions** - features mới nên tạo từ data hiện có
-3. **Strategy Summary** - tóm tắt chiến lược feature engineering
+Output includes:
+1. **Existing Features** — matching features ranked by relevance
+2. **New Feature Suggestions** — new features to create from existing data
+3. **Strategy Summary** — feature engineering strategy overview
 
 ### AI Documentation
 
 ```bash
-# Generate doc cho 1 feature
+# Generate doc for one feature
 featcat doc generate device_perf.cpu_usage
 
-# Generate doc cho tất cả features chưa có doc
+# Generate docs for all undocumented features
 featcat doc generate
 
-# Xem doc
+# View doc
 featcat doc show device_perf.cpu_usage
 
-# Xuất ra Markdown
+# Export to Markdown
 featcat doc export
 featcat doc export --output docs/my_features.md
 
-# Xem thống kê doc coverage
+# View doc coverage stats
 featcat doc stats
 ```
 
 ### Natural Language Query
 
 ```bash
-# Hỏi bằng tiếng Anh
+# Ask in English
 featcat ask "features related to user behavior in the last 30 days"
 
-# Hỏi bằng tiếng Việt
+# Ask in Vietnamese
 featcat ask "các feature liên quan đến hành vi người dùng"
 
-# Khi không có Ollama, tự động dùng fuzzy search
+# When Ollama is unavailable, automatically falls back to fuzzy search
 ```
 
 ### Quality Monitoring
 
 ```bash
-# Tạo baseline (chạy 1 lần đầu)
+# Create baseline (run once initially)
 featcat monitor baseline
 
-# Kiểm tra drift
+# Check for drift
 featcat monitor check
 
-# Kiểm tra 1 feature cụ thể
+# Check a specific feature
 featcat monitor check device_perf.cpu_usage
 
-# Kiểm tra với LLM analysis
+# Check with LLM analysis
 featcat monitor check --llm
 
-# Kiểm tra + cập nhật baseline
+# Check + update baseline
 featcat monitor check --refresh-baseline
 
-# Xuất report
+# Export report
 featcat monitor report
 ```
 
 ### System Health
 
 ```bash
-# Kiểm tra toàn bộ hệ thống
+# Check overall system health
 featcat doctor
 
-# Xem thống kê tổng quát
+# View summary statistics
 featcat stats
 
-# Xuất data
+# Export data
 featcat export --format json     # JSON
 featcat export --format csv      # CSV
 featcat export --format markdown  # Markdown
@@ -128,47 +130,47 @@ featcat export --format markdown  # Markdown
 featcat ui
 ```
 
-#### Dashboard (phím D)
-- Tổng quan: số features, sources, doc coverage, alerts
-- Recent alerts từ monitoring
+#### Dashboard (key: D)
+- Overview: feature count, sources, doc coverage, alerts
+- Recent alerts from monitoring
 - Quick actions
 
-#### Feature Browser (phím F)
-- Bảng features bên trái (70%) - sắp xếp, lọc theo keyword
-- Chi tiết feature bên phải (30%) - stats, docs, tags
-- Gõ search ở trên để lọc real-time
-- Phím `/` để focus search
+#### Feature Browser (key: F)
+- Feature table on the left (70%) — sortable, filterable by keyword
+- Feature detail on the right (30%) — stats, docs, tags
+- Search bar at the top for real-time filtering
+- Press `/` to focus search
 
-#### Monitoring (phím M)
-- Bảng kết quả quality check với severity colors
+#### Monitoring (key: M)
+- Quality check results table with severity colors
 - Summary bar: healthy/warning/critical
-- Phím `R` để run check, `B` để compute baseline
+- Press `R` to run check, `B` to compute baseline
 
-#### AI Chat (phím C)
-- Hỏi-đáp tự nhiên về features
-- Commands đặc biệt: `/discover <use case>`, `/search <query>`, `/monitor`
-- Streaming response từ LLM
+#### AI Chat (key: C)
+- Natural language Q&A about features
+- Special commands: `/discover <use case>`, `/search <query>`, `/monitor`
+- Streaming response from LLM
 
-## Workflow ví dụ
+## Example Workflows
 
-### 1. Bắt đầu project mới
+### 1. Starting a New Project
 
 ```bash
-# Tìm features phù hợp cho bài toán
-featcat discover "dự đoán khách hàng ngừng sử dụng dịch vụ internet"
+# Find relevant features for your problem
+featcat discover "predict customer churn for internet service"
 
-# Xem chi tiết các features được gợi ý
+# View details of suggested features
 featcat feature info user_behavior_30d.session_count
 featcat feature info user_behavior_30d.complaint_count
 
-# Đọc documentation
+# Read documentation
 featcat doc show user_behavior_30d.session_count
 ```
 
-### 2. Thêm data source mới
+### 2. Adding a New Data Source
 
 ```bash
-# Đăng ký source
+# Register source
 featcat source add payment_history /data/features/payment_history.parquet
 
 # Scan
@@ -182,24 +184,24 @@ featcat feature tag payment_history.late_payment_count billing churn
 featcat feature tag payment_history.avg_payment_amount billing revenue
 ```
 
-### 3. Kiểm tra chất lượng data hàng tuần
+### 3. Weekly Data Quality Check
 
 ```bash
-# Chạy quality check
+# Run quality check
 featcat monitor check --llm
 
-# Xuất report
+# Export report
 featcat monitor report --output docs/weekly_report.md
 
-# Nếu có vấn đề, xem chi tiết
+# If issues found, investigate
 featcat feature info device_perf.cpu_usage
 featcat monitor check device_perf.cpu_usage --llm
 ```
 
-## Mẹo và thủ thuật
+## Tips and Tricks
 
-- **Cache**: Auto-doc và NL query được cache. Dùng `--no-cache` để bypass
-- **Offline mode**: Khi không có Ollama, `featcat ask` tự động dùng fuzzy search
-- **Shell completion**: `featcat --install-completion bash` (hoặc zsh/fish)
-- **Export nhanh**: `featcat export --format json > features.json`
-- **Backup**: Chỉ cần copy file `catalog.db` là đủ
+- **Cache**: Auto-doc and NL query results are cached. Use `--no-cache` to bypass
+- **Offline mode**: When Ollama is unavailable, `featcat ask` automatically uses fuzzy search
+- **Shell completion**: `featcat --install-completion bash` (or zsh/fish)
+- **Quick export**: `featcat export --format json > features.json`
+- **Backup**: Just copy `catalog.db` — that's all you need
