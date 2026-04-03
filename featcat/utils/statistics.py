@@ -19,12 +19,12 @@ def compute_psi(
       0.1-0.25: moderate change (warning)
       > 0.25 : significant change (critical)
     """
-    b_mean = baseline_stats.get("mean")
-    b_std = baseline_stats.get("std")
-    c_mean = current_stats.get("mean")
-    c_std = current_stats.get("std")
+    b_mean: float | None = baseline_stats.get("mean")
+    b_std: float | None = baseline_stats.get("std")
+    c_mean: float | None = current_stats.get("mean")
+    c_std: float | None = current_stats.get("std")
 
-    if any(v is None for v in (b_mean, b_std, c_mean, c_std)):
+    if b_mean is None or b_std is None or c_mean is None or c_std is None:
         return None
 
     if b_std == 0 and c_std == 0:
@@ -55,10 +55,10 @@ def check_null_spike(
     baseline_stats: dict[str, Any],
     current_stats: dict[str, Any],
     threshold: float = 0.05,
-) -> dict | None:
+) -> dict[str, Any] | None:
     """Detect if null ratio increased significantly vs baseline."""
-    b_null = baseline_stats.get("null_ratio")
-    c_null = current_stats.get("null_ratio")
+    b_null: float | None = baseline_stats.get("null_ratio")
+    c_null: float | None = current_stats.get("null_ratio")
 
     if b_null is None or c_null is None:
         return None
@@ -79,15 +79,15 @@ def check_range_violation(
     baseline_stats: dict[str, Any],
     current_stats: dict[str, Any],
     n_std: float = 3.0,
-) -> dict | None:
+) -> dict[str, Any] | None:
     """Detect if current min/max are outside baseline range +/- n_std."""
-    b_min = baseline_stats.get("min")
-    b_max = baseline_stats.get("max")
-    b_std = baseline_stats.get("std")
-    c_min = current_stats.get("min")
-    c_max = current_stats.get("max")
+    b_min: float | None = baseline_stats.get("min")
+    b_max: float | None = baseline_stats.get("max")
+    b_std: float | None = baseline_stats.get("std")
+    c_min: float | None = current_stats.get("min")
+    c_max: float | None = current_stats.get("max")
 
-    if any(v is None for v in (b_min, b_max, b_std, c_min, c_max)):
+    if b_min is None or b_max is None or b_std is None or c_min is None or c_max is None:
         return None
 
     lower_bound = b_min - n_std * b_std
@@ -109,7 +109,7 @@ def check_range_violation(
     return None
 
 
-def check_zero_variance(current_stats: dict[str, Any]) -> dict | None:
+def check_zero_variance(current_stats: dict[str, Any]) -> dict[str, Any] | None:
     """Detect if a feature has become constant (std = 0)."""
     c_std = current_stats.get("std")
     if c_std is not None and c_std == 0:
@@ -120,7 +120,7 @@ def check_zero_variance(current_stats: dict[str, Any]) -> dict | None:
     return None
 
 
-def classify_severity(psi: float | None, issues: list[dict]) -> str:
+def classify_severity(psi: float | None, issues: list[dict[str, Any]]) -> str:
     """Classify overall severity for a feature.
 
     Returns: "healthy", "warning", or "critical"
