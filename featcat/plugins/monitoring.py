@@ -19,7 +19,7 @@ from ..utils.statistics import (
 from .base import BasePlugin, PluginResult
 
 if TYPE_CHECKING:
-    from ..catalog.db import CatalogDB
+    from ..catalog.backend import CatalogBackend
     from ..catalog.models import Feature
     from ..llm.base import BaseLLM
 
@@ -37,18 +37,10 @@ class MonitoringPlugin(BasePlugin):
 
     def execute(
         self,
-        catalog_db: CatalogDB,
+        catalog_db: CatalogBackend,
         llm: BaseLLM,
         **kwargs: Any,
     ) -> PluginResult:
-        """Run monitoring checks.
-
-        Args:
-            action: "baseline" | "check" (required kwarg).
-            feature_name: Optional, check only this feature.
-            refresh_baseline: If True, update baseline after check.
-            use_llm: If True, get LLM analysis for issues.
-        """
         action: str = kwargs.get("action", "check")
 
         if action == "baseline":
@@ -64,12 +56,7 @@ class MonitoringPlugin(BasePlugin):
         else:
             return PluginResult(status="error", errors=[f"Unknown action: {action}"])
 
-    def _compute_baseline(
-        self,
-        db: CatalogDB,
-        feature_name: str | None = None,
-    ) -> PluginResult:
-        """Save current feature stats as baselines."""
+    def _compute_baseline(self, db: CatalogBackend, feature_name: str | None = None) -> PluginResult:
         if feature_name:
             features = [db.get_feature_by_name(feature_name)]
             features = [f for f in features if f is not None]
@@ -80,14 +67,8 @@ class MonitoringPlugin(BasePlugin):
         for f in features:
             if not f.stats:
                 continue
-            now = datetime.now(timezone.utc)
-            db.conn.execute("DELETE FROM monitoring_baselines WHERE feature_id = ?", (f.id,))
-            db.conn.execute(
-                "INSERT INTO monitoring_baselines (feature_id, baseline_stats, computed_at) VALUES (?, ?, ?)",
-                (f.id, json.dumps(f.stats), now),
-            )
+            db.save_baseline(f.id, f.stats)
             saved += 1
-        db.conn.commit()
 
         return PluginResult(
             status="success",
@@ -96,13 +77,12 @@ class MonitoringPlugin(BasePlugin):
 
     def _run_check(
         self,
-        db: CatalogDB,
+        db: CatalogBackend,
         llm: BaseLLM,
         feature_name: str | None = None,
         refresh_baseline: bool = False,
         use_llm: bool = False,
     ) -> PluginResult:
-        """Compare current stats against baselines."""
         if feature_name:
             features = [db.get_feature_by_name(feature_name)]
             features = [f for f in features if f is not None]
@@ -115,7 +95,7 @@ class MonitoringPlugin(BasePlugin):
         critical = 0
 
         for f in features:
-            baseline = self._get_baseline(db, f.id)
+            baseline = db.get_baseline(f.id)
             if baseline is None:
                 continue
 
@@ -130,7 +110,6 @@ class MonitoringPlugin(BasePlugin):
             else:
                 critical += 1
 
-        # LLM analysis for issues
         issues = [d for d in details if d["severity"] != "healthy"]
         if use_llm and issues:
             with contextlib.suppress(Exception):
@@ -151,19 +130,7 @@ class MonitoringPlugin(BasePlugin):
 
         return PluginResult(status="success", data=report)
 
-    def _get_baseline(self, db: CatalogDB, feature_id: str) -> dict | None:
-        """Retrieve baseline stats for a feature."""
-        row = db.conn.execute(
-            "SELECT baseline_stats FROM monitoring_baselines WHERE feature_id = ?",
-            (feature_id,),
-        ).fetchone()
-        if row is None:
-            return None
-        stats = row[0]
-        return json.loads(stats) if isinstance(stats, str) else stats
-
     def _check_feature(self, feature: Feature, baseline: dict) -> dict:
-        """Check a single feature against its baseline."""
         current = feature.stats
         issues: list[dict] = []
 
@@ -195,13 +162,7 @@ class MonitoringPlugin(BasePlugin):
 
         return result
 
-    def _add_llm_analysis(
-        self,
-        db: CatalogDB,
-        llm: BaseLLM,
-        issues: list[dict],
-    ) -> None:
-        """Add LLM analysis to issue details."""
+    def _add_llm_analysis(self, db: CatalogBackend, llm: BaseLLM, issues: list[dict]) -> None:
         drift_report = json.dumps(issues, indent=2)
         feature_context = "\n\n".join(get_feature_detail(db, issue["feature"]) for issue in issues)
 

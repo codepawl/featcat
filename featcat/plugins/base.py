@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 from pydantic import BaseModel, Field
 
 if TYPE_CHECKING:
-    from ..catalog.db import CatalogDB
+    from ..catalog.backend import CatalogBackend
     from ..llm.base import BaseLLM
 
 
@@ -36,7 +36,7 @@ class BasePlugin(ABC):
     @abstractmethod
     def execute(
         self,
-        catalog_db: CatalogDB,
+        catalog_db: CatalogBackend,
         llm: BaseLLM,
         **kwargs: Any,
     ) -> PluginResult:

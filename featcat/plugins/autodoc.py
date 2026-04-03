@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from ..utils.prompts import AUTODOC_PROMPT_BATCH, AUTODOC_PROMPT_SINGLE, AUTODOC_SYSTEM
 from .base import BasePlugin, PluginResult
 
 if TYPE_CHECKING:
-    from ..catalog.db import CatalogDB
+    from ..catalog.backend import CatalogBackend
     from ..catalog.models import Feature
     from ..llm.base import BaseLLM
 
@@ -27,17 +26,10 @@ class AutodocPlugin(BasePlugin):
 
     def execute(
         self,
-        catalog_db: CatalogDB,
+        catalog_db: CatalogBackend,
         llm: BaseLLM,
         **kwargs: Any,
     ) -> PluginResult:
-        """Generate documentation for features.
-
-        Args:
-            feature_name: If provided, document only this feature.
-            batch_size: Max features per LLM call (default 10).
-            progress_callback: Optional callable(current, total) for progress.
-        """
         feature_name: str | None = kwargs.get("feature_name")
         batch_size: int = kwargs.get("batch_size", 10)
         progress_callback = kwargs.get("progress_callback")
@@ -47,13 +39,7 @@ class AutodocPlugin(BasePlugin):
         else:
             return self._document_all(catalog_db, llm, batch_size, progress_callback)
 
-    def _document_single(
-        self,
-        db: CatalogDB,
-        llm: BaseLLM,
-        feature_name: str,
-    ) -> PluginResult:
-        """Generate documentation for a single feature."""
+    def _document_single(self, db: CatalogBackend, llm: BaseLLM, feature_name: str) -> PluginResult:
         feature = db.get_feature_by_name(feature_name)
         if feature is None:
             return PluginResult(status="error", errors=[f"Feature not found: {feature_name}"])
@@ -83,19 +69,13 @@ class AutodocPlugin(BasePlugin):
         except Exception as e:
             return PluginResult(status="error", errors=[str(e)])
 
-        self._save_doc(db, feature.id, doc, llm)
+        model_name = getattr(llm, "model", "unknown")
+        db.save_feature_doc(feature.id, doc, model_used=model_name)
 
         return PluginResult(status="success", data={"documented": 1, "features": {feature.name: doc}})
 
-    def _document_all(
-        self,
-        db: CatalogDB,
-        llm: BaseLLM,
-        batch_size: int,
-        progress_callback: Any,
-    ) -> PluginResult:
-        """Generate docs for all undocumented features, batched by source."""
-        undocumented = self._get_undocumented(db)
+    def _document_all(self, db: CatalogBackend, llm: BaseLLM, batch_size: int, progress_callback: Any) -> PluginResult:
+        undocumented = db.list_undocumented_features()
         if not undocumented:
             return PluginResult(status="success", data={"documented": 0, "message": "All features are documented"})
 
@@ -104,11 +84,12 @@ class AutodocPlugin(BasePlugin):
         all_docs: dict[str, dict] = {}
         errors: list[str] = []
 
-        # Group by source
         by_source: dict[str, list[Feature]] = {}
         for f in undocumented:
             src = f.name.split(".")[0] if "." in f.name else "unknown"
             by_source.setdefault(src, []).append(f)
+
+        model_name = getattr(llm, "model", "unknown")
 
         for source_name, features in by_source.items():
             source = db.get_source_by_name(source_name)
@@ -132,7 +113,7 @@ class AutodocPlugin(BasePlugin):
                         fname = doc.get("feature_name", "")
                         matching = [f for f in batch if f.name == fname or f.column_name == fname]
                         if matching:
-                            self._save_doc(db, matching[0].id, doc, llm)
+                            db.save_feature_doc(matching[0].id, doc, model_used=model_name)
                             all_docs[matching[0].name] = doc
                             documented += 1
                 except Exception as e:
@@ -148,19 +129,7 @@ class AutodocPlugin(BasePlugin):
             errors=errors,
         )
 
-    def _get_undocumented(self, db: CatalogDB) -> list[Feature]:
-        """Find features without docs or with outdated docs."""
-        rows = db.conn.execute(
-            """SELECT f.* FROM features f
-               LEFT JOIN feature_docs fd ON f.id = fd.feature_id
-               WHERE fd.feature_id IS NULL OR f.updated_at > fd.generated_at"""
-        ).fetchall()
-        from ..catalog.db import _row_to_feature
-
-        return [_row_to_feature(r) for r in rows]
-
     def _format_batch(self, features: list[Feature]) -> str:
-        """Format a batch of features for the batch prompt."""
         lines = []
         for f in features:
             stats = "\n".join(f"    {k}: {v}" for k, v in f.stats.items()) if f.stats else "    (no stats)"
@@ -173,61 +142,26 @@ class AutodocPlugin(BasePlugin):
             )
         return "\n".join(lines)
 
-    def _save_doc(self, db: CatalogDB, feature_id: str, doc: dict, llm: BaseLLM) -> None:
-        """Save or update a feature doc in the database."""
-        now = datetime.now(timezone.utc)
-        model_name = getattr(llm, "model", "unknown")
 
-        # Delete existing doc if any
-        db.conn.execute("DELETE FROM feature_docs WHERE feature_id = ?", (feature_id,))
-        db.conn.execute(
-            """INSERT INTO feature_docs
-               (feature_id, short_description, long_description,
-                expected_range, potential_issues, generated_at, model_used)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (
-                feature_id,
-                doc.get("short_description", ""),
-                doc.get("long_description", ""),
-                doc.get("expected_range", ""),
-                doc.get("potential_issues", ""),
-                now,
-                model_name,
-            ),
-        )
-        db.conn.commit()
-
-
-def get_doc(db: CatalogDB, feature_name: str) -> dict | None:
+def get_doc(db, feature_name: str) -> dict | None:
     """Retrieve documentation for a feature."""
     feature = db.get_feature_by_name(feature_name)
     if feature is None:
         return None
-
-    row = db.conn.execute("SELECT * FROM feature_docs WHERE feature_id = ?", (feature.id,)).fetchone()
-    if row is None:
-        return None
-    return dict(row)
+    return db.get_feature_doc(feature.id)
 
 
-def get_doc_stats(db: CatalogDB) -> dict:
+def get_doc_stats(db) -> dict:
     """Get documentation coverage statistics."""
-    total = db.conn.execute("SELECT COUNT(*) FROM features").fetchone()[0]
-    documented = db.conn.execute("SELECT COUNT(DISTINCT feature_id) FROM feature_docs").fetchone()[0]
-    return {
-        "total_features": total,
-        "documented": documented,
-        "undocumented": total - documented,
-        "coverage": round(documented / total * 100, 1) if total > 0 else 0.0,
-    }
+    return db.get_doc_stats()
 
 
-def export_docs_markdown(db: CatalogDB) -> str:
+def export_docs_markdown(db) -> str:
     """Export all feature documentation to Markdown."""
     features = db.list_features()
+    all_docs = db.get_all_feature_docs()
     lines = ["# Feature Documentation", "", "*Generated from featcat catalog*", ""]
 
-    # Group by source
     by_source: dict[str, list] = {}
     for f in features:
         src = f.name.split(".")[0] if "." in f.name else "unknown"
@@ -238,7 +172,7 @@ def export_docs_markdown(db: CatalogDB) -> str:
         lines.append("")
 
         for f in feats:
-            row = db.conn.execute("SELECT * FROM feature_docs WHERE feature_id = ?", (f.id,)).fetchone()
+            doc = all_docs.get(f.id)
 
             lines.append(f"### {f.name}")
             lines.append("")
@@ -253,8 +187,7 @@ def export_docs_markdown(db: CatalogDB) -> str:
                     f"null_ratio={f.stats.get('null_ratio', '?')}"
                 )
 
-            if row:
-                doc = dict(row)
+            if doc:
                 lines.append(f"\n> {doc.get('short_description', '')}")
                 if doc.get("long_description"):
                     lines.append(f"\n{doc['long_description']}")

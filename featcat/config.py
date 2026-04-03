@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     s3_secret_key: str | None = None
     s3_region: str = "us-east-1"
 
+    # Server mode
+    server_url: str | None = None  # If set, use RemoteBackend instead of local SQLite
+
     # Monitoring
     monitor_interval_minutes: int = 10
 

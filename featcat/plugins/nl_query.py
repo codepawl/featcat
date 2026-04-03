@@ -10,7 +10,7 @@ from ..utils.prompts import NL_QUERY_PROMPT, NL_QUERY_SYSTEM, NL_QUERY_SYSTEM_VI
 from .base import BasePlugin, PluginResult
 
 if TYPE_CHECKING:
-    from ..catalog.db import CatalogDB
+    from ..catalog.backend import CatalogBackend
     from ..llm.base import BaseLLM
 
 
@@ -24,7 +24,7 @@ def _is_vietnamese(text: str) -> bool:
     return bool(vietnamese_chars.search(text))
 
 
-def _fuzzy_search(db: CatalogDB, query: str) -> list[dict]:
+def _fuzzy_search(db: CatalogBackend, query: str) -> list[dict]:
     """Fallback search using keyword matching when LLM is unavailable.
 
     Tries rapidfuzz if available, otherwise falls back to LIKE search.
@@ -66,7 +66,7 @@ class NLQueryPlugin(BasePlugin):
 
     def execute(
         self,
-        catalog_db: CatalogDB,
+        catalog_db: CatalogBackend,
         llm: BaseLLM,
         **kwargs: Any,
     ) -> PluginResult:
@@ -105,7 +105,7 @@ class NLQueryPlugin(BasePlugin):
 
     def _llm_query(
         self,
-        db: CatalogDB,
+        db: CatalogBackend,
         llm: BaseLLM,
         query: str,
         max_features: int,

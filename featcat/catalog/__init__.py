@@ -1,1 +1,1 @@
-"""Catalog module: models, database, scanner, and storage."""
+"""Catalog module: models, backends, scanner, and storage."""

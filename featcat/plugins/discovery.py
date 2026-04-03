@@ -9,7 +9,7 @@ from ..utils.prompts import DISCOVERY_PROMPT, DISCOVERY_SYSTEM
 from .base import BasePlugin, PluginResult
 
 if TYPE_CHECKING:
-    from ..catalog.db import CatalogDB
+    from ..catalog.backend import CatalogBackend
     from ..llm.base import BaseLLM
 
 
@@ -26,7 +26,7 @@ class DiscoveryPlugin(BasePlugin):
 
     def execute(
         self,
-        catalog_db: CatalogDB,
+        catalog_db: CatalogBackend,
         llm: BaseLLM,
         **kwargs: Any,
     ) -> PluginResult:
