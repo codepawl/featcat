@@ -1,0 +1,132 @@
+/* featcat TUI stylesheet */
+
+Screen {
+    background: $surface;
+}
+
+/* Header */
+#header {
+    dock: top;
+    height: 3;
+    background: $primary-darken-2;
+    color: $text;
+    content-align: center middle;
+    text-style: bold;
+}
+
+/* Stats bar */
+#stats-bar {
+    dock: top;
+    height: 3;
+    background: $primary-darken-1;
+    layout: horizontal;
+    padding: 0 2;
+}
+
+.stat-item {
+    width: 1fr;
+    content-align: center middle;
+    color: $text;
+}
+
+.stat-value {
+    text-style: bold;
+    color: $accent;
+}
+
+/* Feature browser */
+#feature-browser {
+    layout: horizontal;
+    height: 1fr;
+}
+
+#feature-table-pane {
+    width: 70%;
+    height: 100%;
+}
+
+#feature-detail-pane {
+    width: 30%;
+    height: 100%;
+    border-left: solid $primary;
+    padding: 1;
+    overflow-y: auto;
+}
+
+#search-input {
+    dock: top;
+    height: 3;
+    margin: 0 1;
+}
+
+/* Monitoring */
+.severity-healthy {
+    color: $success;
+}
+
+.severity-warning {
+    color: $warning;
+}
+
+.severity-critical {
+    color: $error;
+}
+
+/* Chat */
+#chat-container {
+    height: 1fr;
+    layout: vertical;
+}
+
+#chat-messages {
+    height: 1fr;
+    overflow-y: auto;
+    padding: 1;
+}
+
+#chat-input {
+    dock: bottom;
+    height: 3;
+    margin: 0 1;
+}
+
+.user-message {
+    background: $primary-darken-1;
+    margin: 1 0;
+    padding: 1;
+}
+
+.ai-message {
+    background: $surface-darken-1;
+    margin: 1 0;
+    padding: 1;
+}
+
+/* Action bar */
+#action-bar {
+    dock: bottom;
+    height: 1;
+    background: $primary-darken-2;
+    color: $text-muted;
+    content-align: center middle;
+}
+
+/* Alert list */
+#alert-list {
+    height: auto;
+    max-height: 12;
+    padding: 1;
+}
+
+/* Dashboard */
+#dashboard {
+    layout: vertical;
+    padding: 1;
+}
+
+#quick-actions {
+    dock: bottom;
+    height: 3;
+    background: $primary-darken-2;
+    content-align: center middle;
+}

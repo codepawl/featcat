@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+catalog.db
+docs/features.md
+docs/monitoring_report.md
+*.parquet
+!tests/fixtures/*.parquet
+.env
