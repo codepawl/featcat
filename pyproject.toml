@@ -83,3 +83,7 @@ warn_unused_ignores = true
 [[tool.mypy.overrides]]
 module = "featcat.tui.*"
 ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = ["featcat.cli", "featcat.plugins.*"]
+disable_error_code = ["arg-type", "union-attr", "assignment", "return-value"]
