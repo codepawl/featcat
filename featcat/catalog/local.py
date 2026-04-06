@@ -53,6 +53,28 @@ CREATE TABLE IF NOT EXISTS monitoring_baselines (
     baseline_stats TEXT DEFAULT '{}',
     computed_at TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS job_schedules (
+    job_name TEXT PRIMARY KEY,
+    cron_expression TEXT NOT NULL,
+    enabled INTEGER DEFAULT 1,
+    last_run_at TIMESTAMP,
+    next_run_at TIMESTAMP,
+    description TEXT DEFAULT '',
+    max_log_retention_days INTEGER DEFAULT 30
+);
+
+CREATE TABLE IF NOT EXISTS job_logs (
+    id TEXT PRIMARY KEY,
+    job_name TEXT NOT NULL,
+    status TEXT NOT NULL,
+    started_at TIMESTAMP NOT NULL,
+    finished_at TIMESTAMP,
+    duration_seconds REAL,
+    result_summary TEXT DEFAULT '{}',
+    error_message TEXT,
+    triggered_by TEXT NOT NULL
+);
 """
 
 
@@ -84,12 +106,18 @@ class LocalBackend(CatalogBackend):
         self.conn = sqlite3.connect(
             db_path,
             detect_types=sqlite3.PARSE_DECLTYPES,
+            check_same_thread=False,
         )
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys = ON")
 
     def init_db(self) -> None:
         self.conn.executescript(SCHEMA_SQL)
+        # Add auto_refresh column if not present (added in Phase 6)
+        try:
+            self.conn.execute("ALTER TABLE data_sources ADD COLUMN auto_refresh INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
         self.conn.commit()
 
     def close(self) -> None:
