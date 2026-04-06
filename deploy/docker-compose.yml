@@ -2,6 +2,13 @@ services:
   ollama:
     image: ollama/ollama:latest
     container_name: featcat-ollama
+    environment:
+      HTTP_PROXY: "${HTTP_PROXY:-}"
+      HTTPS_PROXY: "${HTTPS_PROXY:-}"
+      http_proxy: "${HTTP_PROXY:-}"
+      https_proxy: "${HTTPS_PROXY:-}"
+      NO_PROXY: "localhost,127.0.0.1,featcat,featcat-server"
+      no_proxy: "localhost,127.0.0.1,featcat,featcat-server"
     volumes:
       - ollama_data:/root/.ollama
     ports:
@@ -25,8 +32,11 @@ services:
     environment:
       - FEATCAT_CATALOG_DB_PATH=/data/catalog.db
       - FEATCAT_OLLAMA_URL=http://ollama:11434
-      - FEATCAT_LLM_MODEL=${LLM_MODEL:-lfm2.5:latest}
+      - FEATCAT_LLM_MODEL=${LLM_MODEL:-lfm2.5-thinking}
       - FEATCAT_SERVER_AUTH_TOKEN=${SERVER_AUTH:-}
+      - HTTP_PROXY=${HTTP_PROXY:-}
+      - HTTPS_PROXY=${HTTPS_PROXY:-}
+      - NO_PROXY=localhost,127.0.0.1,ollama,featcat-ollama
     depends_on:
       - ollama
     restart: unless-stopped

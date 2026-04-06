@@ -52,7 +52,7 @@ featcat feature info device_perf.cpu_usage
 
 # 5. (Optional) Enable AI features — requires Ollama
 ollama serve &
-ollama pull qwen2.5:7b
+ollama pull lfm2.5-thinking
 featcat discover "churn prediction for telecom customers"
 featcat ask "features related to user behavior"
 ```
@@ -79,7 +79,7 @@ featcat doctor
 [x] Python 3.10+
 [x] SQLite catalog exists (catalog.db)
 [x] Ollama running at localhost:11434
-[x] Model qwen2.5:7b available
+[x] Model lfm2.5-thinking available
 [x] 14 features registered
 [x] 10 features have docs (71.4%)
 [ ] 2 features have drift warnings

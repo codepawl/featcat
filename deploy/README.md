@@ -99,8 +99,32 @@ Sửa file `.env` và restart:
 |------|-------|----------|
 | `DATA_DIR` | Thư mục chứa file Parquet trên host | `./data` |
 | `FEATCAT_PORT` | Port expose cho Web UI + API | `8000` |
-| `LLM_MODEL` | Model LLM sử dụng | `lfm2.5:latest` |
+| `LLM_MODEL` | Model LLM sử dụng | `lfm2.5-thinking` |
 | `SERVER_AUTH` | Token xác thực API (để trống = không cần auth) | _(trống)_ |
+
+## Proxy (mạng công ty)
+
+Nếu server nằm sau proxy, cần cấu hình trong `.env` trước khi chạy `setup.sh`:
+
+```env
+HTTP_PROXY=http://proxy.company.com:8080
+HTTPS_PROXY=http://proxy.company.com:8080
+```
+
+Proxy được truyền tự động cho cả Ollama (để pull model) và featcat container.
+
+**Nếu Ollama vẫn không pull được model qua proxy:**
+1. Cài Ollama trực tiếp trên host
+2. Pull model với proxy:
+   ```bash
+   HTTPS_PROXY=http://proxy.company.com:8080 ollama pull lfm2.5-thinking
+   ```
+3. Mount thư mục model vào container Ollama (sửa `docker-compose.yml`):
+   ```yaml
+   ollama:
+     volumes:
+       - /usr/share/ollama/.ollama:/root/.ollama
+   ```
 
 ## Xử lý sự cố
 
@@ -117,7 +141,7 @@ docker compose restart ollama
 **Model chưa được pull:**
 ```bash
 docker exec featcat-ollama ollama list
-docker exec featcat-ollama ollama pull lfm2.5:latest
+docker exec featcat-ollama ollama pull lfm2.5-thinking
 ```
 
 **Catalog database bị lỗi:**

@@ -26,14 +26,11 @@ done
 echo "Ollama is ready."
 
 # 4. Pull LLM model
-echo "Pulling ${LLM_MODEL:-lfm2.5:latest}..."
-docker exec featcat-ollama ollama pull "${LLM_MODEL:-lfm2.5:latest}"
+MODEL="${LLM_MODEL:-lfm2.5-thinking}"
+echo "Pulling ${MODEL}..."
+docker exec featcat-ollama ollama pull "${MODEL}"
 
-# 5. Also pull thinking model for discovery/monitoring
-echo "Pulling lfm2.5-thinking..."
-docker exec featcat-ollama ollama pull lfm2.5-thinking
-
-# 6. Start featcat
+# 5. Start featcat
 echo "Starting featcat server..."
 docker compose up -d featcat
 

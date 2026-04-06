@@ -35,10 +35,10 @@ featcat source scan minio_data
 ### Using a Different Model on Ollama
 
 ```bash
-# Pull a new model
+# Pull a different model
 ollama pull llama3.1:8b
 
-# Configure featcat
+# Configure featcat to use it
 export FEATCAT_LLM_MODEL=llama3.1:8b
 
 # Verify
@@ -60,8 +60,7 @@ export FEATCAT_LLAMACPP_URL=http://localhost:8080
 
 | Model | RAM | Speed | Quality |
 |-------|-----|-------|---------|
-| `qwen2.5:3b` | 4GB | Fast | Decent |
-| `qwen2.5:7b` | 8GB | Medium | Good |
+| `lfm2.5-thinking` | 4GB | Fast | Good (default) |
 | `llama3.1:8b` | 8GB | Medium | Good |
 | `qwen2.5:14b` | 16GB | Slow | Excellent |
 
@@ -126,7 +125,7 @@ featcat doctor
 **Cause**: Model too large, or insufficient RAM.
 
 **Fix**:
-- Use a smaller model: `export FEATCAT_LLM_MODEL=qwen2.5:3b`
+- Try a different model: `export FEATCAT_LLM_MODEL=lfm2.5-thinking`
 - Increase timeout: `export FEATCAT_LLM_TIMEOUT=300`
 - Reduce features sent to LLM: `export FEATCAT_MAX_CONTEXT_FEATURES=50`
 - Use cache (enabled by default — just re-run the same query)

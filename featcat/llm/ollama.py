@@ -19,7 +19,7 @@ class OllamaLLM(BaseLLM):
 
     def __init__(
         self,
-        model: str = "qwen2.5:7b",
+        model: str = "lfm2.5-thinking",
         base_url: str = "http://localhost:11434",
         timeout: int = 120,
         max_retries: int = 3,
