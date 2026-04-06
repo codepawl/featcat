@@ -193,6 +193,7 @@ def doctor() -> None:
     """Check system health and report status."""
     settings = load_settings()
     all_ok = True
+    remote_mode = bool(settings.server_url)
 
     # Python version
     py_ver = sys.version_info
@@ -201,16 +202,36 @@ def doctor() -> None:
     if not ok:
         all_ok = False
 
-    # Catalog DB
-    db_exists = Path(settings.catalog_db_path).exists()
-    _print_check(db_exists, f"SQLite catalog exists ({settings.catalog_db_path})")
-    if not db_exists:
-        all_ok = False
-        console.print()
-        return
+    if remote_mode:
+        # Remote mode: check server connectivity
+        console.print(f"\n[bold]Mode:[/bold] Remote ({settings.server_url})")
+        try:
+            import httpx
 
-    # Feature count
-    db = LocalBackend(settings.catalog_db_path)
+            resp = httpx.get(f"{settings.server_url}/api/health", timeout=5)
+            health = resp.json()
+            _print_check(True, f"Server reachable at {settings.server_url}")
+            _print_check(health.get("db", False), "Server database connected")
+            _print_check(health.get("llm", False), f"Server LLM ({health.get('model', 'unknown')})")
+        except Exception as e:
+            _print_check(False, f"Server at {settings.server_url}: {e}")
+            all_ok = False
+            console.print()
+            console.print("[yellow]Cannot reach server. Check FEATCAT_SERVER_URL.[/yellow]")
+            return
+    else:
+        console.print("\n[bold]Mode:[/bold] Local")
+
+    # Catalog check (works for both local and remote via get_backend)
+    if not remote_mode:
+        db_exists = Path(settings.catalog_db_path).exists()
+        _print_check(db_exists, f"SQLite catalog exists ({settings.catalog_db_path})")
+        if not db_exists:
+            all_ok = False
+            console.print()
+            return
+
+    db = _get_db()
     try:
         features = db.list_features()
         sources = db.list_sources()
@@ -243,43 +264,43 @@ def doctor() -> None:
     finally:
         db.close()
 
-    # Ollama
-    try:
-        from .llm.ollama import OllamaLLM
+    # Ollama (only check in local mode — remote server manages its own LLM)
+    if not remote_mode:
+        try:
+            from .llm.ollama import OllamaLLM
 
-        ollama = OllamaLLM(model=settings.llm_model, base_url=settings.ollama_url)
-        reachable = ollama.health_check()
-        _print_check(reachable, f"Ollama running at {settings.ollama_url}")
-        if reachable:
-            # Check model availability
-            import json
-            from urllib.request import urlopen
+            ollama = OllamaLLM(model=settings.llm_model, base_url=settings.ollama_url)
+            reachable = ollama.health_check()
+            _print_check(reachable, f"Ollama running at {settings.ollama_url}")
+            if reachable:
+                import json
+                from urllib.request import urlopen
 
-            resp = urlopen(f"{settings.ollama_url}/api/tags", timeout=5)
-            data = json.loads(resp.read())
-            model_names = [m.get("name", "") for m in data.get("models", [])]
-            model_found = any(settings.llm_model in n for n in model_names)
-            _print_check(model_found, f"Model {settings.llm_model} available")
-            if not model_found:
+                resp = urlopen(f"{settings.ollama_url}/api/tags", timeout=5)
+                data = json.loads(resp.read())
+                model_names = [m.get("name", "") for m in data.get("models", [])]
+                model_found = any(settings.llm_model in n for n in model_names)
+                _print_check(model_found, f"Model {settings.llm_model} available")
+                if not model_found:
+                    all_ok = False
+            else:
                 all_ok = False
-        else:
+                _print_check(False, f"Model {settings.llm_model} (Ollama not running)")
+        except Exception:
+            _print_check(False, f"Ollama at {settings.ollama_url}")
+            _print_check(False, f"Model {settings.llm_model}")
             all_ok = False
-            _print_check(False, f"Model {settings.llm_model} (Ollama not running)")
-    except Exception:
-        _print_check(False, f"Ollama at {settings.ollama_url}")
-        _print_check(False, f"Model {settings.llm_model}")
-        all_ok = False
 
-    # Cache stats
-    try:
-        from .utils.cache import ResponseCache
+        # Cache stats (local only)
+        try:
+            from .utils.cache import ResponseCache
 
-        cache = ResponseCache(settings.catalog_db_path)
-        cs = cache.stats()
-        cache.close()
-        _print_check(True, f"Cache: {cs['active']} active entries, {cs['expired']} expired")
-    except Exception:
-        pass
+            cache = ResponseCache(settings.catalog_db_path)
+            cs = cache.stats()
+            cache.close()
+            _print_check(True, f"Cache: {cs['active']} active entries, {cs['expired']} expired")
+        except Exception:
+            pass
 
     console.print()
     if all_ok:
@@ -1105,17 +1126,46 @@ def config_path() -> None:
 # =========================================================================
 
 
-@job_app.command("list")
-def job_list() -> None:
-    """Show all scheduled jobs."""
-    from .catalog.local import LocalBackend
+def _job_api():
+    """Get httpx client for remote job API, or None if local mode."""
+    settings = load_settings()
+    if settings.server_url:
+        import httpx
+
+        headers = {}
+        if settings.server_auth_token:
+            headers["Authorization"] = f"Bearer {settings.server_auth_token}"
+        return httpx.Client(base_url=settings.server_url, timeout=30, headers=headers)
+    return None
+
+
+def _job_local_scheduler():
+    """Create a local FeatcatScheduler for direct job access."""
+    try:
+        from .server.scheduler import FeatcatScheduler
+    except ImportError:
+        console.print("[red]Job commands require server extras.[/red] Install: uv pip install 'featcat[server]'")
+        raise typer.Exit(1) from None
 
     settings = load_settings()
     db = LocalBackend(settings.catalog_db_path)
     db.init_db()
+    scheduler = FeatcatScheduler(backend=db, llm=None, settings=settings)
+    scheduler.setup_default_jobs()
+    return scheduler, db
 
-    rows = db.conn.execute("SELECT * FROM job_schedules ORDER BY job_name").fetchall()
-    db.close()
+
+@job_app.command("list")
+def job_list() -> None:
+    """Show all scheduled jobs."""
+    api = _job_api()
+    if api:
+        rows = api.get("/api/jobs").json()
+        api.close()
+    else:
+        scheduler, db = _job_local_scheduler()
+        rows = scheduler.get_schedules()
+        db.close()
 
     if not rows:
         console.print("[dim]No scheduled jobs found.[/dim]")
@@ -1129,9 +1179,11 @@ def job_list() -> None:
     table.add_column("Description")
 
     for row in rows:
-        enabled = "[green]yes[/green]" if row["enabled"] else "[red]no[/red]"
-        last_run = str(row["last_run_at"])[:19] if row["last_run_at"] else "[dim]never[/dim]"
-        table.add_row(row["job_name"], row["cron_expression"], enabled, last_run, row["description"])
+        enabled = "[green]yes[/green]" if row.get("enabled") else "[red]no[/red]"
+        last_run = str(row.get("last_run_at", ""))[:19] if row.get("last_run_at") else "[dim]never[/dim]"
+        table.add_row(
+            row.get("job_name", ""), row.get("cron_expression", ""), enabled, last_run, row.get("description", "")
+        )
 
     console.print(table)
 
@@ -1142,22 +1194,17 @@ def job_logs(
     limit: int = typer.Option(20, "--limit", "-n", help="Max rows"),
 ) -> None:
     """Show recent job execution logs."""
-    from .catalog.local import LocalBackend
-
-    settings = load_settings()
-    db = LocalBackend(settings.catalog_db_path)
-    db.init_db()
-
-    query = "SELECT * FROM job_logs WHERE 1=1"
-    params: list = []
-    if job:
-        query += " AND job_name = ?"
-        params.append(job)
-    query += " ORDER BY started_at DESC LIMIT ?"
-    params.append(limit)
-
-    rows = db.conn.execute(query, params).fetchall()
-    db.close()
+    api = _job_api()
+    if api:
+        params: dict = {"limit": limit}
+        if job:
+            params["job_name"] = job
+        rows = api.get("/api/jobs/logs", params=params).json()
+        api.close()
+    else:
+        scheduler, db = _job_local_scheduler()
+        rows = scheduler.get_logs(job_name=job, limit=limit)
+        db.close()
 
     if not rows:
         console.print("[dim]No job logs found.[/dim]")
@@ -1171,11 +1218,14 @@ def job_logs(
     table.add_column("Triggered By")
 
     for row in rows:
-        status = row["status"]
+        status = row.get("status", "")
         color = {"success": "green", "failed": "red", "warning": "yellow", "running": "blue"}.get(status, "dim")
-        duration = f"{row['duration_seconds']:.1f}s" if row["duration_seconds"] else "-"
-        started = str(row["started_at"])[:19] if row["started_at"] else "-"
-        table.add_row(row["job_name"], f"[{color}]{status}[/{color}]", started, duration, row["triggered_by"])
+        dur = row.get("duration_seconds")
+        duration = f"{dur:.1f}s" if dur else "-"
+        started = str(row.get("started_at", ""))[:19] if row.get("started_at") else "-"
+        table.add_row(
+            row.get("job_name", ""), f"[{color}]{status}[/{color}]", started, duration, row.get("triggered_by", "")
+        )
 
     console.print(table)
 
@@ -1185,31 +1235,24 @@ def job_run(
     name: str = typer.Argument(help="Job name to run"),
 ) -> None:
     """Manually trigger a job."""
-    import asyncio
+    api = _job_api()
+    if api:
+        with console.status(f"[blue]Running {name} (remote)..."):
+            resp = api.post(f"/api/jobs/{name}/run")
+            result = resp.json()
+        api.close()
+    else:
+        import asyncio
 
-    try:
-        from .server.scheduler import FeatcatScheduler
-    except ImportError:
-        console.print("[red]Job runner requires server extras.[/red] Install: uv pip install 'featcat[server]'")
-        raise typer.Exit(1) from None
+        scheduler, db = _job_local_scheduler()
+        with console.status(f"[blue]Running {name}..."):
+            result = asyncio.run(scheduler.run_job(name, triggered_by="manual"))
+        db.close()
 
-    from .catalog.local import LocalBackend
-
-    settings = load_settings()
-    db = LocalBackend(settings.catalog_db_path)
-    db.init_db()
-
-    scheduler = FeatcatScheduler(backend=db, llm=None, settings=settings)
-    scheduler.setup_default_jobs()
-
-    with console.status(f"[blue]Running {name}..."):
-        result = asyncio.run(scheduler.run_job(name, triggered_by="manual"))
-
-    db.close()
-
-    status = result["status"]
+    status = result.get("status", "unknown")
     color = "green" if status == "success" else "red" if status == "failed" else "yellow"
-    console.print(f"[{color}]{status}[/{color}] {name} ({result['duration_seconds']:.1f}s)")
+    dur = result.get("duration_seconds", 0)
+    console.print(f"[{color}]{status}[/{color}] {name} ({dur:.1f}s)")
     if result.get("error_message"):
         console.print(f"[red]Error:[/red] {result['error_message']}")
 
@@ -1217,28 +1260,28 @@ def job_run(
 @job_app.command("enable")
 def job_enable(name: str = typer.Argument(help="Job name")) -> None:
     """Enable a scheduled job."""
-    from .catalog.local import LocalBackend
-
-    settings = load_settings()
-    db = LocalBackend(settings.catalog_db_path)
-    db.init_db()
-    db.conn.execute("UPDATE job_schedules SET enabled = 1 WHERE job_name = ?", (name,))
-    db.conn.commit()
-    db.close()
+    api = _job_api()
+    if api:
+        api.patch(f"/api/jobs/{name}", json={"enabled": True})
+        api.close()
+    else:
+        scheduler, db = _job_local_scheduler()
+        scheduler.update_schedule(name, cron=None, enabled=True)
+        db.close()
     console.print(f"[green]Enabled:[/green] {name}")
 
 
 @job_app.command("disable")
 def job_disable(name: str = typer.Argument(help="Job name")) -> None:
     """Disable a scheduled job."""
-    from .catalog.local import LocalBackend
-
-    settings = load_settings()
-    db = LocalBackend(settings.catalog_db_path)
-    db.init_db()
-    db.conn.execute("UPDATE job_schedules SET enabled = 0 WHERE job_name = ?", (name,))
-    db.conn.commit()
-    db.close()
+    api = _job_api()
+    if api:
+        api.patch(f"/api/jobs/{name}", json={"enabled": False})
+        api.close()
+    else:
+        scheduler, db = _job_local_scheduler()
+        scheduler.update_schedule(name, cron=None, enabled=False)
+        db.close()
     console.print(f"[yellow]Disabled:[/yellow] {name}")
 
 
@@ -1248,14 +1291,14 @@ def job_schedule(
     cron: str = typer.Argument(help="Cron expression (e.g. '0 */6 * * *')"),
 ) -> None:
     """Change a job's cron schedule."""
-    from .catalog.local import LocalBackend
-
-    settings = load_settings()
-    db = LocalBackend(settings.catalog_db_path)
-    db.init_db()
-    db.conn.execute("UPDATE job_schedules SET cron_expression = ? WHERE job_name = ?", (cron, name))
-    db.conn.commit()
-    db.close()
+    api = _job_api()
+    if api:
+        api.patch(f"/api/jobs/{name}", json={"cron_expression": cron})
+        api.close()
+    else:
+        scheduler, db = _job_local_scheduler()
+        scheduler.update_schedule(name, cron=cron, enabled=None)
+        db.close()
     console.print(f"[green]Updated:[/green] {name} -> {cron}")
 
 

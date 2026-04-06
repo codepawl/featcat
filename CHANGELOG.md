@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [0.2.1] - 2026-04-06
+
+### Fixed
+
+- **CLI remote mode**: `doctor` command now checks server connectivity when `FEATCAT_SERVER_URL` is set instead of only checking local SQLite
+- **Job CLI remote mode**: All `featcat job` commands (list, logs, run, enable, disable, schedule) now call the server API in remote mode instead of requiring local SQLite access
+
 ## [0.2.0] - 2026-04-06
 
 ### Added
@@ -54,6 +61,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Configuration**: Pydantic settings loaded from `FEATCAT_*` environment variables
 - **Documentation**: README, setup guide, user guide, and admin guide (Vietnamese with English technical terms)
 
-[Unreleased]: https://github.com/codepawl/featcat/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/codepawl/featcat/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/codepawl/featcat/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/codepawl/featcat/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/codepawl/featcat/releases/tag/v0.1.0
