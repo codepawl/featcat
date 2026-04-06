@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from ..catalog.local import LocalBackend
 from ..config import load_settings
@@ -104,5 +106,10 @@ def build_app() -> FastAPI:
     from .routes.jobs import router as jobs_router
 
     app.include_router(jobs_router, prefix="/api/jobs", tags=["jobs"])
+
+    # Serve static Web UI (must be AFTER all /api/* routes)
+    static_dir = Path(__file__).parent / "static"
+    if static_dir.is_dir():
+        app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")
 
     return app
