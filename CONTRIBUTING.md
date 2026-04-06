@@ -2,7 +2,12 @@
 
 ## Development Setup
 
+We use [uv](https://docs.astral.sh/uv/) for fast dependency management:
+
 ```bash
+# Install uv (if not already installed)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
 # Clone the repo
 git clone https://github.com/codepawl/featcat.git
 cd featcat

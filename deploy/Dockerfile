@@ -2,9 +2,12 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+# Install uv for fast dependency management
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
 # Install featcat with server extras
 COPY . /app/
-RUN pip install --no-cache-dir ".[server]"
+RUN uv pip install --system --no-cache-dir ".[server]"
 
 # Create default catalog directory
 RUN mkdir -p /data

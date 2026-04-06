@@ -1190,7 +1190,7 @@ def job_run(
     try:
         from .server.scheduler import FeatcatScheduler
     except ImportError:
-        console.print("[red]Job runner requires server extras.[/red] Install: pip install 'featcat[server]'")
+        console.print("[red]Job runner requires server extras.[/red] Install: uv pip install 'featcat[server]'")
         raise typer.Exit(1) from None
 
     from .catalog.local import LocalBackend
@@ -1276,7 +1276,7 @@ def serve(
 
         from .server import create_app
     except ImportError:
-        console.print("[red]Server requires extras.[/red] Install with: pip install 'featcat[server]'")
+        console.print("[red]Server requires extras.[/red] Install with: uv pip install 'featcat[server]'")
         raise typer.Exit(1) from None
 
     console.print(f"[green]Starting featcat server[/green] at http://{host}:{port}")
@@ -1298,7 +1298,7 @@ def ui() -> None:
         app_instance = FeatcatApp()
         app_instance.run()
     except ImportError:
-        console.print("[red]TUI requires textual.[/red] Install with: pip install 'featcat[tui]'")
+        console.print("[red]TUI requires textual.[/red] Install with: uv pip install 'featcat[tui]'")
         raise typer.Exit(1) from None
 
 

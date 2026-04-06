@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build & Test Commands
 
 ```bash
-make install          # pip install -e ".[dev,tui,s3,server]" + pre-commit hooks
+make install          # uv pip install -e ".[dev,tui,s3,server]" + pre-commit hooks
 make test             # pytest
 make test-cov         # pytest --cov=featcat --cov-report=html
 make lint             # ruff check . && ruff format --check .

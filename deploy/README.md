@@ -28,7 +28,7 @@ bash setup.sh
 - **API:** http://<server-ip>:8000/api/health
 - **CLI từ máy khác:**
   ```bash
-  pip install featcat
+  uv pip install featcat
   featcat config set server http://<server-ip>:8000
   featcat stats
   ```
