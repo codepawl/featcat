@@ -11,7 +11,8 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from .catalog.db import DEFAULT_DB, CatalogDB
+from .catalog.factory import get_backend
+from .catalog.local import DEFAULT_DB, LocalBackend
 from .catalog.models import DataSource, Feature
 from .catalog.scanner import scan_source
 from .config import load_settings
@@ -22,18 +23,21 @@ feature_app = typer.Typer(help="Manage features")
 doc_app = typer.Typer(help="AI-generated feature documentation")
 monitor_app = typer.Typer(help="Feature quality monitoring")
 cache_app = typer.Typer(help="Manage LLM response cache")
+config_app = typer.Typer(help="Configuration management")
+job_app = typer.Typer(help="Scheduled job management")
 app.add_typer(source_app, name="source")
 app.add_typer(feature_app, name="feature")
 app.add_typer(doc_app, name="doc")
 app.add_typer(monitor_app, name="monitor")
 app.add_typer(cache_app, name="cache")
+app.add_typer(config_app, name="config")
+app.add_typer(job_app, name="job")
 
 console = Console()
 
 
-def _get_db() -> CatalogDB:
-    settings = load_settings()
-    return CatalogDB(settings.catalog_db_path)
+def _get_db():
+    return get_backend()
 
 
 def _get_llm(use_cache: bool = True):
@@ -68,7 +72,7 @@ def _get_llm(use_cache: bool = True):
 @app.command()
 def init() -> None:
     """Initialize the catalog database."""
-    db = CatalogDB(DEFAULT_DB)
+    db = LocalBackend(DEFAULT_DB)
     db.init_db()
     # Also create cache table
     from .utils.cache import ResponseCache
@@ -76,6 +80,112 @@ def init() -> None:
     ResponseCache(DEFAULT_DB).close()
     db.close()
     console.print(f"[green]Catalog initialized:[/green] {DEFAULT_DB}")
+
+
+@app.command()
+def add(
+    path: str = typer.Argument(help="Path to data file (Parquet/CSV) or directory"),
+    name: str | None = typer.Option(None, "--name", "-n", help="Source name (auto from filename if omitted)"),
+    owner: str = typer.Option("", "--owner", "-o", help="Owner name"),
+    tags: str | None = typer.Option(None, "--tags", "-t", help="Comma-separated tags"),
+    skip_docs: bool = typer.Option(False, "--skip-docs", help="Skip auto documentation"),
+    description: str = typer.Option("", "--desc", "-d", help="Source description"),
+    fmt: str = typer.Option("parquet", "--format", help="File format: parquet or csv"),
+    no_cache: bool = typer.Option(False, "--no-cache", help="Bypass LLM response cache"),
+) -> None:
+    """Add a data source: register, scan, and optionally generate docs in one step."""
+    # 1. Auto-generate name from filename
+    if name is None:
+        name = Path(path).stem
+
+    # 2. Resolve path and storage type
+    storage_type = "s3" if path.startswith("s3://") else "local"
+    if storage_type == "local":
+        resolved = Path(path).resolve()
+        if not resolved.exists():
+            console.print(f"[red]Path not found:[/red] {path}")
+            raise typer.Exit(1)
+        path = str(resolved)
+
+    # 3. Register source
+    source = DataSource(
+        name=name,
+        path=path,
+        storage_type=storage_type,
+        format=fmt,
+        description=description,
+    )
+    db = _get_db()
+    try:
+        db.add_source(source)
+        console.print(f"[green]\u2713[/green] Source [cyan]{name}[/cyan] registered")
+    except Exception as e:
+        console.print(f"[red]Error registering source:[/red] {e}")
+        db.close()
+        raise typer.Exit(1) from None
+
+    # 4. Scan source
+    console.print(f"[blue]Scanning:[/blue] {path}")
+    try:
+        columns = scan_source(path)
+    except Exception as e:
+        console.print(f"[red]Scan failed:[/red] {e}")
+        db.close()
+        raise typer.Exit(1) from None
+
+    tag_list = [t.strip() for t in tags.split(",")] if tags else []
+
+    registered = 0
+    for col in columns:
+        feature_name = f"{name}.{col.column_name}"
+        feature = Feature(
+            name=feature_name,
+            data_source_id=source.id,
+            column_name=col.column_name,
+            dtype=col.dtype,
+            stats=col.stats,
+            owner=owner,
+            tags=tag_list,
+        )
+        db.upsert_feature(feature)
+        registered += 1
+
+    console.print(f"[green]\u2713[/green] {registered} features discovered")
+
+    # 5. Optionally generate docs
+    documented = 0
+    if not skip_docs:
+        llm = _get_llm(use_cache=not no_cache)
+        if llm is None:
+            console.print("[yellow]Docs skipped (Ollama not running). Run 'featcat doc generate' later.[/yellow]")
+        else:
+            from .plugins.autodoc import AutodocPlugin
+
+            plugin = AutodocPlugin()
+            console.print("[blue]Generating documentation...[/blue]")
+            result = plugin.execute(db, llm)
+            if result.status == "error":
+                console.print(f"[yellow]Doc generation errors:[/yellow] {'; '.join(result.errors)}")
+            else:
+                documented = result.data.get("documented", 0)
+                console.print(f"[green]\u2713[/green] Docs generated for {documented} features")
+
+    db.close()
+
+    # 6. Print summary
+    summary_lines = [
+        f"[bold]{name}[/bold]",
+        f"  Path:     {path}",
+        f"  Features: {registered}",
+    ]
+    if documented:
+        summary_lines.append(f"  Docs:     {documented}")
+    if owner:
+        summary_lines.append(f"  Owner:    {owner}")
+    if tag_list:
+        summary_lines.append(f"  Tags:     {', '.join(tag_list)}")
+
+    console.print(Panel("\n".join(summary_lines), title="Source Added", border_style="green"))
 
 
 @app.command()
@@ -100,7 +210,7 @@ def doctor() -> None:
         return
 
     # Feature count
-    db = CatalogDB(settings.catalog_db_path)
+    db = LocalBackend(settings.catalog_db_path)
     try:
         features = db.list_features()
         sources = db.list_sources()
@@ -869,6 +979,309 @@ def cache_clear() -> None:
     count = cache.clear()
     cache.close()
     console.print(f"[green]Cleared {count} cache entries.[/green]")
+
+
+# =========================================================================
+# Config commands
+# =========================================================================
+
+
+@config_app.command("show")
+def config_show() -> None:
+    """Show all current configuration."""
+    from .config import get_all_setting_sources
+
+    settings = load_settings()
+    sources = get_all_setting_sources()
+
+    table = Table(title="featcat Configuration")
+    table.add_column("Setting", style="cyan")
+    table.add_column("Value")
+    table.add_column("Source", style="dim")
+
+    for key, value in sorted(settings.model_dump().items()):
+        source = sources.get(key, "default")
+        source_style = {"env": "green", "project": "yellow", "user": "blue"}.get(source, "dim")
+        display_val = str(value) if value is not None else "(not set)"
+        # Mask sensitive values
+        if "secret" in key or "password" in key:
+            display_val = "****" if value else "(not set)"
+        table.add_row(key, display_val, f"[{source_style}]{source}[/{source_style}]")
+
+    console.print(table)
+
+
+@config_app.command("get")
+def config_get(
+    key: str = typer.Argument(help="Configuration key"),
+) -> None:
+    """Get a configuration value."""
+    settings = load_settings()
+    data = settings.model_dump()
+    if key not in data:
+        console.print(f"[red]Unknown key:[/red] {key}")
+        console.print(f"[dim]Available: {', '.join(sorted(data.keys()))}[/dim]")
+        raise typer.Exit(1)
+    console.print(f"{data[key]}")
+
+
+@config_app.command("set")
+def config_set(
+    key: str = typer.Argument(help="Configuration key"),
+    value: str = typer.Argument(help="Configuration value"),
+    user: bool = typer.Option(False, "--user", help="Save to user config instead of project"),
+) -> None:
+    """Set a configuration value."""
+    # Validate key
+    from .config import CONFIG_PROJECT_PATH, CONFIG_USER_PATH, Settings, _load_yaml, _save_yaml
+
+    defaults = Settings().model_dump()
+    if key not in defaults:
+        console.print(f"[red]Unknown key:[/red] {key}")
+        console.print(f"[dim]Available: {', '.join(sorted(defaults.keys()))}[/dim]")
+        raise typer.Exit(1)
+
+    # Type coercion based on default value type
+    default_val = defaults[key]
+    if isinstance(default_val, bool):
+        typed_value = value.lower() in ("true", "1", "yes")
+    elif isinstance(default_val, int):
+        typed_value = int(value)
+    elif isinstance(default_val, float):
+        typed_value = float(value)
+    elif value.lower() == "none" or value == "":
+        typed_value = None
+    else:
+        typed_value = value
+
+    config_path = CONFIG_USER_PATH if user else CONFIG_PROJECT_PATH
+    data = _load_yaml(config_path)
+    data[key] = typed_value
+    _save_yaml(config_path, data)
+
+    location = "user" if user else "project"
+    console.print(f"[green]Set[/green] {key} = {typed_value} [dim]({location} config)[/dim]")
+
+
+@config_app.command("reset")
+def config_reset(
+    user: bool = typer.Option(False, "--user", help="Reset user config"),
+    project: bool = typer.Option(False, "--project", help="Reset project config"),
+    all_configs: bool = typer.Option(False, "--all", help="Reset both user and project config"),
+) -> None:
+    """Reset configuration to defaults."""
+    from .config import CONFIG_PROJECT_PATH, CONFIG_USER_PATH
+
+    if all_configs:
+        user = project = True
+
+    if not user and not project:
+        project = True  # default to project
+
+    if project and CONFIG_PROJECT_PATH.exists():
+        CONFIG_PROJECT_PATH.unlink()
+        console.print(f"[green]Removed:[/green] {CONFIG_PROJECT_PATH}")
+
+    if user and CONFIG_USER_PATH.exists():
+        CONFIG_USER_PATH.unlink()
+        console.print(f"[green]Removed:[/green] {CONFIG_USER_PATH}")
+
+    console.print("[green]Config reset to defaults.[/green]")
+
+
+@config_app.command("path")
+def config_path() -> None:
+    """Show configuration file locations."""
+    from .config import CONFIG_PROJECT_PATH, CONFIG_USER_PATH
+
+    console.print(f"  User config:    {CONFIG_USER_PATH}", end="")
+    console.print(" [green](exists)[/green]" if CONFIG_USER_PATH.exists() else " [dim](not created)[/dim]")
+    console.print(f"  Project config: {CONFIG_PROJECT_PATH.resolve()}", end="")
+    console.print(" [green](exists)[/green]" if CONFIG_PROJECT_PATH.exists() else " [dim](not created)[/dim]")
+
+
+# =========================================================================
+# Job commands
+# =========================================================================
+
+
+@job_app.command("list")
+def job_list() -> None:
+    """Show all scheduled jobs."""
+    from .catalog.local import LocalBackend
+
+    settings = load_settings()
+    db = LocalBackend(settings.catalog_db_path)
+    db.init_db()
+
+    rows = db.conn.execute("SELECT * FROM job_schedules ORDER BY job_name").fetchall()
+    db.close()
+
+    if not rows:
+        console.print("[dim]No scheduled jobs found.[/dim]")
+        return
+
+    table = Table(title="Scheduled Jobs")
+    table.add_column("Job", style="cyan")
+    table.add_column("Schedule")
+    table.add_column("Enabled")
+    table.add_column("Last Run")
+    table.add_column("Description")
+
+    for row in rows:
+        enabled = "[green]yes[/green]" if row["enabled"] else "[red]no[/red]"
+        last_run = str(row["last_run_at"])[:19] if row["last_run_at"] else "[dim]never[/dim]"
+        table.add_row(row["job_name"], row["cron_expression"], enabled, last_run, row["description"])
+
+    console.print(table)
+
+
+@job_app.command("logs")
+def job_logs(
+    job: str | None = typer.Option(None, "--job", "-j", help="Filter by job name"),
+    limit: int = typer.Option(20, "--limit", "-n", help="Max rows"),
+) -> None:
+    """Show recent job execution logs."""
+    from .catalog.local import LocalBackend
+
+    settings = load_settings()
+    db = LocalBackend(settings.catalog_db_path)
+    db.init_db()
+
+    query = "SELECT * FROM job_logs WHERE 1=1"
+    params: list = []
+    if job:
+        query += " AND job_name = ?"
+        params.append(job)
+    query += " ORDER BY started_at DESC LIMIT ?"
+    params.append(limit)
+
+    rows = db.conn.execute(query, params).fetchall()
+    db.close()
+
+    if not rows:
+        console.print("[dim]No job logs found.[/dim]")
+        return
+
+    table = Table(title="Job Logs")
+    table.add_column("Job", style="cyan")
+    table.add_column("Status")
+    table.add_column("Started")
+    table.add_column("Duration")
+    table.add_column("Triggered By")
+
+    for row in rows:
+        status = row["status"]
+        color = {"success": "green", "failed": "red", "warning": "yellow", "running": "blue"}.get(status, "dim")
+        duration = f"{row['duration_seconds']:.1f}s" if row["duration_seconds"] else "-"
+        started = str(row["started_at"])[:19] if row["started_at"] else "-"
+        table.add_row(row["job_name"], f"[{color}]{status}[/{color}]", started, duration, row["triggered_by"])
+
+    console.print(table)
+
+
+@job_app.command("run")
+def job_run(
+    name: str = typer.Argument(help="Job name to run"),
+) -> None:
+    """Manually trigger a job."""
+    import asyncio
+
+    try:
+        from .server.scheduler import FeatcatScheduler
+    except ImportError:
+        console.print("[red]Job runner requires server extras.[/red] Install: pip install 'featcat[server]'")
+        raise typer.Exit(1) from None
+
+    from .catalog.local import LocalBackend
+
+    settings = load_settings()
+    db = LocalBackend(settings.catalog_db_path)
+    db.init_db()
+
+    scheduler = FeatcatScheduler(backend=db, llm=None, settings=settings)
+    scheduler.setup_default_jobs()
+
+    with console.status(f"[blue]Running {name}..."):
+        result = asyncio.run(scheduler.run_job(name, triggered_by="manual"))
+
+    db.close()
+
+    status = result["status"]
+    color = "green" if status == "success" else "red" if status == "failed" else "yellow"
+    console.print(f"[{color}]{status}[/{color}] {name} ({result['duration_seconds']:.1f}s)")
+    if result.get("error_message"):
+        console.print(f"[red]Error:[/red] {result['error_message']}")
+
+
+@job_app.command("enable")
+def job_enable(name: str = typer.Argument(help="Job name")) -> None:
+    """Enable a scheduled job."""
+    from .catalog.local import LocalBackend
+
+    settings = load_settings()
+    db = LocalBackend(settings.catalog_db_path)
+    db.init_db()
+    db.conn.execute("UPDATE job_schedules SET enabled = 1 WHERE job_name = ?", (name,))
+    db.conn.commit()
+    db.close()
+    console.print(f"[green]Enabled:[/green] {name}")
+
+
+@job_app.command("disable")
+def job_disable(name: str = typer.Argument(help="Job name")) -> None:
+    """Disable a scheduled job."""
+    from .catalog.local import LocalBackend
+
+    settings = load_settings()
+    db = LocalBackend(settings.catalog_db_path)
+    db.init_db()
+    db.conn.execute("UPDATE job_schedules SET enabled = 0 WHERE job_name = ?", (name,))
+    db.conn.commit()
+    db.close()
+    console.print(f"[yellow]Disabled:[/yellow] {name}")
+
+
+@job_app.command("schedule")
+def job_schedule(
+    name: str = typer.Argument(help="Job name"),
+    cron: str = typer.Argument(help="Cron expression (e.g. '0 */6 * * *')"),
+) -> None:
+    """Change a job's cron schedule."""
+    from .catalog.local import LocalBackend
+
+    settings = load_settings()
+    db = LocalBackend(settings.catalog_db_path)
+    db.init_db()
+    db.conn.execute("UPDATE job_schedules SET cron_expression = ? WHERE job_name = ?", (cron, name))
+    db.conn.commit()
+    db.close()
+    console.print(f"[green]Updated:[/green] {name} -> {cron}")
+
+
+# =========================================================================
+# Server command
+# =========================================================================
+
+
+@app.command()
+def serve(
+    host: str = typer.Option("0.0.0.0", help="Host to bind"),
+    port: int = typer.Option(8000, help="Port to bind"),
+    reload: bool = typer.Option(False, help="Auto-reload on code changes"),
+) -> None:
+    """Start the featcat API server."""
+    try:
+        import uvicorn
+
+        from .server import create_app
+    except ImportError:
+        console.print("[red]Server requires extras.[/red] Install with: pip install 'featcat[server]'")
+        raise typer.Exit(1) from None
+
+    console.print(f"[green]Starting featcat server[/green] at http://{host}:{port}")
+    console.print("[dim]Press Ctrl+C to stop.[/dim]")
+    uvicorn.run(create_app(), host=host, port=port, reload=reload)
 
 
 # =========================================================================
