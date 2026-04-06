@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>featcat - Features</title>
+    <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+    <div class="layout">
+        <nav class="sidebar">
+            <div class="logo">featcat</div>
+            <a href="/" class="nav-item">Dashboard</a>
+            <a href="/features" class="nav-item active">Features</a>
+            <a href="/monitoring" class="nav-item">Monitoring</a>
+            <a href="/jobs" class="nav-item">Jobs</a>
+            <a href="/chat" class="nav-item">AI Chat</a>
+            <div class="nav-footer">
+                <span class="status-dot green" id="server-dot"></span> Server
+                <br><span class="status-dot" id="llm-dot"></span> LLM: <span id="llm-status">checking...</span>
+            </div>
+        </nav>
+        <div class="main">
+            <div class="page-header">
+                <h1>Features</h1>
+                <span class="meta" id="result-count">Loading...</span>
+            </div>
+
+            <div style="display:flex;gap:12px;align-items:center;margin-bottom:16px">
+                <input type="text" class="input" id="search-input" placeholder="Search features..." style="max-width:320px">
+                <select class="select" id="source-filter" style="max-width:200px">
+                    <option value="">All Sources</option>
+                </select>
+                <button class="btn btn-primary" id="add-source-btn">Add Source</button>
+            </div>
+
+            <table class="data-table" id="feature-table">
+                <thead>
+                    <tr>
+                        <th data-col="name">Name <span class="sort-icon">&#x25B2;</span></th>
+                        <th data-col="source">Source <span class="sort-icon">&#x25B2;</span></th>
+                        <th data-col="dtype">Dtype <span class="sort-icon">&#x25B2;</span></th>
+                        <th data-col="tags">Tags</th>
+                        <th data-col="has_doc">Docs <span class="sort-icon">&#x25B2;</span></th>
+                        <th data-col="owner">Owner <span class="sort-icon">&#x25B2;</span></th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+
+            <div id="pagination" class="pagination"></div>
+
+            <div id="detail-panel" class="detail-panel">
+                <div id="detail-content"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="add-modal">
+        <div class="modal">
+            <h2>Add Source</h2>
+            <div class="form-group">
+                <label>Path <span style="color:var(--danger)">*</span></label>
+                <input type="text" class="input" id="modal-path" placeholder="/path/to/feature/store" required>
+            </div>
+            <div class="form-group">
+                <label>Name</label>
+                <input type="text" class="input" id="modal-name" placeholder="Optional name">
+            </div>
+            <div class="form-group">
+                <label>Description</label>
+                <input type="text" class="input" id="modal-description" placeholder="Describe this source">
+            </div>
+            <div class="form-group">
+                <label>Owner</label>
+                <input type="text" class="input" id="modal-owner" placeholder="Owner name">
+            </div>
+            <div class="form-group">
+                <label>Tags</label>
+                <input type="text" class="input" id="modal-tags" placeholder="Comma-separated tags">
+            </div>
+            <div class="actions">
+                <button class="btn btn-secondary" id="modal-cancel">Cancel</button>
+                <button class="btn btn-primary" id="modal-submit">Add</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/api.js"></script>
+    <script src="js/features.js"></script>
+</body>
+</html>
