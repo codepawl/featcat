@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>featcat - Dashboard</title>
+    <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+    <div class="layout">
+        <nav class="sidebar">
+            <div class="logo">featcat</div>
+            <a href="/" class="nav-item active">Dashboard</a>
+            <a href="/features" class="nav-item">Features</a>
+            <a href="/monitoring" class="nav-item">Monitoring</a>
+            <a href="/jobs" class="nav-item">Jobs</a>
+            <a href="/chat" class="nav-item">AI Chat</a>
+            <div class="nav-footer">
+                <span class="status-dot green" id="server-dot"></span> Server
+                <br><span class="status-dot" id="llm-dot"></span> LLM: <span id="llm-status">checking...</span>
+            </div>
+        </nav>
+        <div class="main">
+            <div class="page-header">
+                <h1>Dashboard</h1>
+                <span class="meta" id="last-updated">Loading...</span>
+            </div>
+
+            <div class="metric-cards" id="metric-cards">
+                <div class="metric-card" id="metric-features">
+                    <div class="label">Features</div>
+                    <div class="value skeleton skeleton-text" style="width:60px">&nbsp;</div>
+                </div>
+                <div class="metric-card" id="metric-docs">
+                    <div class="label">Doc Coverage</div>
+                    <div class="value skeleton skeleton-text" style="width:60px">&nbsp;</div>
+                </div>
+                <div class="metric-card" id="metric-alerts">
+                    <div class="label">Drift Alerts</div>
+                    <div class="value skeleton skeleton-text" style="width:60px">&nbsp;</div>
+                </div>
+                <div class="metric-card" id="metric-sources">
+                    <div class="label">Sources</div>
+                    <div class="value skeleton skeleton-text" style="width:60px">&nbsp;</div>
+                </div>
+            </div>
+
+            <div class="grid-2">
+                <div class="card" id="alerts-section">
+                    <h3 style="margin-top:0">Recent Drift Alerts</h3>
+                    <div class="skeleton skeleton-card"></div>
+                </div>
+                <div class="card" id="activity-section">
+                    <h3 style="margin-top:0">Recent Activity</h3>
+                    <div class="skeleton skeleton-card"></div>
+                </div>
+            </div>
+
+            <div class="card" id="jobs-section">
+                <h3 style="margin-top:0">Scheduled Jobs</h3>
+                <div class="skeleton skeleton-card"></div>
+            </div>
+
+            <div id="error-banner" class="hidden" style="text-align:center;padding:40px">
+                <p style="color:var(--danger);font-size:1.1rem">Cannot connect to server</p>
+                <button class="btn btn-primary" onclick="loadDashboard()">Retry</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/dashboard.js"></script>
+</body>
+</html>
