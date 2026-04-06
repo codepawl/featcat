@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import time
+from datetime import datetime
 from unittest.mock import patch
 
 import pytest
@@ -101,10 +102,11 @@ class TestLogRetention:
         logs = scheduler.get_logs()
         assert len(logs) == 1
 
-        # Artificially age the log
-        backend.conn.execute(
-            "UPDATE job_logs SET started_at = datetime('now', '-60 days')"
-        )
+        # Artificially age the log using Python adapter for consistent datetime format
+        from datetime import timedelta, timezone
+
+        old_ts = (datetime.now(timezone.utc) - timedelta(days=60)).isoformat()
+        backend.conn.execute("UPDATE job_logs SET started_at = ?", (old_ts,))
         backend.conn.commit()
 
         # Set short retention
