@@ -39,12 +39,10 @@ class MonitoringScreen(Screen):
 
     def _refresh_data(self) -> None:
         try:
-            from ...catalog.db import CatalogDB
-            from ...config import load_settings
+            from ...catalog.factory import get_backend
             from ...plugins.monitoring import MonitoringPlugin
 
-            settings = load_settings()
-            db = CatalogDB(settings.catalog_db_path)
+            db = get_backend()
             plugin = MonitoringPlugin()
             result = plugin.execute(db, None, action="check")
             db.close()
@@ -87,12 +85,10 @@ class MonitoringScreen(Screen):
 
     def action_compute_baseline(self) -> None:
         try:
-            from ...catalog.db import CatalogDB
-            from ...config import load_settings
+            from ...catalog.factory import get_backend
             from ...plugins.monitoring import MonitoringPlugin
 
-            settings = load_settings()
-            db = CatalogDB(settings.catalog_db_path)
+            db = get_backend()
             plugin = MonitoringPlugin()
             plugin.execute(db, None, action="baseline")
             db.close()

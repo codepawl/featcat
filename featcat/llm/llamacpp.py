@@ -33,15 +33,18 @@ class LlamaCppLLM(BaseLLM):
         prompt: str,
         system: str | None = None,
         temperature: float = 0.3,
+        json_mode: bool = False,
     ) -> str:
         """Generate a complete response from llama.cpp server."""
         full_prompt = f"{system}\n\n{prompt}" if system else prompt
-        payload = {
+        payload: dict = {
             "prompt": full_prompt,
             "stream": False,
             "temperature": temperature,
             "n_predict": 2048,
         }
+        if json_mode:
+            payload["json_schema"] = {"type": "object"}
         data = self._request_with_retry("/completion", payload)
         return data.get("content", "")
 

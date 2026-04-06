@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from ..utils.lang import localize_system_prompt
 from ..utils.prompts import AUTODOC_PROMPT_BATCH, AUTODOC_PROMPT_SINGLE, AUTODOC_SYSTEM
 from .base import BasePlugin, PluginResult
 
@@ -33,13 +34,17 @@ class AutodocPlugin(BasePlugin):
         feature_name: str | None = kwargs.get("feature_name")
         batch_size: int = kwargs.get("batch_size", 10)
         progress_callback = kwargs.get("progress_callback")
+        language: str = kwargs.get("language", "en")
+        system = localize_system_prompt(AUTODOC_SYSTEM, language)
 
         if feature_name:
-            return self._document_single(catalog_db, llm, feature_name)
+            return self._document_single(catalog_db, llm, feature_name, system)
         else:
-            return self._document_all(catalog_db, llm, batch_size, progress_callback)
+            return self._document_all(catalog_db, llm, batch_size, progress_callback, system)
 
-    def _document_single(self, db: CatalogBackend, llm: BaseLLM, feature_name: str) -> PluginResult:
+    def _document_single(
+        self, db: CatalogBackend, llm: BaseLLM, feature_name: str, system: str = AUTODOC_SYSTEM,
+    ) -> PluginResult:
         feature = db.get_feature_by_name(feature_name)
         if feature is None:
             return PluginResult(status="error", errors=[f"Feature not found: {feature_name}"])
@@ -65,7 +70,7 @@ class AutodocPlugin(BasePlugin):
         )
 
         try:
-            doc = llm.generate_json(prompt, system=AUTODOC_SYSTEM)
+            doc = llm.generate_json(prompt, system=system)
         except Exception as e:
             return PluginResult(status="error", errors=[str(e)])
 
@@ -74,7 +79,10 @@ class AutodocPlugin(BasePlugin):
 
         return PluginResult(status="success", data={"documented": 1, "features": {feature.name: doc}})
 
-    def _document_all(self, db: CatalogBackend, llm: BaseLLM, batch_size: int, progress_callback: Any) -> PluginResult:
+    def _document_all(
+        self, db: CatalogBackend, llm: BaseLLM, batch_size: int, progress_callback: Any,
+        system: str = AUTODOC_SYSTEM,
+    ) -> PluginResult:
         undocumented = db.list_undocumented_features()
         if not undocumented:
             return PluginResult(status="success", data={"documented": 0, "message": "All features are documented"})
@@ -106,7 +114,7 @@ class AutodocPlugin(BasePlugin):
                 )
 
                 try:
-                    result = llm.generate_json(prompt, system=AUTODOC_SYSTEM)
+                    result = llm.generate_json(prompt, system=system)
                     docs_list = result if isinstance(result, list) else [result]
 
                     for doc in docs_list:

@@ -2,26 +2,16 @@
 
 from __future__ import annotations
 
-import re
 from typing import TYPE_CHECKING, Any
 
 from ..utils.catalog_context import get_feature_summary
-from ..utils.prompts import NL_QUERY_PROMPT, NL_QUERY_SYSTEM, NL_QUERY_SYSTEM_VI
+from ..utils.lang import detect_language, localize_system_prompt
+from ..utils.prompts import NL_QUERY_PROMPT, NL_QUERY_SYSTEM
 from .base import BasePlugin, PluginResult
 
 if TYPE_CHECKING:
     from ..catalog.backend import CatalogBackend
     from ..llm.base import BaseLLM
-
-
-def _is_vietnamese(text: str) -> bool:
-    """Simple heuristic: check for Vietnamese diacritics."""
-    vietnamese_chars = re.compile(
-        r"[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡ"
-        r"ùúụủũưừứựửữỳýỵỷỹđ]",
-        re.IGNORECASE,
-    )
-    return bool(vietnamese_chars.search(text))
 
 
 def _fuzzy_search(db: CatalogBackend, query: str) -> list[dict]:
@@ -112,8 +102,8 @@ class NLQueryPlugin(BasePlugin):
     ) -> PluginResult:
         """Run the query through the LLM."""
         feature_summary = get_feature_summary(db, max_features=max_features)
-        is_vi = _is_vietnamese(query)
-        system = NL_QUERY_SYSTEM_VI if is_vi else NL_QUERY_SYSTEM
+        lang = detect_language(query)
+        system = localize_system_prompt(NL_QUERY_SYSTEM, lang)
 
         prompt = NL_QUERY_PROMPT.format(
             feature_summary=feature_summary,

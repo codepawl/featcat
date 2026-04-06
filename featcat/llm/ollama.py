@@ -34,6 +34,7 @@ class OllamaLLM(BaseLLM):
         prompt: str,
         system: str | None = None,
         temperature: float = 0.3,
+        json_mode: bool = False,
     ) -> str:
         """Generate a complete response from Ollama."""
         payload: dict = {
@@ -44,6 +45,8 @@ class OllamaLLM(BaseLLM):
         }
         if system:
             payload["system"] = system
+        if json_mode:
+            payload["format"] = "json"
 
         data = self._request_with_retry("/api/generate", payload)
         return data.get("response", "")

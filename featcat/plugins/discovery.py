@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from ..utils.catalog_context import get_all_sources_schema, get_feature_summary
+from ..utils.lang import detect_language, localize_system_prompt
 from ..utils.prompts import DISCOVERY_PROMPT, DISCOVERY_SYSTEM
 from .base import BasePlugin, PluginResult
 
@@ -53,8 +54,11 @@ class DiscoveryPlugin(BasePlugin):
             source_schemas=source_schemas,
         )
 
+        lang = detect_language(use_case)
+        system = localize_system_prompt(DISCOVERY_SYSTEM, lang)
+
         try:
-            result = llm.generate_json(prompt, system=DISCOVERY_SYSTEM)
+            result = llm.generate_json(prompt, system=system)
         except Exception as e:
             return PluginResult(status="error", errors=[str(e)])
 

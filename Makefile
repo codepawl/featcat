@@ -1,7 +1,7 @@
 .PHONY: install lint format type-check test test-cov build clean check release-check
 
 install:
-	pip install -e ".[dev,tui,s3]"
+	pip install -e ".[dev,tui,s3,server]"
 	pre-commit install
 
 lint:

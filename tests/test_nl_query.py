@@ -10,7 +10,8 @@ import pytest
 from featcat.catalog.db import CatalogDB
 from featcat.catalog.models import DataSource, Feature
 from featcat.llm.base import BaseLLM
-from featcat.plugins.nl_query import NLQueryPlugin, _fuzzy_search, _is_vietnamese
+from featcat.plugins.nl_query import NLQueryPlugin, _fuzzy_search
+from featcat.utils.lang import is_vietnamese
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -29,7 +30,7 @@ class MockNLQueryLLM(BaseLLM):
         }
     )
 
-    def generate(self, prompt: str, system: str | None = None, temperature: float = 0.3) -> str:
+    def generate(self, prompt: str, system: str | None = None, temperature: float = 0.3, json_mode: bool = False) -> str:
         return self.RESPONSE
 
     def stream(self, prompt: str, system: str | None = None, temperature: float = 0.3) -> Iterator[str]:
@@ -65,13 +66,13 @@ def db_with_features(tmp_path: Path) -> CatalogDB:
 
 class TestVietnameseDetection:
     def test_english(self):
-        assert _is_vietnamese("features about churn") is False
+        assert is_vietnamese("features about churn") is False
 
     def test_vietnamese(self):
-        assert _is_vietnamese("tìm các feature liên quan đến churn") is True
+        assert is_vietnamese("tìm các feature liên quan đến churn") is True
 
     def test_mixed(self):
-        assert _is_vietnamese("features liên quan đến user behavior") is True
+        assert is_vietnamese("features liên quan đến user behavior") is True
 
 
 class TestFuzzySearch:
