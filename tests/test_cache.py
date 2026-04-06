@@ -23,7 +23,9 @@ class CountingLLM(BaseLLM):
         self.call_count = 0
         self._response = response
 
-    def generate(self, prompt: str, system: str | None = None, temperature: float = 0.3, json_mode: bool = False) -> str:
+    def generate(
+        self, prompt: str, system: str | None = None, temperature: float = 0.3, json_mode: bool = False,
+    ) -> str:
         self.call_count += 1
         return self._response
 

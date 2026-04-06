@@ -30,7 +30,9 @@ class MockNLQueryLLM(BaseLLM):
         }
     )
 
-    def generate(self, prompt: str, system: str | None = None, temperature: float = 0.3, json_mode: bool = False) -> str:
+    def generate(
+        self, prompt: str, system: str | None = None, temperature: float = 0.3, json_mode: bool = False,
+    ) -> str:
         return self.RESPONSE
 
     def stream(self, prompt: str, system: str | None = None, temperature: float = 0.3) -> Iterator[str]:

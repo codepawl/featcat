@@ -41,7 +41,7 @@ def setup_test_catalog(db_path: str) -> LocalBackend:
         ("session_count", "int64", {"mean": 15.2, "std": 8.3, "null_ratio": 0.02, "min": 0, "max": 120}),
         ("data_usage_mb", "float64", {"mean": 2048.5, "std": 1500.2, "null_ratio": 0.01, "min": 0, "max": 50000}),
         ("complaint_count", "int64", {"mean": 0.8, "std": 1.2, "null_ratio": 0.0, "min": 0, "max": 15}),
-        ("monthly_revenue", "float64", {"mean": 250000.0, "std": 180000.0, "null_ratio": 0.05, "min": 0, "max": 2000000}),
+        ("monthly_revenue", "float64", {"mean": 250000.0, "std": 180000.0, "null_ratio": 0.05, "min": 0, "max": 2e6}),
         ("churn_label", "int64", {"mean": 0.12, "std": 0.32, "null_ratio": 0.0, "min": 0, "max": 1}),
     ]
 
@@ -122,7 +122,7 @@ def main():
     settings = load_settings()
     model = args.model or settings.llm_model
 
-    console.print(f"\n[bold]featcat LLM Benchmark[/bold]")
+    console.print("\n[bold]featcat LLM Benchmark[/bold]")
     console.print(f"  Model: {model}")
     console.print(f"  Backend: {settings.llm_backend}")
     console.print(f"  Runs per task: {args.runs}\n")
