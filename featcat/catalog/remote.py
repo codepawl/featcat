@@ -25,15 +25,6 @@ class RemoteBackend(CatalogBackend):
             headers["Authorization"] = f"Bearer {token}"
         self._client = httpx.Client(base_url=self.server_url, timeout=30, headers=headers)
 
-    def _request(self, method: str, path: str, **kwargs) -> Any:
-        """Make an HTTP request and handle errors."""
-        try:
-            resp = self._client.request(method, path, **kwargs)
-            resp.raise_for_status()
-            return resp.json()
-        except httpx.ConnectError as e:
-            raise ConnectionError(f"Cannot connect to featcat server at {self.server_url}. Is it running?") from e
-
     # --- Lifecycle ---
 
     def init_db(self) -> None:
@@ -142,3 +133,44 @@ class RemoteBackend(CatalogBackend):
 
     def get_catalog_stats(self) -> dict:
         return self._request("GET", "/api/stats")
+
+    # --- Server-side AI/plugin operations (used by CLI in remote mode) ---
+
+    def ai_ask(self, query: str) -> dict:
+        """Call the server's NL query endpoint."""
+        return self._request("POST", "/api/ai/ask", json={"query": query}, timeout=60)
+
+    def ai_discover(self, use_case: str) -> dict:
+        """Call the server's discovery endpoint."""
+        return self._request("POST", "/api/ai/discover", json={"use_case": use_case}, timeout=60)
+
+    def doc_generate(self, feature_name: str | None = None) -> dict:
+        """Call the server's doc generation endpoint."""
+        body = {"feature_name": feature_name} if feature_name else {}
+        return self._request("POST", "/api/docs/generate", json=body, timeout=120)
+
+    def monitor_check(self, feature_name: str | None = None, use_llm: bool = False) -> dict:
+        """Call the server's monitoring check endpoint."""
+        params: dict = {}
+        if feature_name:
+            params["feature_name"] = feature_name
+        if use_llm:
+            params["use_llm"] = "true"
+        return self._request("GET", "/api/monitor/check", params=params)
+
+    def monitor_baseline(self) -> dict:
+        """Call the server's baseline computation endpoint."""
+        return self._request("POST", "/api/monitor/baseline")
+
+    def _request(self, method: str, path: str, **kwargs) -> Any:
+        """Make an HTTP request and handle errors."""
+        timeout = kwargs.pop("timeout", None)
+        try:
+            if timeout:
+                resp = self._client.request(method, path, timeout=timeout, **kwargs)
+            else:
+                resp = self._client.request(method, path, **kwargs)
+            resp.raise_for_status()
+            return resp.json()
+        except httpx.ConnectError as e:
+            raise ConnectionError(f"Cannot connect to featcat server at {self.server_url}. Is it running?") from e

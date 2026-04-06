@@ -640,32 +640,46 @@ def discover(
     use_case: str = typer.Argument(help="Description of the use case"),
 ) -> None:
     """Discover relevant features for a use case using AI."""
-    llm = _get_llm(use_cache=False)  # Discovery: no cache
-    if llm is None:
-        console.print("[red]LLM unavailable.[/red] Ensure Ollama is running: ollama serve")
-        raise typer.Exit(1)
+    from .catalog.remote import RemoteBackend
 
     db = _get_db()
-    settings = load_settings()
 
-    from .plugins.discovery import DiscoveryPlugin
+    if isinstance(db, RemoteBackend):
+        with console.status("[blue]Analyzing catalog (remote)..."):
+            try:
+                data = db.ai_discover(use_case)
+            except Exception as e:
+                db.close()
+                console.print(f"[red]Error:[/red] {e}")
+                raise typer.Exit(1) from None
+        db.close()
+    else:
+        llm = _get_llm(use_cache=False)
+        if llm is None:
+            db.close()
+            console.print("[red]LLM unavailable.[/red] Ensure Ollama is running: ollama serve")
+            raise typer.Exit(1)
 
-    plugin = DiscoveryPlugin()
+        settings = load_settings()
 
-    with console.status("[blue]Analyzing catalog..."):
-        result = plugin.execute(
-            db,
-            llm,
-            use_case=use_case,
-            max_features=settings.max_context_features,
-        )
-    db.close()
+        from .plugins.discovery import DiscoveryPlugin
 
-    if result.status == "error":
-        console.print(f"[red]Error:[/red] {'; '.join(result.errors)}")
-        raise typer.Exit(1)
+        plugin = DiscoveryPlugin()
 
-    data = result.data
+        with console.status("[blue]Analyzing catalog..."):
+            result = plugin.execute(
+                db,
+                llm,
+                use_case=use_case,
+                max_features=settings.max_context_features,
+            )
+        db.close()
+
+        if result.status == "error":
+            console.print(f"[red]Error:[/red] {'; '.join(result.errors)}")
+            raise typer.Exit(1)
+
+        data = result.data
 
     existing = data.get("existing_features", [])
     if existing:
@@ -708,26 +722,39 @@ def ask(
     no_cache: bool = typer.Option(False, "--no-cache", help="Bypass response cache"),
 ) -> None:
     """Search features using natural language."""
+    from .catalog.remote import RemoteBackend
+
     db = _get_db()
-    llm = _get_llm(use_cache=not no_cache)
 
-    from .plugins.nl_query import NLQueryPlugin
+    if isinstance(db, RemoteBackend):
+        with console.status("[blue]Searching (remote)..."):
+            try:
+                data = db.ai_ask(query)
+            except Exception as e:
+                db.close()
+                console.print(f"[red]Error:[/red] {e}")
+                raise typer.Exit(1) from None
+        db.close()
+    else:
+        llm = _get_llm(use_cache=not no_cache)
 
-    plugin = NLQueryPlugin()
-    fallback = llm is None
+        from .plugins.nl_query import NLQueryPlugin
 
-    if fallback:
-        console.print("[dim]LLM unavailable, using keyword search.[/dim]")
+        plugin = NLQueryPlugin()
+        fallback = llm is None
 
-    with console.status("[blue]Searching..."):
-        result = plugin.execute(db, llm, query=query, fallback_only=fallback)
-    db.close()
+        if fallback:
+            console.print("[dim]LLM unavailable, using keyword search.[/dim]")
 
-    if result.status == "error":
-        console.print(f"[red]Error:[/red] {'; '.join(result.errors)}")
-        raise typer.Exit(1)
+        with console.status("[blue]Searching..."):
+            result = plugin.execute(db, llm, query=query, fallback_only=fallback)
+        db.close()
 
-    data = result.data
+        if result.status == "error":
+            console.print(f"[red]Error:[/red] {'; '.join(result.errors)}")
+            raise typer.Exit(1)
+
+        data = result.data
     results = data.get("results", [])
 
     if not results:
@@ -766,12 +793,28 @@ def doc_generate(
     no_cache: bool = typer.Option(False, "--no-cache", help="Bypass response cache"),
 ) -> None:
     """Generate AI documentation for features."""
-    llm = _get_llm(use_cache=not no_cache)
-    if llm is None:
-        console.print("[red]LLM unavailable.[/red] Ensure Ollama is running: ollama serve")
-        raise typer.Exit(1)
+    from .catalog.remote import RemoteBackend
 
     db = _get_db()
+
+    if isinstance(db, RemoteBackend):
+        with console.status(f"[blue]Generating docs (remote){'for ' + name if name else ''}..."):
+            try:
+                data = db.doc_generate(feature_name=name)
+            except Exception as e:
+                db.close()
+                console.print(f"[red]Error:[/red] {e}")
+                raise typer.Exit(1) from None
+        db.close()
+        documented = data.get("documented", 0)
+        console.print(f"[green]Done:[/green] {documented} features documented")
+        return
+
+    llm = _get_llm(use_cache=not no_cache)
+    if llm is None:
+        db.close()
+        console.print("[red]LLM unavailable.[/red] Ensure Ollama is running: ollama serve")
+        raise typer.Exit(1)
 
     from rich.progress import Progress
 
@@ -879,7 +922,17 @@ def doc_stats() -> None:
 @monitor_app.command("baseline")
 def monitor_baseline() -> None:
     """Compute and save baseline statistics for all features."""
+    from .catalog.remote import RemoteBackend
+
     db = _get_db()
+
+    if isinstance(db, RemoteBackend):
+        with console.status("[blue]Computing baselines (remote)..."):
+            data = db.monitor_baseline()
+        db.close()
+        console.print(f"[green]Baseline saved:[/green] {data.get('baselines_saved', 0)} features")
+        return
+
     from .plugins.monitoring import MonitoringPlugin
 
     plugin = MonitoringPlugin()
@@ -895,25 +948,33 @@ def monitor_check(
     use_llm: bool = typer.Option(False, "--llm", help="Include LLM analysis for issues"),
 ) -> None:
     """Check features for quality issues and drift."""
+    from .catalog.remote import RemoteBackend
+
     db = _get_db()
-    llm = _get_llm() if use_llm else None
 
-    from .plugins.monitoring import MonitoringPlugin
+    if isinstance(db, RemoteBackend):
+        with console.status("[blue]Running quality checks (remote)..."):
+            report = db.monitor_check(feature_name=name, use_llm=use_llm)
+        db.close()
+    else:
+        llm = _get_llm() if use_llm else None
 
-    plugin = MonitoringPlugin()
+        from .plugins.monitoring import MonitoringPlugin
 
-    with console.status("[blue]Running quality checks..."):
-        result = plugin.execute(
-            db,
-            llm,
-            action="check",
-            feature_name=name,
-            refresh_baseline=refresh_baseline,
-            use_llm=use_llm and llm is not None,
-        )
-    db.close()
+        plugin = MonitoringPlugin()
 
-    report = result.data
+        with console.status("[blue]Running quality checks..."):
+            result = plugin.execute(
+                db,
+                llm,
+                action="check",
+                feature_name=name,
+                refresh_baseline=refresh_baseline,
+                use_llm=use_llm and llm is not None,
+            )
+        db.close()
+
+        report = result.data
     checked = report.get("checked", 0)
     healthy = report.get("healthy", 0)
     warnings = report.get("warnings", 0)
