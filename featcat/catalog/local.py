@@ -112,12 +112,12 @@ class LocalBackend(CatalogBackend):
         self.conn.execute("PRAGMA foreign_keys = ON")
 
     def init_db(self) -> None:
+        import contextlib
+
         self.conn.executescript(SCHEMA_SQL)
         # Add auto_refresh column if not present (added in Phase 6)
-        try:
+        with contextlib.suppress(sqlite3.OperationalError):
             self.conn.execute("ALTER TABLE data_sources ADD COLUMN auto_refresh INTEGER DEFAULT 0")
-        except sqlite3.OperationalError:
-            pass  # Column already exists
         self.conn.commit()
 
     def close(self) -> None:
