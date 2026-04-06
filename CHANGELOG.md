@@ -13,12 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-## [0.2.2] - 2026-04-06
+## [0.2.3] - 2026-04-06
 
 ### Fixed
 
 - **Discovery plugin**: Handle LLM returning feature names as strings instead of dicts
-- **Publish workflow**: Pin version when installing from TestPyPI to avoid stale cache
+- **Publish workflow**: Pin version + use `--index-strategy unsafe-best-match` for TestPyPI verification
 
 ## [0.2.1] - 2026-04-06
 
@@ -68,8 +68,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Configuration**: Pydantic settings loaded from `FEATCAT_*` environment variables
 - **Documentation**: README, setup guide, user guide, and admin guide (Vietnamese with English technical terms)
 
-[Unreleased]: https://github.com/codepawl/featcat/compare/v0.2.2...HEAD
-[0.2.2]: https://github.com/codepawl/featcat/compare/v0.2.1...v0.2.2
+[Unreleased]: https://github.com/codepawl/featcat/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/codepawl/featcat/compare/v0.2.1...v0.2.3
 [0.2.1]: https://github.com/codepawl/featcat/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/codepawl/featcat/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/codepawl/featcat/releases/tag/v0.1.0
