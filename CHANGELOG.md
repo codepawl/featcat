@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [0.2.4] - 2026-04-06
+
+### Fixed
+
+- **CLI remote mode**: `ask`, `discover`, `doc generate`, `monitor check`, and `monitor baseline` now call server API endpoints when `FEATCAT_SERVER_URL` is set, instead of trying to connect to local Ollama
+- **RemoteBackend**: Added `ai_ask`, `ai_discover`, `doc_generate`, `monitor_check`, `monitor_baseline` methods for server-side operations
+
 ## [0.2.3] - 2026-04-06
 
 ### Fixed
@@ -68,7 +75,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Configuration**: Pydantic settings loaded from `FEATCAT_*` environment variables
 - **Documentation**: README, setup guide, user guide, and admin guide (Vietnamese with English technical terms)
 
-[Unreleased]: https://github.com/codepawl/featcat/compare/v0.2.3...HEAD
+[Unreleased]: https://github.com/codepawl/featcat/compare/v0.2.4...HEAD
+[0.2.4]: https://github.com/codepawl/featcat/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/codepawl/featcat/compare/v0.2.1...v0.2.3
 [0.2.1]: https://github.com/codepawl/featcat/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/codepawl/featcat/compare/v0.1.0...v0.2.0
