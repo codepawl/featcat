@@ -145,9 +145,8 @@ def load_settings(overrides: dict[str, Any] | None = None) -> Settings:
         final_val = getattr(settings, key)
         yaml_val = merged.get(key)
         from_env = (
-            (yaml_val is not None and env_val != default_dict[key] and final_val == env_val and env_val != yaml_val)
-            or (yaml_val is None and env_val != default_dict[key])
-        )
+            yaml_val is not None and env_val != default_dict[key] and final_val == env_val and env_val != yaml_val
+        ) or (yaml_val is None and env_val != default_dict[key])
         if from_env:
             _setting_sources[key] = "env"
 

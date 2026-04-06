@@ -32,9 +32,7 @@ class RemoteBackend(CatalogBackend):
             resp.raise_for_status()
             return resp.json()
         except httpx.ConnectError as e:
-            raise ConnectionError(
-                f"Cannot connect to featcat server at {self.server_url}. Is it running?"
-            ) from e
+            raise ConnectionError(f"Cannot connect to featcat server at {self.server_url}. Is it running?") from e
 
     # --- Lifecycle ---
 

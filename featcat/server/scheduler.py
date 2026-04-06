@@ -88,9 +88,7 @@ class FeatcatScheduler:
 
     def get_schedules(self) -> list[dict]:
         """Return all job schedules as a list of dicts."""
-        rows = self.backend.conn.execute(
-            "SELECT * FROM job_schedules ORDER BY job_name"
-        ).fetchall()
+        rows = self.backend.conn.execute("SELECT * FROM job_schedules ORDER BY job_name").fetchall()
         return [dict(row) for row in rows]
 
     def update_schedule(self, job_name: str, cron: str | None, enabled: bool | None) -> None:
@@ -114,8 +112,7 @@ class FeatcatScheduler:
         started_at = _utcnow()
         conn = self.backend.conn
         conn.execute(
-            "INSERT INTO job_logs (id, job_name, status, started_at, triggered_by)"
-            " VALUES (?, ?, 'running', ?, ?)",
+            "INSERT INTO job_logs (id, job_name, status, started_at, triggered_by) VALUES (?, ?, 'running', ?, ?)",
             (log_id, job_name, started_at, triggered_by),
         )
         conn.commit()
@@ -251,9 +248,7 @@ class FeatcatScheduler:
 
     def get_log(self, log_id: str) -> dict | None:
         """Return a single job log by id."""
-        row = self.backend.conn.execute(
-            "SELECT * FROM job_logs WHERE id = ?", (log_id,)
-        ).fetchone()
+        row = self.backend.conn.execute("SELECT * FROM job_logs WHERE id = ?", (log_id,)).fetchone()
         if row is None:
             return None
         d = dict(row)

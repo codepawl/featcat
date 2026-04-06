@@ -43,7 +43,11 @@ class AutodocPlugin(BasePlugin):
             return self._document_all(catalog_db, llm, batch_size, progress_callback, system)
 
     def _document_single(
-        self, db: CatalogBackend, llm: BaseLLM, feature_name: str, system: str = AUTODOC_SYSTEM,
+        self,
+        db: CatalogBackend,
+        llm: BaseLLM,
+        feature_name: str,
+        system: str = AUTODOC_SYSTEM,
     ) -> PluginResult:
         feature = db.get_feature_by_name(feature_name)
         if feature is None:
@@ -80,7 +84,11 @@ class AutodocPlugin(BasePlugin):
         return PluginResult(status="success", data={"documented": 1, "features": {feature.name: doc}})
 
     def _document_all(
-        self, db: CatalogBackend, llm: BaseLLM, batch_size: int, progress_callback: Any,
+        self,
+        db: CatalogBackend,
+        llm: BaseLLM,
+        batch_size: int,
+        progress_callback: Any,
         system: str = AUTODOC_SYSTEM,
     ) -> PluginResult:
         undocumented = db.list_undocumented_features()

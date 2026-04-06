@@ -48,12 +48,15 @@ class TestSources:
     def test_add_and_get(self, client, tmp_path):
         # Create a dummy parquet file for the source path
         source_path = str(tmp_path / "data.parquet")
-        resp = client.post("/api/sources", json={
-            "name": "test-src",
-            "path": source_path,
-            "storage_type": "local",
-            "format": "parquet",
-        })
+        resp = client.post(
+            "/api/sources",
+            json={
+                "name": "test-src",
+                "path": source_path,
+                "storage_type": "local",
+                "format": "parquet",
+            },
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert data["name"] == "test-src"

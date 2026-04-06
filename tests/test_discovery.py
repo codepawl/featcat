@@ -39,7 +39,11 @@ class MockDiscoveryLLM(BaseLLM):
     )
 
     def generate(
-        self, prompt: str, system: str | None = None, temperature: float = 0.3, json_mode: bool = False,
+        self,
+        prompt: str,
+        system: str | None = None,
+        temperature: float = 0.3,
+        json_mode: bool = False,
     ) -> str:
         return self.RESPONSE
 

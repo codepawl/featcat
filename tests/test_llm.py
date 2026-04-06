@@ -25,7 +25,11 @@ class MockLLM(BaseLLM):
         self._call_count = 0
 
     def generate(
-        self, prompt: str, system: str | None = None, temperature: float = 0.3, json_mode: bool = False,
+        self,
+        prompt: str,
+        system: str | None = None,
+        temperature: float = 0.3,
+        json_mode: bool = False,
     ) -> str:
         idx = min(self._call_count, len(self._responses) - 1)
         self._call_count += 1

@@ -107,9 +107,7 @@ class TestLogRetention:
         backend.conn.commit()
 
         # Set short retention
-        backend.conn.execute(
-            "UPDATE job_schedules SET max_log_retention_days = 1 WHERE job_name = 'baseline_refresh'"
-        )
+        backend.conn.execute("UPDATE job_schedules SET max_log_retention_days = 1 WHERE job_name = 'baseline_refresh'")
         backend.conn.commit()
 
         scheduler.purge_old_logs("baseline_refresh")

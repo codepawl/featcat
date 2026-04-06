@@ -27,7 +27,11 @@ def run_check(feature_name: str | None = None, use_llm: bool = False, db=Depends
     plugin = MonitoringPlugin()
     actual_llm = llm if use_llm else None
     result = plugin.execute(
-        db, actual_llm, action="check", feature_name=feature_name, use_llm=use_llm and llm is not None,
+        db,
+        actual_llm,
+        action="check",
+        feature_name=feature_name,
+        use_llm=use_llm and llm is not None,
     )
     return result.data
 
