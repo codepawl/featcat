@@ -64,7 +64,10 @@ class DiscoveryPlugin(BasePlugin):
 
         # Validate and sort existing features by relevance
         existing = result.get("existing_features", [])
-        existing.sort(key=lambda x: x.get("relevance", 0), reverse=True)
+        # Handle case where LLM returns strings instead of dicts
+        if existing and isinstance(existing[0], str):
+            existing = [{"name": f, "relevance": 0.5, "reason": ""} for f in existing]
+        existing.sort(key=lambda x: x.get("relevance", 0) if isinstance(x, dict) else 0, reverse=True)
         result["existing_features"] = existing
 
         return PluginResult(status="success", data=result)
