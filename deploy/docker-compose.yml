@@ -1,0 +1,36 @@
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: featcat-ollama
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+
+  featcat:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: featcat-server
+    volumes:
+      - featcat_data:/data
+      - ${DATA_DIR:-./data}:/sources
+    ports:
+      - "${FEATCAT_PORT:-8000}:8000"
+    environment:
+      - FEATCAT_CATALOG_DB_PATH=/data/catalog.db
+      - FEATCAT_OLLAMA_URL=http://ollama:11434
+      - FEATCAT_LLM_MODEL=${LLM_MODEL:-lfm2.5:latest}
+      - FEATCAT_SERVER_AUTH_TOKEN=${SERVER_AUTH:-}
+    depends_on:
+      - ollama
+    restart: unless-stopped
+
+volumes:
+  ollama_data:
+  featcat_data:
