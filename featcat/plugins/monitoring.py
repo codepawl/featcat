@@ -99,19 +99,30 @@ class MonitoringPlugin(BasePlugin):
         critical = 0
 
         for f in features:
-            baseline = db.get_baseline(f.id)
-            if baseline is None:
-                continue
+            try:
+                baseline = db.get_baseline(f.id)
+                if baseline is None:
+                    continue
 
-            result = self._check_feature(f, baseline)
-            details.append(result)
+                result = self._check_feature(f, baseline)
+                details.append(result)
 
-            severity = result["severity"]
-            if severity == "healthy":
-                healthy += 1
-            elif severity == "warning":
-                warnings += 1
-            else:
+                severity = result["severity"]
+                if severity == "healthy":
+                    healthy += 1
+                elif severity == "warning":
+                    warnings += 1
+                else:
+                    critical += 1
+            except Exception as e:
+                details.append(
+                    {
+                        "feature": f.name,
+                        "severity": "error",
+                        "psi": None,
+                        "issues": [{"issue": "check_failed", "message": str(e)}],
+                    }
+                )
                 critical += 1
 
         issues = [d for d in details if d["severity"] != "healthy"]
@@ -135,7 +146,15 @@ class MonitoringPlugin(BasePlugin):
         return PluginResult(status="success", data=report)
 
     def _check_feature(self, feature: Feature, baseline: dict) -> dict:
-        current = feature.stats
+        current = feature.stats or {}
+        if not current:
+            return {
+                "feature": feature.name,
+                "severity": "healthy",
+                "psi": None,
+                "issues": [],
+            }
+
         issues: list[dict] = []
 
         psi = compute_psi(baseline, current)

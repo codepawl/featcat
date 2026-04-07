@@ -57,8 +57,8 @@ async def stream_ask(query: str, db=Depends(get_db), llm=Depends(get_llm)):
     """Streaming NL query via Server-Sent Events."""
     from sse_starlette.sse import EventSourceResponse
 
-    from ...plugins.nl_query import NLQueryPlugin
-    from ...utils.catalog_context import get_feature_summary
+    from ...plugins.nl_query import NLQueryPlugin, _is_monitoring_query
+    from ...utils.catalog_context import get_feature_summary, get_monitoring_summary
     from ...utils.prompts import NL_QUERY_PROMPT, NL_QUERY_SYSTEM
 
     async def event_generator():
@@ -70,11 +70,17 @@ async def stream_ask(query: str, db=Depends(get_db), llm=Depends(get_llm)):
             return
 
         feature_summary = get_feature_summary(db, max_features=100)
+
+        # Add monitoring context for drift-related queries
+        extra_context = ""
+        if _is_monitoring_query(query):
+            extra_context = "\n\nMONITORING STATUS:\n" + get_monitoring_summary(db)
+
         from ...utils.lang import detect_language, localize_system_prompt
 
         lang = detect_language(query)
         system = localize_system_prompt(NL_QUERY_SYSTEM, lang)
-        prompt = NL_QUERY_PROMPT.format(feature_summary=feature_summary, query=query)
+        prompt = NL_QUERY_PROMPT.format(feature_summary=feature_summary + extra_context, query=query)
 
         full_response = ""
         buffer = ""

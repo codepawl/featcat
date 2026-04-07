@@ -93,8 +93,25 @@ sqlite3.register_converter("TIMESTAMP", _convert_datetime)
 def _row_to_feature(row: sqlite3.Row) -> Feature:
     """Convert a sqlite3.Row to a Feature model, parsing JSON fields."""
     d = dict(row)
-    d["tags"] = json.loads(d["tags"]) if isinstance(d["tags"], str) else d["tags"]
-    d["stats"] = json.loads(d["stats"]) if isinstance(d["stats"], str) else d["stats"]
+    d["tags"] = json.loads(d["tags"]) if isinstance(d.get("tags"), str) else (d.get("tags") or [])
+    d["stats"] = json.loads(d["stats"]) if isinstance(d.get("stats"), str) else (d.get("stats") or {})
+    # Provide defaults for required fields that might be None from schema mismatches
+    d.setdefault("id", "")
+    d.setdefault("name", "")
+    d.setdefault("data_source_id", "")
+    d.setdefault("column_name", "")
+    d.setdefault("dtype", "unknown")
+    d.setdefault("description", "")
+    d.setdefault("owner", "")
+    if d.get("dtype") is None:
+        d["dtype"] = "unknown"
+    if d.get("description") is None:
+        d["description"] = ""
+    if d.get("owner") is None:
+        d["owner"] = ""
+    # Filter out any extra columns not in the Feature model (e.g. from ALTER TABLE)
+    valid_fields = Feature.model_fields
+    d = {k: v for k, v in d.items() if k in valid_fields}
     return Feature(**d)
 
 
