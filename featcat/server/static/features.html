@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>featcat - Features</title>
     <link rel="stylesheet" href="css/app.css">
+    <script>
+    (function(){var s=localStorage.getItem('featcat-theme');if(s)document.documentElement.setAttribute('data-theme',s)})();
+    function toggleTheme(){var c=document.documentElement.getAttribute('data-theme'),n=c==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);localStorage.setItem('featcat-theme',n)}
+    </script>
 </head>
 <body>
     <div class="layout">
@@ -19,8 +23,7 @@
                 <div><span class="status-dot green" id="server-dot"></span> Server</div>
                 <div><span class="status-dot" id="llm-dot"></span> LLM: <span id="llm-status">checking...</span></div>
                 <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">
-                    <svg class="icon-sun" width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 12a4 4 0 100-8 4 4 0 000 8zm0-9.5a.75.75 0 01.75.75v.5a.75.75 0 01-1.5 0v-.5A.75.75 0 018 2.5zm0 11a.75.75 0 01.75.75v.5a.75.75 0 01-1.5 0v-.5A.75.75 0 018 13.5zM2.5 8a.75.75 0 01.75-.75h.5a.75.75 0 010 1.5h-.5A.75.75 0 012.5 8zm11 0a.75.75 0 01.75-.75h.5a.75.75 0 010 1.5h-.5A.75.75 0 0113.5 8z"/></svg>
-                    <svg class="icon-moon" width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M9.598 1.591a.75.75 0 01.785.175 7 7 0 01-12.075 5.535.75.75 0 01.67-1.244 5.5 5.5 0 009.5-4.354.75.75 0 01.12-.112z"/></svg>
+                    <span class="icon-sun">&#9788;</span><span class="icon-moon">&#9790;</span>
                 </button>
             </div>
         </nav>

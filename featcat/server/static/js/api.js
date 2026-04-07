@@ -143,19 +143,5 @@ function checkHealth() {
     });
 }
 
-// Theme toggle
-function toggleTheme() {
-    var current = document.documentElement.getAttribute('data-theme');
-    var next = current === 'dark' ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', next);
-    localStorage.setItem('featcat-theme', next);
-}
-
-// Apply saved theme immediately (before DOMContentLoaded)
-(function() {
-    var saved = localStorage.getItem('featcat-theme');
-    if (saved) document.documentElement.setAttribute('data-theme', saved);
-})();
-
 // Check health on load
 document.addEventListener('DOMContentLoaded', checkHealth);

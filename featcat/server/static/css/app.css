@@ -215,10 +215,12 @@ code, .mono, .feature-name {
     margin-top: 8px;
 }
 .theme-toggle:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+/* Light mode: show moon (click to go dark), hide sun */
+.icon-sun { display: none; }
+.icon-moon { display: inline; }
+/* Dark mode: show sun (click to go light), hide moon */
 [data-theme="dark"] .icon-sun { display: inline; }
 [data-theme="dark"] .icon-moon { display: none; }
-:root:not([data-theme="dark"]) .icon-sun { display: none; }
-:root:not([data-theme="dark"]) .icon-moon { display: inline; }
 
 /* --- Main Content --- */
 .main {
