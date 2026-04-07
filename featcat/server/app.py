@@ -107,8 +107,18 @@ def build_app() -> FastAPI:
 
     app.include_router(jobs_router, prefix="/api/jobs", tags=["jobs"])
 
-    # Serve static Web UI (must be AFTER all /api/* routes)
+    # Clean URL routes for UI pages (must be AFTER API routers, BEFORE StaticFiles)
+    from starlette.responses import FileResponse
+
     static_dir = Path(__file__).parent / "static"
+    ui_pages = {"features", "monitoring", "jobs", "chat"}
+
+    @app.get("/{page}")
+    async def serve_page(page: str):
+        if page in ui_pages:
+            return FileResponse(static_dir / f"{page}.html", media_type="text/html")
+
+    # Serve static Web UI (must be AFTER all /api/* routes and clean URL handler)
     if static_dir.is_dir():
         app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")
 
