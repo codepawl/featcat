@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 
 from ..deps import get_db, get_llm
 
 router = APIRouter()
+
+LLM_TIMEOUT = 180
 
 
 class DocGenerateRequest(BaseModel):
@@ -15,7 +20,7 @@ class DocGenerateRequest(BaseModel):
 
 
 @router.post("/generate")
-def generate_docs(body: DocGenerateRequest, db=Depends(get_db), llm=Depends(get_llm)):
+async def generate_docs(body: DocGenerateRequest, db=Depends(get_db), llm=Depends(get_llm)):
     """Generate AI documentation for features."""
     if llm is None:
         raise HTTPException(status_code=503, detail="LLM not available. Is Ollama running?")
@@ -23,7 +28,13 @@ def generate_docs(body: DocGenerateRequest, db=Depends(get_db), llm=Depends(get_
     from ...plugins.autodoc import AutodocPlugin
 
     plugin = AutodocPlugin()
-    result = plugin.execute(db, llm, feature_name=body.feature_name)
+    try:
+        result = await asyncio.wait_for(
+            run_in_threadpool(plugin.execute, db, llm, feature_name=body.feature_name),
+            timeout=LLM_TIMEOUT,
+        )
+    except asyncio.TimeoutError:
+        return {"documented": 0, "total": 0, "error": "Request timed out. LLM is slow."}
 
     if result.status == "error":
         raise HTTPException(status_code=500, detail="; ".join(result.errors))

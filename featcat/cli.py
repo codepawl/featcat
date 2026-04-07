@@ -1378,14 +1378,21 @@ def serve(
     try:
         import uvicorn
 
-        from .server import create_app
+        from .server import create_app as _check_server  # noqa: F401
     except ImportError:
         console.print("[red]Server requires extras.[/red] Install with: uv pip install 'featcat[server]'")
         raise typer.Exit(1) from None
 
     console.print(f"[green]Starting featcat server[/green] at http://{host}:{port}")
     console.print("[dim]Press Ctrl+C to stop.[/dim]")
-    uvicorn.run(create_app(), host=host, port=port, reload=reload)
+    uvicorn.run(
+        "featcat.server:create_app",
+        host=host,
+        port=port,
+        reload=reload,
+        workers=1 if reload else 4,
+        factory=True,
+    )
 
 
 # =========================================================================

@@ -73,8 +73,16 @@ export const api = {
     report: () => request<any>('/monitor/report'),
   },
   ai: {
-    ask: (query: string) => request<any>('/ai/ask', { method: 'POST', body: JSON.stringify({ query }) }),
-    discover: (useCase: string) => request<any>('/ai/discover', { method: 'POST', body: JSON.stringify({ use_case: useCase }) }),
+    ask: (query: string) => request<any>('/ai/ask', {
+      method: 'POST',
+      body: JSON.stringify({ query }),
+      signal: AbortSignal.timeout(180_000),
+    }),
+    discover: (useCase: string) => request<any>('/ai/discover', {
+      method: 'POST',
+      body: JSON.stringify({ use_case: useCase }),
+      signal: AbortSignal.timeout(180_000),
+    }),
   },
   jobs: {
     list: () => cachedRequest<any[]>('/jobs'),
