@@ -104,22 +104,25 @@ def build_app() -> FastAPI:
     app.include_router(ai_router, prefix="/api/ai", tags=["ai"])
     app.include_router(jobs_router, prefix="/api/jobs", tags=["jobs"])
 
-    # SPA catch-all: serve React app for all non-API routes
+    # Serve React SPA — must be AFTER all /api/* routes
     from starlette.responses import FileResponse
 
     static_dir = Path(__file__).parent / "static"
 
-    @app.get("/{full_path:path}")
-    async def serve_spa(full_path: str):
-        """Serve React SPA — static files or index.html for client-side routing."""
-        # Check if it's an actual static file (js, css, assets)
-        file_path = static_dir / full_path
-        if full_path and file_path.is_file():
-            return FileResponse(file_path)
-        # Otherwise return index.html for React Router
-        index = static_dir / "index.html"
-        if index.is_file():
-            return FileResponse(index, media_type="text/html")
-        return Response(content="Not Found", status_code=404)
+    if static_dir.is_dir():
+        from fastapi.staticfiles import StaticFiles
+
+        # Mount static assets (js, css, etc.) under /assets
+        assets_dir = static_dir / "assets"
+        if assets_dir.is_dir():
+            app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+
+        # SPA fallback: all other routes return index.html for React Router
+        @app.get("/{full_path:path}")
+        async def serve_spa(full_path: str):
+            file_path = static_dir / full_path
+            if full_path and file_path.is_file():
+                return FileResponse(file_path)
+            return FileResponse(static_dir / "index.html", media_type="text/html")
 
     return app
