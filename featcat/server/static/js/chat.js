@@ -7,26 +7,60 @@ const sendBtn = document.getElementById('send-btn');
 /* --- Initialization --- */
 
 document.addEventListener('DOMContentLoaded', () => {
-    addMessage('Welcome to featcat AI Chat! Ask anything about your features.', 'ai');
+    addMessage('ai', 'Welcome to featcat AI Chat! Ask anything about your features.');
     chatInput.focus();
 });
 
 chatInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
-        sendMessage();
+        sendMessage(chatInput.value);
     }
 });
 
-/* --- Core Functions --- */
+if (sendBtn) {
+    sendBtn.addEventListener('click', () => sendMessage(chatInput.value));
+}
 
-function addMessage(text, role) {
-    const div = document.createElement('div');
-    div.className = `message ${role}`;
-    div.textContent = text;
-    messages.appendChild(div);
+document.querySelectorAll('[data-query]').forEach(btn => {
+    btn.addEventListener('click', () => sendMessage(btn.dataset.query));
+});
+
+/* --- Message DOM --- */
+
+function addMessage(role, content) {
+    const wrapper = document.createElement('div');
+    wrapper.className = `msg msg-${role}`;
+    wrapper.innerHTML = `
+        <div class="msg-avatar">${role === 'user' ? 'You' : 'AI'}</div>
+        <div class="msg-body">
+            <div class="msg-content"></div>
+        </div>
+    `;
+    messages.appendChild(wrapper);
     scrollToBottom();
-    return div;
+
+    const contentEl = wrapper.querySelector('.msg-content');
+    if (role === 'user') {
+        contentEl.textContent = content;
+    } else if (content) {
+        contentEl.textContent = content;
+    }
+    return contentEl;
+}
+
+function addThinkingBlock(parentEl) {
+    const details = document.createElement('details');
+    details.className = 'thinking-block';
+    details.innerHTML = `
+        <summary>
+            <span class="thinking-indicator"></span>
+            Reasoning...
+        </summary>
+        <div class="thinking-content"></div>
+    `;
+    parentEl.appendChild(details);
+    return details.querySelector('.thinking-content');
 }
 
 function scrollToBottom() {
@@ -38,144 +72,253 @@ function setLoading(loading) {
     chatInput.disabled = loading;
 }
 
-function sendMessage() {
-    const text = chatInput.value.trim();
-    if (!text) return;
+/* --- Send & Route --- */
 
+function sendMessage(query) {
+    if (!query || !query.trim()) return;
     chatInput.value = '';
     setLoading(true);
-    addMessage(text, 'user');
 
-    if (text.startsWith('discover: ') || text.startsWith('/discover ')) {
-        const useCase = text.replace(/^(discover: |\/discover )/, '');
-        handleDiscover(useCase);
-    } else {
-        handleStream(text);
+    // Route slash commands
+    if (query.startsWith('/discover ') || query.startsWith('discover: ')) {
+        const useCase = query.replace(/^(\/discover |discover: )/, '');
+        return handleDiscover(useCase);
     }
+    if (query.startsWith('/monitor')) return handleMonitor();
+    if (query.startsWith('/stats')) return handleStats();
+
+    // Default: streaming AI query
+    addMessage('user', query);
+    handleStream(query);
 }
 
-function handleStream(query) {
-    const bubble = addMessage('', 'ai');
+/* --- Streaming Handler --- */
 
-    featcat.ai.stream(
-        query,
-        function onToken(content) {
-            bubble.textContent += content;
+function handleStream(query) {
+    const contentEl = addMessage('ai', '');
+    let thinkingEl = null;
+    let answerBuffer = '';
+    let answerEl = null;
+
+    featcat.ai.stream(query, {
+        onThinkingStart() {
+            thinkingEl = addThinkingBlock(contentEl);
             scrollToBottom();
         },
-        function onDone(data) {
-            if (data && data.results && data.results.length > 0) {
-                bubble.innerHTML = formatResults(data);
+        onThinking(text) {
+            if (thinkingEl) {
+                thinkingEl.textContent += text;
+                scrollToBottom();
+            }
+        },
+        onThinkingEnd() {
+            if (thinkingEl) {
+                const details = thinkingEl.closest('details');
+                details.querySelector('summary').innerHTML = `
+                    <span class="thinking-indicator done"></span>
+                    Thought for a moment
+                `;
+            }
+            thinkingEl = null;
+            scrollToBottom();
+        },
+        onToken(text) {
+            answerBuffer += text;
+            if (!answerEl) {
+                answerEl = document.createElement('div');
+                answerEl.className = 'answer';
+                contentEl.appendChild(answerEl);
+            }
+            answerEl.innerHTML = marked.parse(answerBuffer);
+            scrollToBottom();
+        },
+        onResult(data) {
+            const resultEl = document.createElement('div');
+            resultEl.className = 'answer';
+            contentEl.appendChild(resultEl);
+            formatSearchResults(resultEl, data);
+            scrollToBottom();
+        },
+        onError(err) {
+            // If streaming fails, try non-streaming fallback
+            fallbackAsk(query, contentEl);
+        },
+        onDone() {
+            // Final render of answer with markdown
+            if (answerBuffer.trim() && answerEl) {
+                renderAnswer(answerEl, answerBuffer.trim());
             }
             setLoading(false);
             chatInput.focus();
             scrollToBottom();
-        },
-        function onError(err) {
-            bubble.innerHTML = '<span style="color:var(--danger)">Error: ' + escapeHtml(err.message) + '</span>';
-            setLoading(false);
-            chatInput.focus();
-            scrollToBottom();
         }
-    );
-}
-
-function handleDiscover(useCase) {
-    const bubble = addMessage('Analyzing catalog...', 'ai');
-
-    featcat.ai.discover(useCase)
-        .then(data => {
-            bubble.innerHTML = formatDiscoverResults(data);
-            scrollToBottom();
-        })
-        .catch(err => {
-            bubble.innerHTML = '<span style="color:var(--danger)">Error: ' + escapeHtml(err.message) + '</span>';
-            scrollToBottom();
-        })
-        .finally(() => {
-            setLoading(false);
-            chatInput.focus();
-        });
-}
-
-/* --- Formatting Helpers --- */
-
-function formatResults(data) {
-    let html = '<table style="width:100%;border-collapse:collapse;font-size:0.85rem">';
-    html += '<tr style="border-bottom:1px solid var(--border)">';
-    html += '<th style="text-align:left;padding:6px 8px">Feature</th>';
-    html += '<th style="text-align:left;padding:6px 8px">Score</th>';
-    html += '<th style="text-align:left;padding:6px 8px">Reason</th>';
-    html += '</tr>';
-
-    data.results.forEach(r => {
-        const score = typeof r.score === 'number' ? Math.round(r.score * 100) + '%' : r.score || '-';
-        html += '<tr style="border-bottom:1px solid var(--border)">';
-        html += '<td style="padding:6px 8px;font-weight:500">' + escapeHtml(r.name || r.feature || '') + '</td>';
-        html += '<td style="padding:6px 8px">' + escapeHtml(String(score)) + '</td>';
-        html += '<td style="padding:6px 8px">' + escapeHtml(r.reason || '') + '</td>';
-        html += '</tr>';
     });
-
-    html += '</table>';
-
-    if (data.answer) {
-        html += '<div style="margin-top:8px">' + escapeHtml(data.answer) + '</div>';
-    }
-
-    return html;
 }
 
-function formatDiscoverResults(data) {
+/* --- Rendering --- */
+
+function renderAnswer(el, text) {
+    // Try to parse as JSON search results
+    try {
+        const data = JSON.parse(text);
+        if (data.results || data.existing_features || data.new_feature_suggestions) {
+            formatSearchResults(el, data);
+            return;
+        }
+    } catch { /* not JSON, render as markdown */ }
+
+    el.innerHTML = marked.parse(text);
+}
+
+function formatSearchResults(el, data) {
     let html = '';
 
-    if (data.features && data.features.length > 0) {
-        html += '<strong>Relevant Features:</strong>';
-        html += '<table style="width:100%;border-collapse:collapse;font-size:0.85rem;margin:8px 0">';
-        html += '<tr style="border-bottom:1px solid var(--border)">';
-        html += '<th style="text-align:left;padding:6px 8px">Name</th>';
-        html += '<th style="text-align:left;padding:6px 8px">Relevance</th>';
-        html += '<th style="text-align:left;padding:6px 8px">Reason</th>';
-        html += '</tr>';
-        data.features.forEach(f => {
-            const rel = typeof f.relevance === 'number' ? Math.round(f.relevance * 100) + '%' : f.relevance || '-';
-            html += '<tr style="border-bottom:1px solid var(--border)">';
-            html += '<td style="padding:6px 8px;font-weight:500">' + escapeHtml(f.name || '') + '</td>';
-            html += '<td style="padding:6px 8px">' + escapeHtml(String(rel)) + '</td>';
-            html += '<td style="padding:6px 8px">' + escapeHtml(f.reason || '') + '</td>';
-            html += '</tr>';
+    if (data.results && data.results.length > 0) {
+        html += '<div class="results-table"><table>';
+        html += '<thead><tr><th>Feature</th><th>Score</th><th>Reason</th></tr></thead><tbody>';
+        data.results.forEach(r => {
+            const score = typeof r.score === 'number' ?
+                (r.score > 1 ? r.score + '%' : Math.round(r.score * 100) + '%') : (r.score || '-');
+            html += `<tr>
+                <td><code>${escapeHtml(r.feature || r.name || '')}</code></td>
+                <td class="score">${escapeHtml(String(score))}</td>
+                <td>${escapeHtml(r.reason || '')}</td>
+            </tr>`;
         });
-        html += '</table>';
+        html += '</tbody></table></div>';
+    } else if (data.results && data.results.length === 0) {
+        html += '<p class="no-results">No matching features found.</p>';
     }
 
-    if (data.suggestions && data.suggestions.length > 0) {
-        html += '<strong>Suggestions:</strong>';
-        html += '<table style="width:100%;border-collapse:collapse;font-size:0.85rem;margin:8px 0">';
-        html += '<tr style="border-bottom:1px solid var(--border)">';
-        html += '<th style="text-align:left;padding:6px 8px">Name</th>';
-        html += '<th style="text-align:left;padding:6px 8px">Source</th>';
-        html += '<th style="text-align:left;padding:6px 8px">Reason</th>';
-        html += '</tr>';
-        data.suggestions.forEach(s => {
-            html += '<tr style="border-bottom:1px solid var(--border)">';
-            html += '<td style="padding:6px 8px;font-weight:500">' + escapeHtml(s.name || '') + '</td>';
-            html += '<td style="padding:6px 8px">' + escapeHtml(s.source || '') + '</td>';
-            html += '<td style="padding:6px 8px">' + escapeHtml(s.reason || '') + '</td>';
-            html += '</tr>';
-        });
-        html += '</table>';
+    if (data.interpretation) {
+        html += `<p class="interpretation">${escapeHtml(data.interpretation)}</p>`;
     }
-
+    if (data.follow_up) {
+        html += `<p class="follow-up">Try: ${escapeHtml(data.follow_up)}</p>`;
+    }
     if (data.summary) {
-        html += '<div style="margin-top:8px"><strong>Summary:</strong> ' + escapeHtml(data.summary) + '</div>';
+        html += `<div class="summary">${marked.parse(data.summary)}</div>`;
     }
 
-    if (!html) {
-        html = 'No discovery results found.';
+    // Existing features (discovery)
+    if (data.existing_features && data.existing_features.length > 0) {
+        html += '<h4>Relevant features</h4><div class="results-table"><table>';
+        html += '<thead><tr><th>Name</th><th>Relevance</th><th>Reason</th></tr></thead><tbody>';
+        data.existing_features.forEach(f => {
+            const rel = typeof f.relevance === 'number' ? Math.round(f.relevance * 100) + '%' : (f.relevance || '-');
+            html += `<tr>
+                <td><code>${escapeHtml(f.name || '')}</code></td>
+                <td class="score">${escapeHtml(String(rel))}</td>
+                <td>${escapeHtml(f.reason || '')}</td>
+            </tr>`;
+        });
+        html += '</tbody></table></div>';
     }
 
-    return html;
+    // New feature suggestions (discovery)
+    if (data.new_feature_suggestions && data.new_feature_suggestions.length > 0) {
+        html += '<h4>Suggested new features</h4><div class="suggestions">';
+        data.new_feature_suggestions.forEach(s => {
+            html += `<div class="suggestion-card">
+                <strong>${escapeHtml(s.name || '')}</strong>
+                <span class="source">from ${escapeHtml(s.source || '')}</span>
+                <p>${escapeHtml(s.reason || '')}</p>
+                ${s.column_expression ? `<code>${escapeHtml(s.column_expression)}</code>` : ''}
+            </div>`;
+        });
+        html += '</div>';
+    }
+
+    el.innerHTML = html || '<p class="no-results">No results.</p>';
 }
+
+/* --- Fallback (non-streaming) --- */
+
+async function fallbackAsk(query, el) {
+    try {
+        const res = await fetch('/api/ai/ask', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query })
+        });
+        const data = await res.json();
+        const div = document.createElement('div');
+        div.className = 'answer';
+        el.appendChild(div);
+        formatSearchResults(div, data);
+    } catch (err) {
+        el.innerHTML += `<div class="answer error">Failed to get response: ${escapeHtml(err.message)}</div>`;
+    } finally {
+        setLoading(false);
+        chatInput.focus();
+    }
+}
+
+/* --- Slash Commands --- */
+
+async function handleDiscover(useCase) {
+    addMessage('user', `/discover ${useCase}`);
+    const el = addMessage('ai', '');
+    el.innerHTML = '<span class="loading">Analyzing catalog</span>';
+    try {
+        const data = await featcat.ai.discover(useCase);
+        formatSearchResults(el, data);
+    } catch (err) {
+        el.innerHTML = `<div class="error">Discovery failed: ${escapeHtml(err.message)}</div>`;
+    } finally {
+        setLoading(false);
+        chatInput.focus();
+        scrollToBottom();
+    }
+}
+
+async function handleMonitor() {
+    addMessage('user', '/monitor');
+    const el = addMessage('ai', '');
+    el.innerHTML = '<span class="loading">Running drift check</span>';
+    try {
+        const res = await fetch('/api/monitor/check');
+        const data = await res.json();
+        let html = `<p><strong>${data.healthy || 0}</strong> healthy, <strong>${data.warnings || 0}</strong> warnings, <strong>${data.critical || 0}</strong> critical</p>`;
+        if (data.details && data.details.length > 0) {
+            html += '<div class="results-table"><table><thead><tr><th>Feature</th><th>Severity</th><th>PSI</th></tr></thead><tbody>';
+            data.details.forEach(d => {
+                html += `<tr><td>${escapeHtml(d.feature || '')}</td><td><span class="badge badge-${d.severity}">${escapeHtml(d.severity || '')}</span></td><td>${d.psi || '-'}</td></tr>`;
+            });
+            html += '</tbody></table></div>';
+        }
+        el.innerHTML = html;
+    } catch (err) {
+        el.innerHTML = `<div class="error">Monitor check failed: ${escapeHtml(err.message)}</div>`;
+    } finally {
+        setLoading(false);
+        chatInput.focus();
+        scrollToBottom();
+    }
+}
+
+async function handleStats() {
+    addMessage('user', '/stats');
+    const el = addMessage('ai', '');
+    try {
+        const s = await featcat.stats();
+        el.innerHTML = `
+            <div class="stats-grid">
+                <div class="stat"><span class="stat-value">${s.total_features || s.features || 0}</span><span class="stat-label">Features</span></div>
+                <div class="stat"><span class="stat-value">${s.sources || 0}</span><span class="stat-label">Sources</span></div>
+                <div class="stat"><span class="stat-value">${s.coverage ? Math.round(s.coverage) : 0}%</span><span class="stat-label">Doc coverage</span></div>
+                <div class="stat"><span class="stat-value">${s.documented || 0}/${s.total_features || s.features || 0}</span><span class="stat-label">Documented</span></div>
+            </div>`;
+    } catch (err) {
+        el.innerHTML = `<div class="error">Stats failed: ${escapeHtml(err.message)}</div>`;
+    } finally {
+        setLoading(false);
+        chatInput.focus();
+        scrollToBottom();
+    }
+}
+
+/* --- Utilities --- */
 
 function prefill(text) {
     chatInput.value = text;

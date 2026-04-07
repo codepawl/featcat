@@ -65,7 +65,8 @@ async def stream_ask(query: str, db=Depends(get_db), llm=Depends(get_llm)):
         if llm is None:
             plugin = NLQueryPlugin()
             result = plugin.execute(db, llm, query=query, fallback_only=True)
-            yield {"event": "message", "data": json.dumps({"type": "done", "data": result.data})}
+            yield {"event": "message", "data": json.dumps({"type": "result", "content": result.data})}
+            yield {"event": "message", "data": json.dumps({"type": "done"})}
             return
 
         feature_summary = get_feature_summary(db, max_features=100)
@@ -76,16 +77,68 @@ async def stream_ask(query: str, db=Depends(get_db), llm=Depends(get_llm)):
         prompt = NL_QUERY_PROMPT.format(feature_summary=feature_summary, query=query)
 
         full_response = ""
+        buffer = ""
+        in_thinking = False
+
         for token in llm.stream(prompt, system=system):
+            buffer += token
             full_response += token
-            yield {"event": "message", "data": json.dumps({"type": "token", "content": token})}
 
-        from ...llm.base import _extract_json
+            # Detect <think> start
+            if not in_thinking and "<think>" in buffer:
+                in_thinking = True
+                yield {"event": "message", "data": json.dumps({"type": "thinking_start"})}
+                # Drop everything up to and including <think>
+                buffer = buffer.split("<think>", 1)[1]
+                if not buffer:
+                    continue
 
-        parsed = _extract_json(full_response)
-        if parsed is None:
-            parsed = {"results": [], "interpretation": full_response}
+            # Detect </think> end
+            if in_thinking and "</think>" in buffer:
+                thinking_text = buffer.split("</think>", 1)[0]
+                if thinking_text:
+                    yield {"event": "message", "data": json.dumps({"type": "thinking", "content": thinking_text})}
+                yield {"event": "message", "data": json.dumps({"type": "thinking_end"})}
+                buffer = buffer.split("</think>", 1)[1]
+                in_thinking = False
+                # Emit any remaining buffer as answer token
+                if buffer.strip():
+                    yield {"event": "message", "data": json.dumps({"type": "token", "content": buffer})}
+                    buffer = ""
+                continue
 
-        yield {"event": "message", "data": json.dumps({"type": "done", "data": parsed})}
+            if in_thinking:
+                # Emit thinking content periodically to avoid huge buffers
+                if len(buffer) > 50:
+                    yield {"event": "message", "data": json.dumps({"type": "thinking", "content": buffer})}
+                    buffer = ""
+            else:
+                # Emit answer tokens immediately (but hold back if we might be
+                # seeing the start of a <think> tag at the very beginning)
+                if buffer and "<" not in buffer:
+                    yield {"event": "message", "data": json.dumps({"type": "token", "content": buffer})}
+                    buffer = ""
+                elif len(buffer) > 10:
+                    # Buffer is long enough that it's not a partial <think> tag
+                    yield {"event": "message", "data": json.dumps({"type": "token", "content": buffer})}
+                    buffer = ""
+
+        # Flush remaining buffer
+        if buffer.strip():
+            if in_thinking:
+                yield {"event": "message", "data": json.dumps({"type": "thinking", "content": buffer})}
+                yield {"event": "message", "data": json.dumps({"type": "thinking_end"})}
+            else:
+                yield {"event": "message", "data": json.dumps({"type": "token", "content": buffer})}
+
+        # Parse final response (strip thinking) and send structured result
+        from ...llm.base import _extract_json, strip_thinking_tags
+
+        clean_response = strip_thinking_tags(full_response)
+        parsed = _extract_json(clean_response)
+        if parsed is not None:
+            yield {"event": "message", "data": json.dumps({"type": "result", "content": parsed})}
+
+        yield {"event": "message", "data": json.dumps({"type": "done"})}
 
     return EventSourceResponse(event_generator())

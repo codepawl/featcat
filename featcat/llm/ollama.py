@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
-from .base import BaseLLM, LLMConnectionError, LLMTimeoutError
+from .base import BaseLLM, LLMConnectionError, LLMTimeoutError, strip_thinking_tags
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -49,7 +49,7 @@ class OllamaLLM(BaseLLM):
             payload["format"] = "json"
 
         data = self._request_with_retry("/api/generate", payload)
-        return data.get("response", "")
+        return strip_thinking_tags(data.get("response", ""))
 
     def stream(
         self,

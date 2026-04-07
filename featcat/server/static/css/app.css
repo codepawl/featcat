@@ -604,6 +604,100 @@ a {
     padding: 16px;
 }
 
+/* Chat messages */
+.msg { display: flex; gap: 12px; padding: 16px 0; }
+.msg-user { flex-direction: row-reverse; }
+.msg-avatar {
+    width: 32px; height: 32px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 500; flex-shrink: 0;
+    background: var(--bg-surface); border: 1px solid var(--border);
+    color: var(--text-secondary);
+}
+.msg-user .msg-avatar { background: var(--accent); color: #fff; border-color: var(--accent); }
+.msg-ai .msg-avatar { background: var(--bg-surface); color: var(--accent); }
+.msg-body { max-width: 85%; }
+.msg-content { font-size: 14px; line-height: 1.6; }
+.msg-user .msg-content {
+    background: var(--accent);
+    color: #fff;
+    padding: 10px 16px; border-radius: 16px 16px 4px 16px;
+}
+
+/* Thinking block (collapsible) */
+.thinking-block {
+    margin-bottom: 8px;
+    border: 0.5px solid var(--border);
+    border-radius: 8px;
+    font-size: 13px;
+}
+.thinking-block summary {
+    padding: 8px 12px; cursor: pointer;
+    color: var(--text-secondary);
+    display: flex; align-items: center; gap: 8px;
+    user-select: none;
+}
+.thinking-block summary:hover { background: var(--bg-surface); border-radius: 8px; }
+.thinking-indicator {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--warning);
+    animation: think-pulse 1.5s infinite;
+}
+.thinking-indicator.done { background: var(--success); animation: none; }
+@keyframes think-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+.thinking-content {
+    padding: 8px 12px; font-size: 12px;
+    color: var(--text-secondary);
+    white-space: pre-wrap; max-height: 200px; overflow-y: auto;
+    border-top: 0.5px solid var(--border);
+}
+
+/* Results table */
+.results-table table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.results-table th { text-align: left; padding: 8px; border-bottom: 1px solid var(--border); color: var(--text-secondary); font-weight: 500; }
+.results-table td { padding: 8px; border-bottom: 0.5px solid var(--border); }
+.results-table code { background: var(--bg-surface); padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+.score { text-align: right; font-weight: 500; }
+.interpretation { font-size: 12px; color: var(--text-secondary); margin-top: 8px; }
+.follow-up { font-size: 12px; color: var(--info); margin-top: 4px; }
+.no-results { color: var(--text-secondary); font-style: italic; }
+
+/* Stats grid */
+.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.stat { text-align: center; padding: 12px; background: var(--bg-surface); border-radius: 8px; border: 1px solid var(--border); }
+.stat-value { display: block; font-size: 20px; font-weight: 500; }
+.stat-label { font-size: 11px; color: var(--text-secondary); }
+
+/* Suggestion cards */
+.suggestion-card {
+    padding: 12px; margin: 6px 0;
+    background: var(--bg-surface);
+    border-radius: 8px; border-left: 3px solid var(--accent);
+}
+.suggestion-card .source { font-size: 11px; color: var(--text-secondary); margin-left: 8px; }
+
+/* Badge variants for chat */
+.badge-warning { background: rgba(240, 173, 78, 0.15); color: var(--warning); }
+.badge-critical { background: rgba(220, 53, 69, 0.15); color: var(--danger); }
+.badge-healthy { background: rgba(29, 158, 117, 0.15); color: var(--success); }
+
+/* Loading animation */
+.loading { color: var(--text-secondary); font-style: italic; }
+.loading::after { content: '...'; animation: dots 1.5s infinite; }
+@keyframes dots { 0% { content: '.'; } 33% { content: '..'; } 66% { content: '...'; } }
+.error { color: var(--danger); }
+
+/* Answer markdown styling */
+.answer { line-height: 1.6; }
+.answer p { margin: 0.5em 0; }
+.answer code { background: var(--bg-surface); padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+.answer pre { background: var(--bg-surface); padding: 12px; border-radius: 8px; overflow-x: auto; }
+.answer pre code { background: none; padding: 0; }
+.answer table { width: 100%; border-collapse: collapse; margin: 8px 0; }
+.answer th, .answer td { padding: 6px 8px; border-bottom: 0.5px solid var(--border); text-align: left; font-size: 13px; }
+.answer th { font-weight: 500; color: var(--text-secondary); }
+
+/* Legacy .message classes (keep for compatibility) */
 .message {
     max-width: 80%;
     margin-bottom: 12px;

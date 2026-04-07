@@ -65,20 +65,39 @@ const featcat = {
     ai: {
         discover: (useCase) => api('/ai/discover', { method: 'POST', body: JSON.stringify({ use_case: useCase }) }),
         ask: (query) => api('/ai/ask', { method: 'POST', body: JSON.stringify({ query }) }),
-        stream: (query, onToken, onDone, onError) => {
+        stream: (query, callbacks) => {
             const url = `${API_BASE}/ai/ask/stream?query=${encodeURIComponent(query)}`;
             const source = new EventSource(url);
             source.onmessage = (event) => {
                 const data = JSON.parse(event.data);
-                if (data.type === 'token' && onToken) onToken(data.content);
-                if (data.type === 'done') {
-                    source.close();
-                    if (onDone) onDone(data.data);
+                switch (data.type) {
+                    case 'thinking_start':
+                        if (callbacks.onThinkingStart) callbacks.onThinkingStart();
+                        break;
+                    case 'thinking':
+                        if (callbacks.onThinking) callbacks.onThinking(data.content);
+                        break;
+                    case 'thinking_end':
+                        if (callbacks.onThinkingEnd) callbacks.onThinkingEnd();
+                        break;
+                    case 'token':
+                        if (callbacks.onToken) callbacks.onToken(data.content);
+                        break;
+                    case 'result':
+                        if (callbacks.onResult) callbacks.onResult(data.content);
+                        break;
+                    case 'error':
+                        if (callbacks.onError) callbacks.onError(new Error(data.content));
+                        break;
+                    case 'done':
+                        source.close();
+                        if (callbacks.onDone) callbacks.onDone();
+                        break;
                 }
             };
             source.onerror = () => {
                 source.close();
-                if (onError) onError(new Error('SSE connection failed'));
+                if (callbacks.onError) callbacks.onError(new Error('SSE connection failed'));
             };
             return source;
         },

@@ -59,6 +59,7 @@ class BaseLLM(ABC):
         sends a fix-up prompt asking the LLM to correct the output.
         """
         response = self.generate(prompt, system=system, temperature=temperature, json_mode=True)
+        response = strip_thinking_tags(response)
 
         for attempt in range(max_retries + 1):
             parsed = _extract_json(response)
@@ -74,6 +75,11 @@ class BaseLLM(ABC):
                 response = self.generate(fix_prompt, system=system, temperature=0.0)
 
         raise ValueError(f"Failed to parse JSON after {max_retries + 1} attempts. Last response: {response[:500]}")
+
+
+def strip_thinking_tags(text: str) -> str:
+    """Strip <think>...</think> reasoning blocks from LLM response."""
+    return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
 
 
 def _extract_json(text: str) -> dict | None:

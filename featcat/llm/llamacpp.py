@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
-from .base import BaseLLM, LLMConnectionError, LLMTimeoutError
+from .base import BaseLLM, LLMConnectionError, LLMTimeoutError, strip_thinking_tags
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -46,7 +46,7 @@ class LlamaCppLLM(BaseLLM):
         if json_mode:
             payload["json_schema"] = {"type": "object"}
         data = self._request_with_retry("/completion", payload)
-        return data.get("content", "")
+        return strip_thinking_tags(data.get("content", ""))
 
     def stream(
         self,
