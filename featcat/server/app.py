@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.responses import FileResponse
 
 from ..catalog.local import LocalBackend
 from ..config import load_settings
+
+logger = logging.getLogger(__name__)
+
+STATIC_DIR = Path(__file__).parent / "static"
 
 
 @asynccontextmanager
@@ -20,6 +26,10 @@ async def lifespan(app: FastAPI):
     backend.init_db()
     app.state.backend = backend
     app.state.settings = settings
+
+    logger.info("Static dir: %s, exists: %s", STATIC_DIR, STATIC_DIR.is_dir())
+    if STATIC_DIR.is_dir():
+        logger.info("Static contents: %s", [p.name for p in STATIC_DIR.iterdir()])
 
     # Try to create LLM (may fail if Ollama not running)
     try:
@@ -104,29 +114,31 @@ def build_app() -> FastAPI:
     app.include_router(ai_router, prefix="/api/ai", tags=["ai"])
     app.include_router(jobs_router, prefix="/api/jobs", tags=["jobs"])
 
-    # Serve React SPA — must be AFTER all /api/* routes
-    from starlette.responses import FileResponse
-
-    static_dir = Path(__file__).parent / "static"
-
-    if static_dir.is_dir():
+    # Mount static assets (js, css) under /assets if present
+    assets_dir = STATIC_DIR / "assets"
+    if assets_dir.is_dir():
         from fastapi.staticfiles import StaticFiles
 
-        # Mount static assets (js, css, etc.) under /assets
-        assets_dir = static_dir / "assets"
-        if assets_dir.is_dir():
-            app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+        app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
 
-        # SPA fallback: all other routes return index.html for React Router
-        @app.get("/")
-        async def serve_root():
-            return FileResponse(static_dir / "index.html", media_type="text/html")
+    # SPA routes — always registered, return 404 if static files missing
+    @app.get("/")
+    async def serve_root():
+        index = STATIC_DIR / "index.html"
+        if index.is_file():
+            return FileResponse(index, media_type="text/html")
+        return Response(content="Web UI not built. Run: cd web && npm run build", status_code=404)
 
-        @app.get("/{full_path:path}")
-        async def serve_spa(full_path: str):
-            file_path = static_dir / full_path
-            if full_path and file_path.is_file():
-                return FileResponse(file_path)
-            return FileResponse(static_dir / "index.html", media_type="text/html")
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        # Serve actual static files (e.g. favicon.ico, vite.svg)
+        file_path = STATIC_DIR / full_path
+        if full_path and file_path.is_file():
+            return FileResponse(file_path)
+        # SPA fallback: return index.html for React Router
+        index = STATIC_DIR / "index.html"
+        if index.is_file():
+            return FileResponse(index, media_type="text/html")
+        return Response(content="Web UI not built. Run: cd web && npm run build", status_code=404)
 
     return app
