@@ -791,6 +791,7 @@ def ask(
 def doc_generate(
     name: str | None = typer.Argument(None, help="Feature name (or omit for all)"),
     no_cache: bool = typer.Option(False, "--no-cache", help="Bypass response cache"),
+    all_features: bool = typer.Option(False, "--all", help="Regenerate docs for ALL features, even documented ones"),
 ) -> None:
     """Generate AI documentation for features."""
     from .catalog.remote import RemoteBackend
@@ -832,7 +833,7 @@ def doc_generate(
             def on_progress(current: int, total: int) -> None:
                 progress.update(task, completed=current, total=total)
 
-            result = plugin.execute(db, llm, progress_callback=on_progress)
+            result = plugin.execute(db, llm, progress_callback=on_progress, regenerate_all=all_features)
 
     db.close()
 

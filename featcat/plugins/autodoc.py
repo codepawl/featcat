@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 from ..utils.lang import localize_system_prompt
@@ -12,6 +13,8 @@ if TYPE_CHECKING:
     from ..catalog.backend import CatalogBackend
     from ..catalog.models import Feature
     from ..llm.base import BaseLLM
+
+logger = logging.getLogger(__name__)
 
 
 class AutodocPlugin(BasePlugin):
@@ -35,12 +38,13 @@ class AutodocPlugin(BasePlugin):
         batch_size: int = kwargs.get("batch_size", 10)
         progress_callback = kwargs.get("progress_callback")
         language: str = kwargs.get("language", "en")
+        regenerate_all: bool = kwargs.get("regenerate_all", False)
         system = localize_system_prompt(AUTODOC_SYSTEM, language)
 
         if feature_name:
             return self._document_single(catalog_db, llm, feature_name, system)
         else:
-            return self._document_all(catalog_db, llm, batch_size, progress_callback, system)
+            return self._document_all(catalog_db, llm, batch_size, progress_callback, system, regenerate_all)
 
     def _document_single(
         self,
@@ -90,22 +94,33 @@ class AutodocPlugin(BasePlugin):
         batch_size: int,
         progress_callback: Any,
         system: str = AUTODOC_SYSTEM,
+        regenerate_all: bool = False,
     ) -> PluginResult:
-        undocumented = db.list_undocumented_features()
-        if not undocumented:
+        if regenerate_all:
+            to_process = db.list_features()
+            logger.info("Regenerate all: processing %d features", len(to_process))
+        else:
+            to_process = db.list_undocumented_features()
+            logger.info("Found %d undocumented features", len(to_process))
+
+        if not to_process:
             return PluginResult(status="success", data={"documented": 0, "message": "All features are documented"})
 
-        total = len(undocumented)
+        for f in to_process:
+            logger.info("  Will document: %s (id=%s)", f.name, f.id)
+
+        total = len(to_process)
         documented = 0
         all_docs: dict[str, dict] = {}
         errors: list[str] = []
 
         by_source: dict[str, list[Feature]] = {}
-        for f in undocumented:
+        for f in to_process:
             src = f.name.split(".")[0] if "." in f.name else "unknown"
             by_source.setdefault(src, []).append(f)
 
         model_name = getattr(llm, "model", "unknown")
+        processed = 0
 
         for source_name, features in by_source.items():
             source = db.get_source_by_name(source_name)
@@ -125,18 +140,37 @@ class AutodocPlugin(BasePlugin):
                     result = llm.generate_json(prompt, system=system)
                     docs_list = result if isinstance(result, list) else [result]
 
+                    # Build lookup for matching: feature name, column name, full name
+                    batch_lookup: dict[str, Feature] = {}
+                    for f in batch:
+                        batch_lookup[f.name] = f
+                        batch_lookup[f.column_name] = f
+                        # Also map without source prefix
+                        if "." in f.name:
+                            batch_lookup[f.name.split(".", 1)[1]] = f
+
                     for doc in docs_list:
                         fname = doc.get("feature_name", "")
-                        matching = [f for f in batch if f.name == fname or f.column_name == fname]
-                        if matching:
-                            db.save_feature_doc(matching[0].id, doc, model_used=model_name)
-                            all_docs[matching[0].name] = doc
+                        matched = batch_lookup.get(fname)
+                        if matched:
+                            db.save_feature_doc(matched.id, doc, model_used=model_name)
+                            all_docs[matched.name] = doc
                             documented += 1
+                            logger.info("Generated doc for %s", matched.name)
+                        else:
+                            logger.warning(
+                                "LLM returned doc for '%s' but no match in batch: %s",
+                                fname,
+                                [f.name for f in batch],
+                            )
+
                 except Exception as e:
+                    logger.error("Batch error (%s): %s", source_name, e)
                     errors.append(f"Batch error ({source_name}): {e}")
 
+                processed += len(batch)
                 if progress_callback:
-                    progress_callback(min(documented + i + len(batch), total), total)
+                    progress_callback(processed, total)
 
         status = "success" if not errors else "partial"
         return PluginResult(
