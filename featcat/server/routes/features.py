@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from ..deps import get_db
@@ -23,17 +23,17 @@ def list_features(source: str | None = None, search: str | None = None, db=Depen
     return [f.model_dump(mode="json") for f in features]
 
 
-@router.get("/{name:path}")
-def get_feature(name: str, db=Depends(get_db)):
-    """Get a feature by name."""
+@router.get("/by-name")
+def get_feature_by_name(name: str = Query(...), db=Depends(get_db)):
+    """Get a feature by name (query param for dotted names)."""
     feature = db.get_feature_by_name(name)
     if feature is None:
         raise HTTPException(status_code=404, detail=f"Feature not found: {name}")
     return feature.model_dump(mode="json")
 
 
-@router.patch("/{name:path}")
-def update_feature(name: str, body: FeatureUpdate, db=Depends(get_db)):
+@router.patch("/by-name")
+def update_feature_by_name(name: str = Query(...), body: FeatureUpdate = ..., db=Depends(get_db)):
     """Update feature metadata (tags, owner, description)."""
     feature = db.get_feature_by_name(name)
     if feature is None:
@@ -45,8 +45,8 @@ def update_feature(name: str, body: FeatureUpdate, db=Depends(get_db)):
     return {"updated": name}
 
 
-@router.delete("/{name:path}")
-def delete_feature(name: str, db=Depends(get_db)):
+@router.delete("/by-name")
+def delete_feature_by_name(name: str = Query(...), db=Depends(get_db)):
     """Delete a feature."""
     feature = db.get_feature_by_name(name)
     if feature is None:

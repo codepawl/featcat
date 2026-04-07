@@ -82,7 +82,7 @@ class TestFeatures:
         assert resp.json() == []
 
     def test_get_missing(self, client):
-        resp = client.get("/api/features/nonexistent")
+        resp = client.get("/api/features/by-name", params={"name": "nonexistent"})
         assert resp.status_code == 404
 
 
@@ -92,7 +92,7 @@ class TestDocs:
         assert resp.status_code == 200
 
     def test_get_missing_doc(self, client):
-        resp = client.get("/api/docs/nonexistent")
+        resp = client.get("/api/docs/by-name", params={"name": "nonexistent"})
         assert resp.status_code == 404
 
 

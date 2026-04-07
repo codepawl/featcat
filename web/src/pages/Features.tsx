@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Plus, X, RefreshCw, Check } from 'lucide-react'
-import { api } from '../api'
+import { api, invalidateCache } from '../api'
 import { DataTable } from '../components/DataTable'
 import { Badge } from '../components/Badge'
 import { Tag } from '../components/Tag'
@@ -64,6 +64,7 @@ export function Features() {
     setGenerating(true)
     try {
       await api.docs.generate({ feature_name: selected.name })
+      invalidateCache('/docs')
       const d = await api.docs.get(selected.name)
       setDoc(d)
     } catch { /* ignore */ }
@@ -79,6 +80,8 @@ export function Features() {
       if (form.tags) payload.tags = form.tags.split(',').map((t: string) => t.trim())
       const src = await api.sources.add(payload)
       await api.sources.scan(src.name)
+      invalidateCache('/features')
+      invalidateCache('/sources')
       setModalOpen(false)
       load()
     } catch { /* ignore */ }

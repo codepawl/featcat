@@ -69,7 +69,7 @@ class RemoteBackend(CatalogBackend):
 
     def get_feature_by_name(self, name: str) -> Any | None:
         try:
-            result = self._request("GET", f"/api/features/{name}")
+            result = self._request("GET", "/api/features/by-name", params={"name": name})
             return Feature.model_validate(result)
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
@@ -77,7 +77,7 @@ class RemoteBackend(CatalogBackend):
             raise
 
     def update_feature_tags(self, feature_id: str, tags: list[str]) -> None:
-        self._request("PATCH", f"/api/features/{feature_id}", json={"tags": tags})
+        self._request("PATCH", "/api/features/by-name", params={"name": feature_id}, json={"tags": tags})
 
     def search_features(self, query: str) -> list:
         result = self._request("GET", "/api/features", params={"search": query})
@@ -87,7 +87,7 @@ class RemoteBackend(CatalogBackend):
 
     def get_feature_doc(self, feature_id: str) -> dict | None:
         try:
-            return self._request("GET", f"/api/docs/{feature_id}")
+            return self._request("GET", "/api/docs/by-name", params={"name": feature_id})
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
                 return None

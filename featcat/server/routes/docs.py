@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from ..deps import get_db, get_llm
@@ -37,12 +37,12 @@ def doc_stats(db=Depends(get_db)):
     return db.get_doc_stats()
 
 
-@router.get("/{feature_name:path}")
-def get_doc(feature_name: str, db=Depends(get_db)):
-    """Get documentation for a specific feature."""
+@router.get("/by-name")
+def get_doc_by_name(name: str = Query(...), db=Depends(get_db)):
+    """Get documentation for a specific feature (query param for dotted names)."""
     from ...plugins.autodoc import get_doc as _get_doc
 
-    doc = _get_doc(db, feature_name)
+    doc = _get_doc(db, name)
     if doc is None:
-        raise HTTPException(status_code=404, detail=f"No docs for: {feature_name}")
+        raise HTTPException(status_code=404, detail=f"No docs for: {name}")
     return doc
