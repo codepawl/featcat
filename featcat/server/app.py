@@ -7,7 +7,6 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 
 from ..catalog.local import LocalBackend
 from ..config import load_settings
@@ -88,11 +87,12 @@ def build_app() -> FastAPI:
                 return Response(content='{"detail":"Unauthorized"}', status_code=401, media_type="application/json")
             return await call_next(request)
 
-    # Register routes
+    # Register API routes
     from .routes.ai import router as ai_router
     from .routes.docs import router as docs_router
     from .routes.features import router as features_router
     from .routes.health import router as health_router
+    from .routes.jobs import router as jobs_router
     from .routes.monitor import router as monitor_router
     from .routes.sources import router as sources_router
 
@@ -102,24 +102,24 @@ def build_app() -> FastAPI:
     app.include_router(docs_router, prefix="/api/docs", tags=["docs"])
     app.include_router(monitor_router, prefix="/api/monitor", tags=["monitor"])
     app.include_router(ai_router, prefix="/api/ai", tags=["ai"])
-
-    from .routes.jobs import router as jobs_router
-
     app.include_router(jobs_router, prefix="/api/jobs", tags=["jobs"])
 
-    # Clean URL routes for UI pages (must be AFTER API routers, BEFORE StaticFiles)
+    # SPA catch-all: serve React app for all non-API routes
     from starlette.responses import FileResponse
 
     static_dir = Path(__file__).parent / "static"
-    ui_pages = {"features", "monitoring", "jobs", "chat"}
 
-    @app.get("/{page}")
-    async def serve_page(page: str):
-        if page in ui_pages:
-            return FileResponse(static_dir / f"{page}.html", media_type="text/html")
-
-    # Serve static Web UI (must be AFTER all /api/* routes and clean URL handler)
-    if static_dir.is_dir():
-        app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        """Serve React SPA — static files or index.html for client-side routing."""
+        # Check if it's an actual static file (js, css, assets)
+        file_path = static_dir / full_path
+        if full_path and file_path.is_file():
+            return FileResponse(file_path)
+        # Otherwise return index.html for React Router
+        index = static_dir / "index.html"
+        if index.is_file():
+            return FileResponse(index, media_type="text/html")
+        return Response(content="Not Found", status_code=404)
 
     return app

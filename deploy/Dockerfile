@@ -1,5 +1,13 @@
-FROM python:3.12-slim
+# Stage 1: Build frontend
+FROM node:20-slim AS frontend
+WORKDIR /web
+COPY web/package.json web/package-lock.json* ./
+RUN npm ci
+COPY web/ ./
+RUN DOCKER_BUILD=1 npm run build
 
+# Stage 2: Python app
+FROM python:3.12-slim
 WORKDIR /app
 
 # Install uv for fast dependency management
@@ -7,6 +15,8 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 # Install featcat with server extras
 COPY . /app/
+# Copy built frontend into static directory
+COPY --from=frontend /web/dist /app/featcat/server/static/
 RUN uv pip install --system --no-cache-dir ".[server]"
 
 # Create default catalog directory

@@ -53,3 +53,8 @@ featcat.yaml
 
 # Superpowers brainstorm sessions
 .superpowers/
+
+# Web frontend
+web/node_modules/
+web/dist/
+featcat/server/static/

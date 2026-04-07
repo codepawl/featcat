@@ -22,3 +22,5 @@ catalog.db
 docs/superpowers
 .superpowers
 deploy
+web/node_modules
+web/dist
