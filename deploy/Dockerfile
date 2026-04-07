@@ -17,7 +17,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 COPY . /app/
 # Copy built frontend into static directory
 COPY --from=frontend /web/dist /app/featcat/server/static/
-RUN uv pip install --system --no-cache-dir ".[server]"
+RUN uv pip install --system --no-cache-dir -e ".[server]"
 
 # Create default catalog directory
 RUN mkdir -p /data
