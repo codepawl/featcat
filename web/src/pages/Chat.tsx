@@ -1,22 +1,13 @@
 import { useState, useRef, useEffect } from 'react'
-import { Send, Sparkles, BarChart3, Activity, Loader2 } from 'lucide-react'
+import { Send, Sparkles, BarChart3, Activity, Loader2, Trash2 } from 'lucide-react'
 import { api } from '../api'
+import { useChatStore } from '../hooks/useChatStore'
 import { ChatMessage } from '../components/ChatMessage'
 import { ThinkingBlock } from '../components/ThinkingBlock'
-
-interface Message {
-  role: 'user' | 'ai'
-  content: string
-  thinking?: string
-  isDoneThinking?: boolean
-  result?: any
-  html?: string
-  isStreaming?: boolean
-}
+import type { ChatMessage as ChatMsg } from '../stores/chatStore'
 
 function ResultTable({ data }: { data: any }) {
   if (!data) return null
-
   const results = data.results || []
   const existingFeatures = data.existing_features || []
   const suggestions = data.new_feature_suggestions || []
@@ -98,9 +89,7 @@ function tryParseResult(text: string): any | null {
 }
 
 export function Chat() {
-  const [messages, setMessages] = useState<Message[]>([
-    { role: 'ai', content: 'Welcome to featcat AI Chat! Ask anything about your features.' },
-  ])
+  const { messages, addMessage, updateLastMessage, appendToLastMessage, clear } = useChatStore()
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -118,172 +107,134 @@ export function Chat() {
     setInput('')
     setBusy(true)
 
-    // Slash commands
     if (q.startsWith('/discover ') || q.startsWith('discover: ')) {
-      const useCase = q.replace(/^(\/discover |discover: )/, '')
-      handleDiscover(useCase)
+      handleDiscover(q.replace(/^(\/discover |discover: )/, ''))
       return
     }
     if (q.startsWith('/monitor')) { handleMonitor(); return }
     if (q.startsWith('/stats')) { handleStats(); return }
 
-    // Add user message + empty AI message that will be updated via SSE
-    setMessages((m) => [...m, { role: 'user', content: q }, { role: 'ai', content: '', isStreaming: true }])
+    addMessage({ role: 'user', content: q })
+    addMessage({ role: 'ai', content: '', isStreaming: true })
     streamQuery(q)
   }
 
   const streamQuery = (query: string) => {
     esRef.current?.close()
-
     const es = new EventSource(`/api/ai/ask/stream?query=${encodeURIComponent(query)}`)
     esRef.current = es
 
     es.onmessage = (event) => {
       const data = JSON.parse(event.data)
-
-      setMessages((prev) => {
-        const msgs = [...prev]
-        const last = { ...msgs[msgs.length - 1] }
-
-        switch (data.type) {
-          case 'thinking_start':
-            last.thinking = last.thinking || ''
-            break
-          case 'thinking':
-            last.thinking = (last.thinking || '') + data.content
-            break
-          case 'thinking_end':
-            last.isDoneThinking = true
-            break
-          case 'token':
-            last.content = (last.content || '') + data.content
-            break
-          case 'result':
-            last.result = data.content
-            break
-          case 'done':
-            last.isStreaming = false
-            es.close()
-            setBusy(false)
-            break
-          case 'error':
-            last.content = `Error: ${data.content}`
-            last.isStreaming = false
-            es.close()
-            setBusy(false)
-            break
-        }
-
-        msgs[msgs.length - 1] = last
-        return msgs
-      })
-      scrollToBottom()
+      switch (data.type) {
+        case 'thinking_start':
+          appendToLastMessage('thinking', '')
+          break
+        case 'thinking':
+          appendToLastMessage('thinking', data.content)
+          break
+        case 'thinking_end':
+          updateLastMessage({ isDoneThinking: true })
+          break
+        case 'token':
+          appendToLastMessage('content', data.content)
+          break
+        case 'result':
+          updateLastMessage({ result: data.content })
+          break
+        case 'done':
+          updateLastMessage({ isStreaming: false })
+          es.close()
+          setBusy(false)
+          break
+        case 'error':
+          updateLastMessage({ content: `Error: ${data.content}`, isStreaming: false })
+          es.close()
+          setBusy(false)
+          break
+      }
     }
 
     es.onerror = () => {
       es.close()
       // Fallback to non-streaming
       api.ai.ask(query)
-        .then((data) => {
-          setMessages((prev) => {
-            const msgs = [...prev]
-            msgs[msgs.length - 1] = { role: 'ai', content: '', result: data, isStreaming: false }
-            return msgs
-          })
-        })
-        .catch(() => {
-          setMessages((prev) => {
-            const msgs = [...prev]
-            msgs[msgs.length - 1] = { role: 'ai', content: 'Failed to get response.', isStreaming: false }
-            return msgs
-          })
-        })
+        .then((data) => updateLastMessage({ result: data, isStreaming: false }))
+        .catch(() => updateLastMessage({ content: 'Failed to get response.', isStreaming: false }))
         .finally(() => setBusy(false))
     }
   }
 
   const handleDiscover = async (useCase: string) => {
-    setMessages((m) => [...m, { role: 'user', content: `/discover ${useCase}` }])
+    addMessage({ role: 'user', content: `/discover ${useCase}` })
     try {
       const data = await api.ai.discover(useCase)
-      setMessages((m) => [...m, { role: 'ai', content: '', result: data }])
+      addMessage({ role: 'ai', content: '', result: data })
     } catch (e: any) {
-      setMessages((m) => [...m, { role: 'ai', content: `Error: ${e.message}` }])
+      addMessage({ role: 'ai', content: `Error: ${e.message}` })
     }
     setBusy(false)
   }
 
   const handleMonitor = async () => {
-    setMessages((m) => [...m, { role: 'user', content: '/monitor' }])
+    addMessage({ role: 'user', content: '/monitor' })
     try {
       const data = await api.monitor.check()
       const html = `<p><strong>${data.healthy || 0}</strong> healthy, <strong>${data.warnings || 0}</strong> warnings, <strong>${data.critical || 0}</strong> critical</p>`
-      setMessages((m) => [...m, { role: 'ai', content: '', html, result: data.details?.length ? { results: data.details.map((d: any) => ({ feature: d.feature, score: d.psi, reason: d.severity })) } : undefined }])
+      addMessage({
+        role: 'ai', content: '', html,
+        result: data.details?.length ? { results: data.details.map((d: any) => ({ feature: d.feature, score: d.psi, reason: d.severity })) } : undefined,
+      })
     } catch (e: any) {
-      setMessages((m) => [...m, { role: 'ai', content: `Error: ${e.message}` }])
+      addMessage({ role: 'ai', content: `Error: ${e.message}` })
     }
     setBusy(false)
   }
 
   const handleStats = async () => {
-    setMessages((m) => [...m, { role: 'user', content: '/stats' }])
+    addMessage({ role: 'user', content: '/stats' })
     try {
       const s = await api.stats()
       const html = `<div class="grid grid-cols-4 gap-3 text-center"><div><div class="text-lg font-semibold font-mono">${s.total_features || s.features || 0}</div><div class="text-[11px] text-[var(--text-tertiary)]">Features</div></div><div><div class="text-lg font-semibold font-mono">${s.sources || 0}</div><div class="text-[11px] text-[var(--text-tertiary)]">Sources</div></div><div><div class="text-lg font-semibold font-mono">${s.coverage ? Math.round(s.coverage) : 0}%</div><div class="text-[11px] text-[var(--text-tertiary)]">Coverage</div></div><div><div class="text-lg font-semibold font-mono">${s.documented || 0}/${s.total_features || s.features || 0}</div><div class="text-[11px] text-[var(--text-tertiary)]">Documented</div></div></div>`
-      setMessages((m) => [...m, { role: 'ai', content: '', html }])
+      addMessage({ role: 'ai', content: '', html })
     } catch (e: any) {
-      setMessages((m) => [...m, { role: 'ai', content: `Error: ${e.message}` }])
+      addMessage({ role: 'ai', content: `Error: ${e.message}` })
     }
     setBusy(false)
   }
 
-  const renderAiContent = (msg: Message) => {
-    return (
-      <>
-        {/* Thinking block */}
-        {(msg.thinking || (msg.isStreaming && !msg.content && !msg.thinking)) && (
-          <ThinkingBlock content={msg.thinking || ''} isDone={msg.isDoneThinking ?? false} />
-        )}
-        {msg.isDoneThinking && msg.thinking && !msg.isStreaming && (
-          <ThinkingBlock content={msg.thinking} isDone={true} />
-        )}
-
-        {/* Loading state */}
-        {msg.isStreaming && !msg.content && !msg.thinking && !msg.result && (
-          <div className="flex items-center gap-2 text-sm text-[var(--text-tertiary)]">
-            <Loader2 size={14} className="animate-spin" />
-            Generating response...
-          </div>
-        )}
-
-        {/* Structured result */}
-        {msg.result && <ResultTable data={msg.result} />}
-
-        {/* HTML content */}
-        {!msg.result && msg.html && <div dangerouslySetInnerHTML={{ __html: msg.html }} />}
-
-        {/* Text/markdown content */}
-        {!msg.result && !msg.html && msg.content && (
-          tryParseResult(msg.content)
-            ? <ResultTable data={tryParseResult(msg.content)} />
-            : <span>{msg.content}</span>
-        )}
-      </>
-    )
-  }
+  const renderAiContent = (msg: ChatMsg) => (
+    <>
+      {(msg.thinking || (msg.isStreaming && !msg.content && !msg.result)) && (
+        <ThinkingBlock content={msg.thinking || ''} isDone={msg.isDoneThinking ?? false} />
+      )}
+      {msg.isDoneThinking && msg.thinking && !msg.isStreaming && (
+        <ThinkingBlock content={msg.thinking} isDone />
+      )}
+      {msg.isStreaming && !msg.content && !msg.thinking && !msg.result && (
+        <div className="flex items-center gap-2 text-sm text-[var(--text-tertiary)]">
+          <Loader2 size={14} className="animate-spin" /> Generating response...
+        </div>
+      )}
+      {msg.result && <ResultTable data={msg.result} />}
+      {!msg.result && msg.html && <div dangerouslySetInnerHTML={{ __html: msg.html }} />}
+      {!msg.result && !msg.html && msg.content && (
+        tryParseResult(msg.content) ? <ResultTable data={tryParseResult(msg.content)} /> : <span>{msg.content}</span>
+      )}
+    </>
+  )
 
   return (
     <div className="flex flex-col" style={{ height: 'calc(100vh - 48px)' }}>
       <div className="flex-1 overflow-y-auto px-4">
-        {messages.map((m, i) => (
-          <ChatMessage key={i} role={m.role}>
+        {messages.map((m) => (
+          <ChatMessage key={m.id} role={m.role}>
             {m.role === 'user' ? m.content : renderAiContent(m)}
           </ChatMessage>
         ))}
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input area */}
       <div className="border-t border-[var(--border-subtle)] bg-[var(--bg-primary)] p-4">
         <div className="flex gap-2 mb-2">
           {[
@@ -296,6 +247,10 @@ export function Chat() {
               <s.icon size={12} /> {s.label}
             </button>
           ))}
+          <button onClick={clear} title="Clear chat"
+            className="ml-auto flex items-center gap-1 px-3 py-1 text-[11px] text-[var(--text-tertiary)] border border-[var(--border-default)] rounded-md hover:bg-[var(--bg-secondary)] transition-colors">
+            <Trash2 size={12} /> Clear
+          </button>
         </div>
         <div className="flex gap-2">
           <input
