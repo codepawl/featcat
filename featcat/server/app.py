@@ -118,6 +118,10 @@ def build_app() -> FastAPI:
             app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
 
         # SPA fallback: all other routes return index.html for React Router
+        @app.get("/")
+        async def serve_root():
+            return FileResponse(static_dir / "index.html", media_type="text/html")
+
         @app.get("/{full_path:path}")
         async def serve_spa(full_path: str):
             file_path = static_dir / full_path
