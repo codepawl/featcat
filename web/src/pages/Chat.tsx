@@ -1,9 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
+import { Send, Sparkles, BarChart3, Activity, Loader2 } from 'lucide-react'
 import { api } from '../api'
-import { useSSE } from '../hooks/useSSE'
 import { ChatMessage } from '../components/ChatMessage'
 import { ThinkingBlock } from '../components/ThinkingBlock'
-import { Badge } from '../components/Badge'
 
 interface Message {
   role: 'user' | 'ai'
@@ -12,12 +11,7 @@ interface Message {
   isDoneThinking?: boolean
   result?: any
   html?: string
-}
-
-function escapeHtml(s: string): string {
-  const d = document.createElement('div')
-  d.textContent = s
-  return d.innerHTML
+  isStreaming?: boolean
 }
 
 function ResultTable({ data }: { data: any }) {
@@ -39,7 +33,7 @@ function ResultTable({ data }: { data: any }) {
           <tbody>
             {results.map((r: any, i: number) => (
               <tr key={i} className="border-b border-[var(--border-subtle)]">
-                <td className="py-1.5"><code className="text-xs bg-[var(--code-bg)] px-1.5 py-0.5 rounded">{r.feature || r.name}</code></td>
+                <td className="py-1.5"><code className="text-xs bg-[var(--code-bg)] px-1.5 py-0.5 rounded font-mono">{r.feature || r.name}</code></td>
                 <td className="py-1.5 text-right font-mono">{typeof r.score === 'number' ? Math.round(r.score * 100) + '%' : r.score}</td>
                 <td className="py-1.5 text-[var(--text-secondary)]">{r.reason}</td>
               </tr>
@@ -66,7 +60,7 @@ function ResultTable({ data }: { data: any }) {
             <tbody>
               {existingFeatures.map((f: any, i: number) => (
                 <tr key={i} className="border-b border-[var(--border-subtle)]">
-                  <td className="py-1.5"><code className="text-xs bg-[var(--code-bg)] px-1.5 py-0.5 rounded">{f.name}</code></td>
+                  <td className="py-1.5"><code className="text-xs bg-[var(--code-bg)] px-1.5 py-0.5 rounded font-mono">{f.name}</code></td>
                   <td className="py-1.5 text-right font-mono">{typeof f.relevance === 'number' ? Math.round(f.relevance * 100) + '%' : f.relevance}</td>
                   <td className="py-1.5 text-[var(--text-secondary)]">{f.reason}</td>
                 </tr>
@@ -85,7 +79,7 @@ function ResultTable({ data }: { data: any }) {
                 <span className="font-medium text-sm">{s.name}</span>
                 <span className="text-[11px] text-[var(--text-tertiary)] ml-2">from {s.source}</span>
                 <p className="text-xs text-[var(--text-secondary)] mt-1">{s.reason}</p>
-                {s.column_expression && <code className="text-[11px] bg-[var(--code-bg)] px-1.5 py-0.5 rounded mt-1 inline-block">{s.column_expression}</code>}
+                {s.column_expression && <code className="text-[11px] bg-[var(--code-bg)] px-1.5 py-0.5 rounded mt-1 inline-block font-mono">{s.column_expression}</code>}
               </div>
             ))}
           </div>
@@ -95,6 +89,14 @@ function ResultTable({ data }: { data: any }) {
   )
 }
 
+function tryParseResult(text: string): any | null {
+  try {
+    const data = JSON.parse(text)
+    if (data.results || data.existing_features || data.new_feature_suggestions) return data
+  } catch { /* not JSON */ }
+  return null
+}
+
 export function Chat() {
   const [messages, setMessages] = useState<Message[]>([
     { role: 'ai', content: 'Welcome to featcat AI Chat! Ask anything about your features.' },
@@ -102,13 +104,13 @@ export function Chat() {
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const sse = useSSE()
+  const esRef = useRef<EventSource | null>(null)
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
 
-  useEffect(scrollToBottom, [messages, sse.answer, sse.thinking])
+  useEffect(scrollToBottom, [messages])
 
   const send = () => {
     const q = input.trim()
@@ -125,27 +127,80 @@ export function Chat() {
     if (q.startsWith('/monitor')) { handleMonitor(); return }
     if (q.startsWith('/stats')) { handleStats(); return }
 
-    // Streaming query
-    setMessages((m) => [...m, { role: 'user', content: q }])
-    sse.stream(q)
+    // Add user message + empty AI message that will be updated via SSE
+    setMessages((m) => [...m, { role: 'user', content: q }, { role: 'ai', content: '', isStreaming: true }])
+    streamQuery(q)
   }
 
-  // When SSE finishes, commit the message
-  useEffect(() => {
-    if (!sse.isStreaming && (sse.answer || sse.result || sse.thinking)) {
-      setMessages((m) => [
-        ...m,
-        {
-          role: 'ai',
-          content: sse.answer,
-          thinking: sse.thinking,
-          isDoneThinking: sse.isDoneThinking,
-          result: sse.result,
-        },
-      ])
-      setBusy(false)
+  const streamQuery = (query: string) => {
+    esRef.current?.close()
+
+    const es = new EventSource(`/api/ai/ask/stream?query=${encodeURIComponent(query)}`)
+    esRef.current = es
+
+    es.onmessage = (event) => {
+      const data = JSON.parse(event.data)
+
+      setMessages((prev) => {
+        const msgs = [...prev]
+        const last = { ...msgs[msgs.length - 1] }
+
+        switch (data.type) {
+          case 'thinking_start':
+            last.thinking = last.thinking || ''
+            break
+          case 'thinking':
+            last.thinking = (last.thinking || '') + data.content
+            break
+          case 'thinking_end':
+            last.isDoneThinking = true
+            break
+          case 'token':
+            last.content = (last.content || '') + data.content
+            break
+          case 'result':
+            last.result = data.content
+            break
+          case 'done':
+            last.isStreaming = false
+            es.close()
+            setBusy(false)
+            break
+          case 'error':
+            last.content = `Error: ${data.content}`
+            last.isStreaming = false
+            es.close()
+            setBusy(false)
+            break
+        }
+
+        msgs[msgs.length - 1] = last
+        return msgs
+      })
+      scrollToBottom()
     }
-  }, [sse.isStreaming])
+
+    es.onerror = () => {
+      es.close()
+      // Fallback to non-streaming
+      api.ai.ask(query)
+        .then((data) => {
+          setMessages((prev) => {
+            const msgs = [...prev]
+            msgs[msgs.length - 1] = { role: 'ai', content: '', result: data, isStreaming: false }
+            return msgs
+          })
+        })
+        .catch(() => {
+          setMessages((prev) => {
+            const msgs = [...prev]
+            msgs[msgs.length - 1] = { role: 'ai', content: 'Failed to get response.', isStreaming: false }
+            return msgs
+          })
+        })
+        .finally(() => setBusy(false))
+    }
+  }
 
   const handleDiscover = async (useCase: string) => {
     setMessages((m) => [...m, { role: 'user', content: `/discover ${useCase}` }])
@@ -182,13 +237,39 @@ export function Chat() {
     setBusy(false)
   }
 
-  // Try to parse answer as JSON for structured display
-  const tryParseResult = (text: string): any | null => {
-    try {
-      const data = JSON.parse(text)
-      if (data.results || data.existing_features || data.new_feature_suggestions) return data
-    } catch { /* not JSON */ }
-    return null
+  const renderAiContent = (msg: Message) => {
+    return (
+      <>
+        {/* Thinking block */}
+        {(msg.thinking || (msg.isStreaming && !msg.content && !msg.thinking)) && (
+          <ThinkingBlock content={msg.thinking || ''} isDone={msg.isDoneThinking ?? false} />
+        )}
+        {msg.isDoneThinking && msg.thinking && !msg.isStreaming && (
+          <ThinkingBlock content={msg.thinking} isDone={true} />
+        )}
+
+        {/* Loading state */}
+        {msg.isStreaming && !msg.content && !msg.thinking && !msg.result && (
+          <div className="flex items-center gap-2 text-sm text-[var(--text-tertiary)]">
+            <Loader2 size={14} className="animate-spin" />
+            Generating response...
+          </div>
+        )}
+
+        {/* Structured result */}
+        {msg.result && <ResultTable data={msg.result} />}
+
+        {/* HTML content */}
+        {!msg.result && msg.html && <div dangerouslySetInnerHTML={{ __html: msg.html }} />}
+
+        {/* Text/markdown content */}
+        {!msg.result && !msg.html && msg.content && (
+          tryParseResult(msg.content)
+            ? <ResultTable data={tryParseResult(msg.content)} />
+            : <span>{msg.content}</span>
+        )}
+      </>
+    )
   }
 
   return (
@@ -196,23 +277,9 @@ export function Chat() {
       <div className="flex-1 overflow-y-auto px-4">
         {messages.map((m, i) => (
           <ChatMessage key={i} role={m.role}>
-            {m.thinking && <ThinkingBlock content={m.thinking} isDone={m.isDoneThinking ?? true} />}
-            {m.result ? <ResultTable data={m.result} /> :
-             m.html ? <div dangerouslySetInnerHTML={{ __html: m.html }} /> :
-             m.content && tryParseResult(m.content) ? <ResultTable data={tryParseResult(m.content)} /> :
-             <span>{m.content}</span>}
+            {m.role === 'user' ? m.content : renderAiContent(m)}
           </ChatMessage>
         ))}
-
-        {/* Streaming message in progress */}
-        {sse.isStreaming && (
-          <ChatMessage role="ai">
-            {sse.thinking && <ThinkingBlock content={sse.thinking} isDone={sse.isDoneThinking} />}
-            {sse.answer && <div className="text-sm">{sse.answer}</div>}
-            {!sse.answer && !sse.thinking && <span className="text-[var(--text-tertiary)] italic">Thinking...</span>}
-          </ChatMessage>
-        )}
-
         <div ref={messagesEndRef} />
       </div>
 
@@ -220,13 +287,13 @@ export function Chat() {
       <div className="border-t border-[var(--border-subtle)] bg-[var(--bg-primary)] p-4">
         <div className="flex gap-2 mb-2">
           {[
-            { label: 'Discover', query: 'discover: ' },
-            { label: 'Check Drift', query: 'which features have drifted?' },
-            { label: 'Stats', query: '/stats' },
+            { label: 'Discover', query: 'discover: ', icon: Sparkles },
+            { label: 'Check Drift', query: 'which features have drifted?', icon: Activity },
+            { label: 'Stats', query: '/stats', icon: BarChart3 },
           ].map((s) => (
             <button key={s.label} onClick={() => setInput(s.query)}
-              className="px-3 py-1 text-[11px] border border-[var(--border-default)] rounded-md bg-[var(--bg-primary)] hover:bg-[var(--bg-secondary)] transition-colors">
-              {s.label}
+              className="flex items-center gap-1 px-3 py-1 text-[11px] border border-[var(--border-default)] rounded-md bg-[var(--bg-primary)] hover:bg-[var(--bg-secondary)] transition-colors">
+              <s.icon size={12} /> {s.label}
             </button>
           ))}
         </div>
@@ -234,13 +301,14 @@ export function Chat() {
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
             placeholder="Ask about features..."
             disabled={busy}
             className="flex-1 bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px] focus:border-accent focus:ring-2 focus:ring-accent/20 outline-none disabled:opacity-50"
           />
           <button onClick={send} disabled={busy || !input.trim()}
-            className="px-4 py-2 bg-accent text-white rounded-lg text-[13px] font-medium disabled:opacity-50 hover:bg-accent-emphasis transition-colors">
+            className="flex items-center gap-1.5 px-4 py-2 bg-accent text-white rounded-lg text-[13px] font-medium disabled:opacity-50 hover:bg-accent-emphasis transition-colors">
+            {busy ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
             Send
           </button>
         </div>

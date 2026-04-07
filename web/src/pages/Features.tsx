@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import { Plus, X, RefreshCw, Check } from 'lucide-react'
 import { api } from '../api'
 import { DataTable } from '../components/DataTable'
 import { Badge } from '../components/Badge'
@@ -90,7 +91,7 @@ export function Features() {
     { key: 'tags', label: 'Tags', sortable: false, render: (r: any) => (
       <div className="flex gap-1 flex-wrap">{(r.tags || []).map((t: string, i: number) => <Tag key={i}>{t}</Tag>)}</div>
     )},
-    { key: 'has_doc', label: 'Docs', render: (r: any) => r.has_doc ? <span className="text-green-500">&#10003;</span> : <span className="text-[var(--text-tertiary)]">-</span> },
+    { key: 'has_doc', label: 'Docs', render: (r: any) => r.has_doc ? <Check size={14} className="text-green-500" /> : <span className="text-[var(--text-tertiary)]">-</span> },
     { key: 'owner', label: 'Owner' },
   ]
 
@@ -111,8 +112,8 @@ export function Features() {
           <option value="">All Sources</option>
           {sources.map((s: any) => <option key={s.name} value={s.name}>{s.name}</option>)}
         </select>
-        <button onClick={() => setModalOpen(true)} className="px-4 py-2 bg-accent text-white rounded-lg text-[13px] font-medium hover:bg-accent-emphasis transition-colors">
-          Add Source
+        <button onClick={() => setModalOpen(true)} className="flex items-center gap-1.5 px-4 py-2 bg-accent text-white rounded-lg text-[13px] font-medium hover:bg-accent-emphasis transition-colors">
+          <Plus size={16} /> Add Source
         </button>
       </div>
 
@@ -130,7 +131,7 @@ export function Features() {
               <h3 className="font-semibold text-accent">{selected.name}</h3>
               <p className="text-xs text-[var(--text-tertiary)]">{selected.dtype} &middot; {selected.column_name}</p>
             </div>
-            <button onClick={() => setSelected(null)} className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)]">&times;</button>
+            <button onClick={() => setSelected(null)} className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"><X size={16} /></button>
           </div>
 
           {selected.stats && Object.keys(selected.stats).length > 0 && (
@@ -153,7 +154,8 @@ export function Features() {
               {doc.expected_range && <p className="text-xs text-[var(--text-tertiary)]">Range: {doc.expected_range}</p>}
             </div>
           ) : (
-            <button onClick={generateDoc} disabled={generating} className="px-3 py-1.5 text-xs bg-accent text-white rounded-lg disabled:opacity-50">
+            <button onClick={generateDoc} disabled={generating} className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-accent text-white rounded-lg disabled:opacity-50">
+              <RefreshCw size={12} className={generating ? 'animate-spin' : ''} />
               {generating ? 'Generating...' : 'Generate Doc'}
             </button>
           )}

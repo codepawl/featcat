@@ -23,7 +23,7 @@ def list_features(source: str | None = None, search: str | None = None, db=Depen
     return [f.model_dump(mode="json") for f in features]
 
 
-@router.get("/{name}")
+@router.get("/{name:path}")
 def get_feature(name: str, db=Depends(get_db)):
     """Get a feature by name."""
     feature = db.get_feature_by_name(name)
@@ -32,7 +32,7 @@ def get_feature(name: str, db=Depends(get_db)):
     return feature.model_dump(mode="json")
 
 
-@router.patch("/{name}")
+@router.patch("/{name:path}")
 def update_feature(name: str, body: FeatureUpdate, db=Depends(get_db)):
     """Update feature metadata (tags, owner, description)."""
     feature = db.get_feature_by_name(name)
@@ -45,7 +45,7 @@ def update_feature(name: str, body: FeatureUpdate, db=Depends(get_db)):
     return {"updated": name}
 
 
-@router.delete("/{name}")
+@router.delete("/{name:path}")
 def delete_feature(name: str, db=Depends(get_db)):
     """Delete a feature."""
     feature = db.get_feature_by_name(name)

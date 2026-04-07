@@ -37,7 +37,7 @@ def doc_stats(db=Depends(get_db)):
     return db.get_doc_stats()
 
 
-@router.get("/{feature_name}")
+@router.get("/{feature_name:path}")
 def get_doc(feature_name: str, db=Depends(get_db)):
     """Get documentation for a specific feature."""
     from ...plugins.autodoc import get_doc as _get_doc

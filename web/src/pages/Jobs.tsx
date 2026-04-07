@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Play, Timer, Loader2 } from 'lucide-react'
 import { api, timeAgo } from '../api'
 import { Badge } from '../components/Badge'
 import { Modal } from '../components/Modal'
@@ -92,7 +93,9 @@ export function Jobs() {
                 <Badge variant={j.enabled ? 'success' : 'warning'}>{j.enabled ? 'Enabled' : 'Disabled'}</Badge>
               </div>
               <p className="text-xs text-[var(--text-secondary)] mb-2">{j.description || 'No description'}</p>
-              <p className="text-xs text-[var(--text-tertiary)] font-mono mb-3">{cronToHuman(j.cron_expression)}</p>
+              <p className="flex items-center gap-1 text-xs text-[var(--text-tertiary)] font-mono mb-3">
+                <Timer size={12} /> {cronToHuman(j.cron_expression)}
+              </p>
               <div className="flex gap-2">
                 <button
                   onClick={() => toggleJob(j.job_name, !j.enabled)}
@@ -102,9 +105,9 @@ export function Jobs() {
                 </button>
                 <button
                   onClick={() => runJob(j.job_name)}
-                  className="px-2.5 py-1 text-xs bg-accent text-white rounded-md"
+                  className="flex items-center gap-1 px-2.5 py-1 text-xs bg-accent text-white rounded-md"
                 >
-                  Run Now
+                  <Play size={12} /> Run Now
                 </button>
                 <button
                   onClick={() => { setScheduleModal(j); setCronInput(j.cron_expression); }}
@@ -187,7 +190,8 @@ export function Jobs() {
       <Modal open={!!scheduleModal} onClose={() => setScheduleModal(null)} title="Edit Schedule" actions={
         <>
           <button onClick={() => setScheduleModal(null)} className="px-4 py-2 text-sm border border-[var(--border-default)] rounded-lg">Cancel</button>
-          <button onClick={saveSchedule} disabled={saving || !cronInput} className="px-4 py-2 text-sm bg-accent text-white rounded-lg disabled:opacity-50">
+          <button onClick={saveSchedule} disabled={saving || !cronInput} className="flex items-center gap-1.5 px-4 py-2 text-sm bg-accent text-white rounded-lg disabled:opacity-50">
+            {saving && <Loader2 size={14} className="animate-spin" />}
             {saving ? 'Saving...' : 'Save'}
           </button>
         </>
