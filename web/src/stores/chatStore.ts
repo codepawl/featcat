@@ -23,7 +23,7 @@ export const chatStore = {
   getMessages: () => messages,
 
   addMessage: (msg: Omit<ChatMessage, 'id' | 'timestamp'>) => {
-    messages = [...messages, { ...msg, id: crypto.randomUUID(), timestamp: Date.now() }]
+    messages = [...messages, { ...msg, id: Math.random().toString(36).slice(2) + Date.now().toString(36), timestamp: Date.now() }]
     notify()
   },
 

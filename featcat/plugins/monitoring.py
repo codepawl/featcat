@@ -196,7 +196,7 @@ class MonitoringPlugin(BasePlugin):
 
         try:
             system = localize_system_prompt(MONITORING_SYSTEM, language)
-            analysis = llm.generate_json(prompt, system=system)
+            analysis = llm.generate_json(prompt, system=system, think=True)
             analyses = analysis.get("analyses", [])
             for a in analyses:
                 fname = a.get("feature", "")

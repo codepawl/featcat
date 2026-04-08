@@ -15,11 +15,11 @@ if TYPE_CHECKING:
 
 
 class OllamaLLM(BaseLLM):
-    """LLM backend using Ollama's HTTP API."""
+    """LLM backend using Ollama's /api/chat endpoint."""
 
     def __init__(
         self,
-        model: str = "lfm2.5-thinking",
+        model: str = "qwen3.5:0.8b",
         base_url: str = "http://localhost:11434",
         timeout: int = 120,
         max_retries: int = 3,
@@ -29,47 +29,56 @@ class OllamaLLM(BaseLLM):
         self.timeout = timeout
         self.max_retries = max_retries
 
+    def _build_messages(self, prompt: str, system: str | None = None) -> list[dict]:
+        """Build chat messages array from prompt and optional system message."""
+        messages: list[dict] = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
+        return messages
+
     def generate(
         self,
         prompt: str,
         system: str | None = None,
         temperature: float = 0.3,
         json_mode: bool = False,
+        think: bool = False,
     ) -> str:
-        """Generate a complete response from Ollama."""
+        """Generate a complete response from Ollama using /api/chat."""
         payload: dict = {
             "model": self.model,
-            "prompt": prompt,
+            "messages": self._build_messages(prompt, system),
             "stream": False,
+            "think": think,
             "options": {"temperature": temperature},
         }
-        if system:
-            payload["system"] = system
         if json_mode:
             payload["format"] = "json"
 
-        data = self._request_with_retry("/api/generate", payload)
-        return strip_thinking_tags(data.get("response", ""))
+        data = self._request_with_retry("/api/chat", payload)
+        content = data.get("message", {}).get("content", "")
+        return strip_thinking_tags(content)
 
     def stream(
         self,
         prompt: str,
         system: str | None = None,
         temperature: float = 0.3,
+        think: bool = False,
     ) -> Iterator[str]:
-        """Stream response chunks from Ollama."""
+        """Stream response chunks from Ollama using /api/chat."""
         payload: dict = {
             "model": self.model,
-            "prompt": prompt,
+            "messages": self._build_messages(prompt, system),
             "stream": True,
+            "think": think,
             "options": {"temperature": temperature},
         }
-        if system:
-            payload["system"] = system
 
         body = json.dumps(payload).encode("utf-8")
         req = Request(
-            f"{self.base_url}/api/generate",
+            f"{self.base_url}/api/chat",
             data=body,
             headers={"Content-Type": "application/json"},
             method="POST",
@@ -80,7 +89,8 @@ class OllamaLLM(BaseLLM):
                 for line in resp:
                     if line:
                         chunk = json.loads(line.decode("utf-8"))
-                        token = chunk.get("response", "")
+                        msg = chunk.get("message", {})
+                        token = msg.get("content", "")
                         if token:
                             yield token
                         if chunk.get("done", False):

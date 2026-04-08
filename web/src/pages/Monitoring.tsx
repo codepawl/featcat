@@ -22,8 +22,6 @@ export function Monitoring() {
 
   useEffect(() => {
     load()
-    const timer = setInterval(load, 60000)
-    return () => clearInterval(timer)
   }, [])
 
   const runCheck = async () => {

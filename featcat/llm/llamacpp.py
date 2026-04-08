@@ -34,6 +34,7 @@ class LlamaCppLLM(BaseLLM):
         system: str | None = None,
         temperature: float = 0.3,
         json_mode: bool = False,
+        think: bool = False,
     ) -> str:
         """Generate a complete response from llama.cpp server."""
         full_prompt = f"{system}\n\n{prompt}" if system else prompt
@@ -53,6 +54,7 @@ class LlamaCppLLM(BaseLLM):
         prompt: str,
         system: str | None = None,
         temperature: float = 0.3,
+        think: bool = False,
     ) -> Iterator[str]:
         """Stream response chunks from llama.cpp server."""
         full_prompt = f"{system}\n\n{prompt}" if system else prompt

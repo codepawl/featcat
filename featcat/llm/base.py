@@ -29,6 +29,7 @@ class BaseLLM(ABC):
         system: str | None = None,
         temperature: float = 0.3,
         json_mode: bool = False,
+        think: bool = False,
     ) -> str:
         """Generate a text response from the LLM."""
 
@@ -38,6 +39,7 @@ class BaseLLM(ABC):
         prompt: str,
         system: str | None = None,
         temperature: float = 0.3,
+        think: bool = False,
     ) -> Iterator[str]:
         """Stream response chunks from the LLM."""
 
@@ -51,6 +53,7 @@ class BaseLLM(ABC):
         system: str | None = None,
         temperature: float = 0.1,
         max_retries: int = 1,
+        think: bool = False,
     ) -> dict:
         """Generate a JSON response, with retry on parse failure.
 
@@ -58,7 +61,7 @@ class BaseLLM(ABC):
         Attempts to extract JSON from the response text. If parsing fails,
         sends a fix-up prompt asking the LLM to correct the output.
         """
-        response = self.generate(prompt, system=system, temperature=temperature, json_mode=True)
+        response = self.generate(prompt, system=system, temperature=temperature, json_mode=True, think=think)
         response = strip_thinking_tags(response)
 
         for attempt in range(max_retries + 1):
@@ -72,7 +75,7 @@ class BaseLLM(ABC):
                     f"Here is what you returned:\n\n{response}\n\n"
                     f"Please return ONLY a valid JSON object, no markdown fences or extra text."
                 )
-                response = self.generate(fix_prompt, system=system, temperature=0.0)
+                response = self.generate(fix_prompt, system=system, temperature=0.0, think=False)
 
         raise ValueError(f"Failed to parse JSON after {max_retries + 1} attempts. Last response: {response[:500]}")
 

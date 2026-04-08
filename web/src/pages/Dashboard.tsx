@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Layers, FileText, AlertTriangle, HardDrive } from 'lucide-react'
+import { Layers, FileText, AlertTriangle, HardDrive, RefreshCw } from 'lucide-react'
 import { api, timeAgo } from '../api'
 import { MetricCard } from '../components/MetricCard'
 import { Badge } from '../components/Badge'
@@ -34,8 +34,6 @@ export function Dashboard() {
 
   useEffect(() => {
     load()
-    const timer = setInterval(load, 30000)
-    return () => clearInterval(timer)
   }, [])
 
   if (error) {
@@ -61,6 +59,10 @@ export function Dashboard() {
     <div>
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-xl font-semibold">Dashboard</h1>
+        <button onClick={load} disabled={loading} className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium border border-[var(--border-default)] rounded-lg bg-[var(--bg-primary)] hover:bg-[var(--bg-secondary)] disabled:opacity-50">
+          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+          Refresh
+        </button>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">

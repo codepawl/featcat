@@ -26,7 +26,7 @@ done
 echo "Ollama is ready."
 
 # 4. Pull LLM model
-MODEL="${LLM_MODEL:-lfm2.5-thinking}"
+MODEL="${LLM_MODEL:-qwen3.5:0.8b}"
 echo "Pulling ${MODEL}..."
 docker exec featcat-ollama ollama pull "${MODEL}"
 

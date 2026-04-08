@@ -34,6 +34,7 @@ class CachedLLM(BaseLLM):
         system: str | None = None,
         temperature: float = 0.3,
         json_mode: bool = False,
+        think: bool = False,
         ttl: int | None = None,
     ) -> str:
         """Generate with cache lookup."""
@@ -41,7 +42,7 @@ class CachedLLM(BaseLLM):
         if cached is not None:
             return cached
 
-        response = self.inner.generate(prompt, system=system, temperature=temperature, json_mode=json_mode)
+        response = self.inner.generate(prompt, system=system, temperature=temperature, json_mode=json_mode, think=think)
         self.cache.put(prompt, response, ttl or self.default_ttl, system=system)
         return response
 
@@ -50,9 +51,10 @@ class CachedLLM(BaseLLM):
         prompt: str,
         system: str | None = None,
         temperature: float = 0.3,
+        think: bool = False,
     ) -> Iterator[str]:
         """Stream is not cached — passes through directly."""
-        yield from self.inner.stream(prompt, system=system, temperature=temperature)
+        yield from self.inner.stream(prompt, system=system, temperature=temperature, think=think)
 
     def health_check(self) -> bool:
         return self.inner.health_check()

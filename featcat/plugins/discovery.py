@@ -58,7 +58,7 @@ class DiscoveryPlugin(BasePlugin):
         system = localize_system_prompt(DISCOVERY_SYSTEM, lang)
 
         try:
-            result = llm.generate_json(prompt, system=system)
+            result = llm.generate_json(prompt, system=system, think=True)
         except Exception as e:
             return PluginResult(status="error", errors=[str(e)])
 

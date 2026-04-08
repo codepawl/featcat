@@ -15,6 +15,15 @@ router = APIRouter()
 
 LLM_TIMEOUT = 180  # 3 minutes max for LLM calls
 
+_THINKING_KEYWORDS = frozenset(
+    ["discover", "analyze", "why", "explain", "compare", "recommend", "suggest", "strategy", "tại sao", "phân tích"]
+)
+
+
+def _needs_thinking(query: str) -> bool:
+    q = query.lower()
+    return any(kw in q for kw in _THINKING_KEYWORDS)
+
 
 class DiscoverRequest(BaseModel):
     use_case: str
@@ -106,7 +115,8 @@ async def stream_ask(query: str, db=Depends(get_db), llm=Depends(get_llm)):
 
         try:
             # Stream runs in sync iterator — wrap each chunk yield in the async generator
-            for token in llm.stream(prompt, system=system):
+            think = _needs_thinking(query)
+            for token in llm.stream(prompt, system=system, think=think):
                 buffer += token
                 full_response += token
 
