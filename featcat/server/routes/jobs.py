@@ -70,6 +70,20 @@ def update_job(name: str, body: JobUpdate, scheduler=Depends(get_scheduler)):
     return {"updated": name}
 
 
+@router.patch("/{name}/toggle")
+def toggle_job(name: str, scheduler=Depends(get_scheduler)):
+    """Toggle a job's enabled/disabled state."""
+    if scheduler is None:
+        raise HTTPException(status_code=503, detail="Scheduler not available")
+    schedules = scheduler.get_schedules()
+    job = next((s for s in schedules if s["job_name"] == name), None)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"Job not found: {name}")
+    new_state = not job["enabled"]
+    scheduler.update_schedule(name, cron=None, enabled=new_state)
+    return {"job_name": name, "enabled": new_state}
+
+
 @router.get("/stats")
 def job_stats(scheduler=Depends(get_scheduler)):
     """Aggregated job stats with sparkline data."""

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import time
 import uuid
@@ -106,8 +107,55 @@ class FeatcatScheduler:
             )
         conn.commit()
 
+        # Sync live APScheduler with updated state
+        if self._apscheduler is not None:
+            from apscheduler.triggers.cron import CronTrigger
+
+            if enabled is False:
+                # Remove job from live scheduler
+                with contextlib.suppress(Exception):
+                    self._apscheduler.remove_job(job_name)
+            elif enabled is True:
+                # Re-add job to live scheduler with current cron
+                row = conn.execute(
+                    "SELECT cron_expression FROM job_schedules WHERE job_name = ?", (job_name,)
+                ).fetchone()
+                if row:
+                    trigger = CronTrigger.from_crontab(row["cron_expression"])
+                    self._apscheduler.add_job(
+                        self.run_job,
+                        trigger=trigger,
+                        args=[job_name],
+                        kwargs={"triggered_by": "scheduler"},
+                        id=job_name,
+                        replace_existing=True,
+                    )
+            elif cron is not None:
+                # Cron changed but enabled state unchanged — reschedule if active
+                with contextlib.suppress(Exception):
+                    self._apscheduler.remove_job(job_name)
+                row = conn.execute("SELECT enabled FROM job_schedules WHERE job_name = ?", (job_name,)).fetchone()
+                if row and row["enabled"]:
+                    trigger = CronTrigger.from_crontab(cron)
+                    self._apscheduler.add_job(
+                        self.run_job,
+                        trigger=trigger,
+                        args=[job_name],
+                        kwargs={"triggered_by": "scheduler"},
+                        id=job_name,
+                        replace_existing=True,
+                    )
+
     async def run_job(self, job_name: str, triggered_by: str = "scheduler") -> dict:
         """Execute a job by name, logging start/finish to job_logs."""
+        # Skip disabled jobs when triggered by scheduler (manual/API runs always execute)
+        if triggered_by == "scheduler":
+            row = self.backend.conn.execute(
+                "SELECT enabled FROM job_schedules WHERE job_name = ?", (job_name,)
+            ).fetchone()
+            if row and not row["enabled"]:
+                return {"job_name": job_name, "status": "skipped", "reason": "Job is disabled"}
+
         log_id = str(uuid.uuid4())
         started_at = _utcnow()
         conn = self.backend.conn
