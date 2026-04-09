@@ -133,15 +133,11 @@ FEATURE CATALOG:
 
 USER QUERY: {query}
 
-Return a JSON object:
-{{
-  "results": [
-    {{"feature": "feature_name", "score": 0.95, "reason": "why this matches"}}
-  ],
-  "interpretation": "how you understood the query",
-  "follow_up": "a suggested follow-up query"
-}}
+Search the catalog above. Return a JSON object with these fields:
+- "results": array of objects, each with "feature" (exact feature name from catalog), "score" (0.0 to 1.0), "reason" (short explanation)
+- "interpretation": how you understood the query
+- "follow_up": a suggested follow-up query or null
 
-Return at most 5 results. Include only features with score >= 0.3. Return ONLY the JSON object."""
+Rules: max 5 results, only features with score >= 0.3, return ONLY valid JSON, no markdown fences."""
 
 # NL_QUERY_SYSTEM_VI was removed — use localize_system_prompt() from utils.lang instead.
