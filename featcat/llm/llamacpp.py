@@ -49,7 +49,7 @@ class LlamaCppLLM(BaseLLM):
             "messages": self._build_messages(prompt, system),
             "temperature": temperature,
             "stream": False,
-            "max_tokens": 1024,
+            "max_tokens": 2048,
         }
 
         body = json.dumps(payload).encode("utf-8")
@@ -86,7 +86,7 @@ class LlamaCppLLM(BaseLLM):
             "messages": self._build_messages(prompt, system),
             "temperature": temperature,
             "stream": True,
-            "max_tokens": 1024,
+            "max_tokens": 2048,
         }
 
         body = json.dumps(payload).encode("utf-8")
