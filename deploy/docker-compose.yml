@@ -13,8 +13,9 @@ services:
       --threads 4
       --ctx-size 2048
       --batch-size 256
-      --flash-attn
+      --flash-attn on
       --no-mmap
+      --reasoning off
     restart: unless-stopped
     deploy:
       resources:

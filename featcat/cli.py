@@ -1391,7 +1391,7 @@ def serve(
         host=host,
         port=port,
         reload=reload,
-        workers=1 if reload else 4,
+        workers=1 if reload else 1,
         factory=True,
     )
 
