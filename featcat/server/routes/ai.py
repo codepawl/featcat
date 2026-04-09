@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -114,9 +115,29 @@ async def stream_ask(query: str, db=Depends(get_db), llm=Depends(get_llm)):
         in_thinking = False
 
         try:
-            # Stream runs in sync iterator — wrap each chunk yield in the async generator
+            # Run sync LLM stream in a background thread to avoid blocking the event loop
             think = _needs_thinking(query)
-            for token in llm.stream(prompt, system=system, think=think):
+            queue: asyncio.Queue = asyncio.Queue()
+            loop = asyncio.get_event_loop()
+
+            def _run_stream():
+                try:
+                    for tok in llm.stream(prompt, system=system, think=think):
+                        asyncio.run_coroutine_threadsafe(queue.put(tok), loop)
+                    asyncio.run_coroutine_threadsafe(queue.put(None), loop)
+                except Exception as exc:
+                    asyncio.run_coroutine_threadsafe(queue.put(exc), loop)
+
+            thread = threading.Thread(target=_run_stream, daemon=True)
+            thread.start()
+
+            while True:
+                item = await queue.get()
+                if item is None:
+                    break
+                if isinstance(item, Exception):
+                    raise item
+                token = item
                 buffer += token
                 full_response += token
 

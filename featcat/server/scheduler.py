@@ -158,15 +158,17 @@ class FeatcatScheduler:
         }
 
     async def _execute(self, job_name: str) -> dict:
-        """Dispatch to the appropriate job handler."""
+        """Dispatch to the appropriate job handler in a threadpool."""
+        from starlette.concurrency import run_in_threadpool
+
         if job_name == "monitor_check":
-            return self._run_monitor_check()
+            return await run_in_threadpool(self._run_monitor_check)
         if job_name == "doc_generate":
-            return self._run_doc_generate()
+            return await run_in_threadpool(self._run_doc_generate)
         if job_name == "source_scan":
-            return self._run_source_scan()
+            return await run_in_threadpool(self._run_source_scan)
         if job_name == "baseline_refresh":
-            return self._run_baseline_refresh()
+            return await run_in_threadpool(self._run_baseline_refresh)
         raise ValueError(f"Unknown job: {job_name}")
 
     def _run_monitor_check(self) -> dict:
