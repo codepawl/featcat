@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Plus, X, RefreshCw, Check } from 'lucide-react'
-import { api, invalidateCache } from '../api'
+import { useParams, useNavigate } from 'react-router-dom'
+import { Plus, RefreshCw, Check, AlertTriangle, Shield } from 'lucide-react'
+import { api, invalidateCache, timeAgo } from '../api'
 import { DataTable } from '../components/DataTable'
 import { Badge } from '../components/Badge'
 import { Tag } from '../components/Tag'
@@ -9,15 +10,15 @@ import { SearchInput } from '../components/SearchInput'
 import { Skeleton } from '../components/Skeleton'
 
 export function Features() {
+  const { name: paramName } = useParams()
+  const navigate = useNavigate()
   const [features, setFeatures] = useState<any[]>([])
   const [sources, setSources] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [filtered, setFiltered] = useState<any[]>([])
   const [sourceFilter, setSourceFilter] = useState('')
   const [selected, setSelected] = useState<any>(null)
-  const [doc, setDoc] = useState<any>(null)
-  const [modalOpen, setModalOpen] = useState(false)
-  const [generating, setGenerating] = useState(false)
+  const [addModalOpen, setAddModalOpen] = useState(false)
 
   const load = () => {
     setLoading(true)
@@ -32,6 +33,15 @@ export function Features() {
   }
 
   useEffect(() => { load() }, [])
+
+  // Auto-open modal from URL param
+  useEffect(() => {
+    if (paramName && features.length > 0) {
+      const decoded = decodeURIComponent(paramName)
+      const feat = features.find((f) => f.name === decoded)
+      if (feat) setSelected(feat)
+    }
+  }, [paramName, features])
 
   const onSearch = useCallback((q: string) => {
     const query = q.toLowerCase()
@@ -50,25 +60,14 @@ export function Features() {
 
   useEffect(() => { onSearch('') }, [sourceFilter, onSearch])
 
-  const selectFeature = async (f: any) => {
+  const selectFeature = (f: any) => {
     setSelected(f)
-    setDoc(null)
-    try {
-      const d = await api.docs.get(f.name)
-      setDoc(d)
-    } catch { /* no doc */ }
+    navigate(`/features/${encodeURIComponent(f.name)}`, { replace: true })
   }
 
-  const generateDoc = async () => {
-    if (!selected) return
-    setGenerating(true)
-    try {
-      await api.docs.generate({ feature_name: selected.name })
-      invalidateCache('/docs')
-      const d = await api.docs.get(selected.name)
-      setDoc(d)
-    } catch { /* ignore */ }
-    setGenerating(false)
+  const closeModal = () => {
+    setSelected(null)
+    navigate('/features', { replace: true })
   }
 
   const handleAddSource = async (form: Record<string, string>) => {
@@ -82,7 +81,7 @@ export function Features() {
       await api.sources.scan(src.name)
       invalidateCache('/features')
       invalidateCache('/sources')
-      setModalOpen(false)
+      setAddModalOpen(false)
       load()
     } catch { /* ignore */ }
   }
@@ -115,7 +114,7 @@ export function Features() {
           <option value="">All Sources</option>
           {sources.map((s: any) => <option key={s.name} value={s.name}>{s.name}</option>)}
         </select>
-        <button onClick={() => setModalOpen(true)} className="flex items-center gap-1.5 px-4 py-2 bg-accent text-white rounded-lg text-[13px] font-medium hover:bg-accent-emphasis transition-colors">
+        <button onClick={() => setAddModalOpen(true)} className="flex items-center gap-1.5 px-4 py-2 bg-accent text-white rounded-lg text-[13px] font-medium hover:bg-accent-emphasis transition-colors">
           <Plus size={16} /> Add Source
         </button>
       </div>
@@ -126,50 +125,173 @@ export function Features() {
         )}
       </div>
 
-      {/* Detail Panel */}
       {selected && (
-        <div className="mt-4 bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-xl p-5 animate-fade-in">
-          <div className="flex justify-between items-start mb-4">
-            <div>
-              <h3 className="font-semibold text-accent">{selected.name}</h3>
-              <p className="text-xs text-[var(--text-tertiary)]">{selected.dtype} &middot; {selected.column_name}</p>
-            </div>
-            <button onClick={() => setSelected(null)} className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"><X size={16} /></button>
-          </div>
-
-          {selected.stats && Object.keys(selected.stats).length > 0 && (
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
-              {['mean', 'std', 'min', 'max', 'null_ratio'].map((k) => (
-                selected.stats[k] != null && (
-                  <div key={k} className="text-center">
-                    <div className="text-xs text-[var(--text-tertiary)] uppercase">{k}</div>
-                    <div className="font-mono text-sm">{typeof selected.stats[k] === 'number' ? selected.stats[k].toFixed(4) : selected.stats[k]}</div>
-                  </div>
-                )
-              ))}
-            </div>
-          )}
-
-          {doc ? (
-            <div className="text-sm space-y-2">
-              <p>{doc.short_description}</p>
-              {doc.long_description && <p className="text-[var(--text-secondary)]">{doc.long_description}</p>}
-              {doc.expected_range && <p className="text-xs text-[var(--text-tertiary)]">Range: {doc.expected_range}</p>}
-            </div>
-          ) : (
-            <button onClick={generateDoc} disabled={generating} className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-accent text-white rounded-lg disabled:opacity-50">
-              <RefreshCw size={12} className={generating ? 'animate-spin' : ''} />
-              {generating ? 'Generating...' : 'Generate Doc'}
-            </button>
-          )}
-        </div>
+        <FeatureDetailModal feature={selected} onClose={closeModal} />
       )}
 
-      {/* Add Source Modal */}
-      <AddSourceModal open={modalOpen} onClose={() => setModalOpen(false)} onSubmit={handleAddSource} />
+      <AddSourceModal open={addModalOpen} onClose={() => setAddModalOpen(false)} onSubmit={handleAddSource} />
     </div>
   )
 }
+
+
+function FeatureDetailModal({ feature, onClose }: { feature: any; onClose: () => void }) {
+  const [doc, setDoc] = useState<any>(null)
+  const [docLoading, setDocLoading] = useState(true)
+  const [generating, setGenerating] = useState(false)
+  const [monitoring, setMonitoring] = useState<any>(null)
+  const [monLoading, setMonLoading] = useState(true)
+
+  useEffect(() => {
+    setDocLoading(true)
+    setMonLoading(true)
+    api.docs.get(feature.name).then(setDoc).catch(() => setDoc(null)).finally(() => setDocLoading(false))
+    api.monitor.check({ feature_name: feature.name }).then(setMonitoring).catch(() => setMonitoring(null)).finally(() => setMonLoading(false))
+  }, [feature.name])
+
+  const generateDoc = async () => {
+    setGenerating(true)
+    try {
+      await api.docs.generate({ feature_name: feature.name })
+      invalidateCache('/docs')
+      const d = await api.docs.get(feature.name)
+      setDoc(d)
+    } catch { /* ignore */ }
+    setGenerating(false)
+  }
+
+  const computeBaseline = async () => {
+    try {
+      await api.monitor.baseline()
+      const m = await api.monitor.check({ feature_name: feature.name })
+      setMonitoring(m)
+    } catch { /* ignore */ }
+  }
+
+  const stats = feature.stats || {}
+  const source = feature.name?.split('.')[0] || ''
+  const statKeys = ['mean', 'std', 'min', 'max', 'null_ratio', 'unique_count']
+  const hasStats = statKeys.some((k) => stats[k] != null)
+
+  return (
+    <Modal open={true} onClose={onClose} title={feature.name} maxWidth="max-w-2xl">
+      {/* Header badges */}
+      <div className="flex items-center gap-2 flex-wrap mb-5">
+        <Badge variant="info">{source}</Badge>
+        {(feature.tags || []).map((t: string, i: number) => <Tag key={i}>{t}</Tag>)}
+      </div>
+
+      {/* Metadata */}
+      <Section title="Metadata">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <MetaItem label="Data Type" value={feature.dtype} mono />
+          <MetaItem label="Column" value={feature.column_name} mono />
+          <MetaItem label="Owner" value={feature.owner || '-'} />
+          {feature.created_at && <MetaItem label="Created" value={timeAgo(feature.created_at)} />}
+          {feature.updated_at && <MetaItem label="Updated" value={timeAgo(feature.updated_at)} />}
+        </div>
+      </Section>
+
+      {/* Statistics */}
+      {hasStats && (
+        <Section title="Statistics">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {statKeys.map((k) =>
+              stats[k] != null && (
+                <div key={k} className="bg-[var(--bg-secondary)] rounded-lg p-2.5 text-center">
+                  <div className="text-[10px] text-[var(--text-tertiary)] uppercase tracking-wide mb-0.5">{k.replace('_', ' ')}</div>
+                  <div className="font-mono text-sm">{typeof stats[k] === 'number' ? stats[k].toFixed(4) : stats[k]}</div>
+                </div>
+              )
+            )}
+          </div>
+        </Section>
+      )}
+
+      {/* Documentation */}
+      <Section title="Documentation">
+        {docLoading ? (
+          <Skeleton className="h-12" />
+        ) : doc ? (
+          <div className="space-y-2 text-sm">
+            <p>{doc.short_description}</p>
+            {doc.long_description && <p className="text-[var(--text-secondary)]">{doc.long_description}</p>}
+            {doc.expected_range && (
+              <p className="text-xs text-[var(--text-tertiary)]">
+                <span className="font-medium">Expected range:</span> {doc.expected_range}
+              </p>
+            )}
+            {doc.potential_issues && (
+              <p className="text-xs text-[var(--text-tertiary)]">
+                <span className="font-medium">Potential issues:</span> {doc.potential_issues}
+              </p>
+            )}
+          </div>
+        ) : (
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-[var(--text-tertiary)]">No documentation yet</span>
+            <button onClick={generateDoc} disabled={generating} className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-accent text-white rounded-lg disabled:opacity-50">
+              <RefreshCw size={12} className={generating ? 'animate-spin' : ''} />
+              {generating ? 'Generating...' : 'Generate'}
+            </button>
+          </div>
+        )}
+      </Section>
+
+      {/* Monitoring */}
+      <Section title="Monitoring" last>
+        {monLoading ? (
+          <Skeleton className="h-10" />
+        ) : monitoring?.results?.length > 0 ? (
+          <div className="flex items-center gap-4 flex-wrap">
+            {(() => {
+              const r = monitoring.results[0]
+              const status = r.status || 'unknown'
+              const variant = status === 'healthy' ? 'success' : status === 'warning' ? 'warning' : status === 'critical' ? 'critical' : 'info'
+              return (
+                <>
+                  <Badge variant={variant} icon={status === 'healthy' ? Shield : AlertTriangle}>
+                    {status}
+                  </Badge>
+                  {r.psi != null && <span className="text-xs text-[var(--text-secondary)]">PSI: {r.psi.toFixed(4)}</span>}
+                  {r.checked_at && <span className="text-xs text-[var(--text-tertiary)]">Checked {timeAgo(r.checked_at)}</span>}
+                </>
+              )
+            })()}
+          </div>
+        ) : (
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-[var(--text-tertiary)]">No baseline</span>
+            <button onClick={computeBaseline} className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-accent text-white rounded-lg">
+              Compute Baseline
+            </button>
+          </div>
+        )}
+      </Section>
+    </Modal>
+  )
+}
+
+
+function Section({ title, children, last }: { title: string; children: React.ReactNode; last?: boolean }) {
+  return (
+    <div className={last ? '' : 'mb-4 pb-4 border-b border-[var(--border-subtle)]'}>
+      <h4 className="text-xs font-semibold uppercase text-[var(--text-tertiary)] tracking-wide mb-2.5">{title}</h4>
+      {children}
+    </div>
+  )
+}
+
+
+function MetaItem({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div>
+      <div className="text-[10px] text-[var(--text-tertiary)] uppercase tracking-wide">{label}</div>
+      <div className={`text-sm ${mono ? 'font-mono' : ''}`}>{value || '-'}</div>
+    </div>
+  )
+}
+
 
 function AddSourceModal({ open, onClose, onSubmit }: { open: boolean; onClose: () => void; onSubmit: (form: Record<string, string>) => void }) {
   const [form, setForm] = useState({ path: '', name: '', description: '', owner: '', tags: '' })

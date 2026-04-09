@@ -13,6 +13,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/features" element={<Features />} />
+          <Route path="/features/:name" element={<Features />} />
           <Route path="/monitoring" element={<Monitoring />} />
           <Route path="/jobs" element={<Jobs />} />
           <Route path="/chat" element={<Chat />} />
