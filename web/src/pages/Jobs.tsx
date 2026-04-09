@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Play, Timer, Loader2 } from 'lucide-react'
-import { api, timeAgo } from '../api'
+import { api, invalidateCache, timeAgo } from '../api'
 import { Badge } from '../components/Badge'
 import { Modal } from '../components/Modal'
 import { Skeleton } from '../components/Skeleton'
@@ -46,6 +46,7 @@ export function Jobs() {
   const runJob = async (name: string) => {
     try {
       await api.jobs.run(name)
+      invalidateCache('/jobs')
       setTimeout(load, 2000)
     } catch { /* ignore */ }
   }
@@ -53,6 +54,7 @@ export function Jobs() {
   const toggleJob = async (name: string, enabled: boolean) => {
     try {
       await api.jobs.update(name, { enabled })
+      invalidateCache('/jobs')
       load()
     } catch { /* ignore */ }
   }
@@ -62,6 +64,7 @@ export function Jobs() {
     setSaving(true)
     try {
       await api.jobs.update(scheduleModal.job_name, { cron_expression: cronInput })
+      invalidateCache('/jobs')
       setScheduleModal(null)
       load()
     } catch { /* ignore */ }
