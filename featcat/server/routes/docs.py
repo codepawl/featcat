@@ -23,7 +23,7 @@ class DocGenerateRequest(BaseModel):
 async def generate_docs(body: DocGenerateRequest, db=Depends(get_db), llm=Depends(get_llm)):
     """Generate AI documentation for features."""
     if llm is None:
-        raise HTTPException(status_code=503, detail="LLM not available. Is Ollama running?")
+        raise HTTPException(status_code=503, detail="LLM not available. Is LLM server running?")
 
     from ...plugins.autodoc import AutodocPlugin
 

@@ -7,7 +7,7 @@ from .llamacpp import LlamaCppLLM as LlamaCppLLM
 from .ollama import OllamaLLM as OllamaLLM
 
 
-def create_llm(backend: str = "ollama", **kwargs) -> BaseLLM:
+def create_llm(backend: str = "llamacpp", **kwargs) -> BaseLLM:
     """Factory to create the appropriate LLM backend."""
     if backend == "ollama":
         return OllamaLLM(**kwargs)

@@ -26,6 +26,7 @@ class MockAutodocLLM(BaseLLM):
         system: str | None = None,
         temperature: float = 0.3,
         json_mode: bool = False,
+        think: bool = False,
     ) -> str:
         if "batch" in prompt.lower() or "following features" in prompt.lower():
             return json.dumps(
@@ -58,7 +59,13 @@ class MockAutodocLLM(BaseLLM):
             }
         )
 
-    def stream(self, prompt: str, system: str | None = None, temperature: float = 0.3) -> Iterator[str]:
+    def stream(
+        self,
+        prompt: str,
+        system: str | None = None,
+        temperature: float = 0.3,
+        think: bool = False,
+    ) -> Iterator[str]:
         yield self.generate(prompt, system, temperature)
 
     def health_check(self) -> bool:

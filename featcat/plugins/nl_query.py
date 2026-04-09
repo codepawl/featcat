@@ -80,7 +80,7 @@ class NLQueryPlugin(BasePlugin):
         if not query:
             return PluginResult(status="error", errors=["query is required"])
 
-        max_features = kwargs.get("max_features", 100)
+        max_features = kwargs.get("max_features", 10)
         fallback_only = kwargs.get("fallback_only", False)
 
         # Always compute fuzzy results as baseline

@@ -54,6 +54,9 @@ featcat.yaml
 # Superpowers brainstorm sessions
 .superpowers/
 
+# GGUF models
+deploy/models/*.gguf
+
 # Web frontend
 web/node_modules/
 web/dist/

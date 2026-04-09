@@ -46,11 +46,11 @@ class Settings(BaseSettings):
     model_config = {"env_prefix": "FEATCAT_"}
 
     # LLM
-    llm_backend: str = "ollama"  # "ollama" | "llamacpp"
-    llm_model: str = "qwen3.5:0.8b"
+    llm_backend: str = "llamacpp"  # "ollama" | "llamacpp"
+    llm_model: str = "qwen3.5-0.8b"
     ollama_url: str = "http://localhost:11434"
     llamacpp_url: str = "http://localhost:8080"
-    llm_timeout: int = 120  # seconds
+    llm_timeout: int = 300  # seconds
     llm_max_retries: int = 3
 
     # Catalog

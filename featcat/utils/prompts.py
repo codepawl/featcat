@@ -142,6 +142,6 @@ Return a JSON object:
   "follow_up": "a suggested follow-up query"
 }}
 
-Include only features with score >= 0.3. Return ONLY the JSON object."""
+Return at most 5 results. Include only features with score >= 0.3. Return ONLY the JSON object."""
 
 # NL_QUERY_SYSTEM_VI was removed — use localize_system_prompt() from utils.lang instead.

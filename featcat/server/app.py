@@ -31,7 +31,7 @@ async def lifespan(app: FastAPI):
     if STATIC_DIR.is_dir():
         logger.info("Static contents: %s", [p.name for p in STATIC_DIR.iterdir()])
 
-    # Try to create LLM (may fail if Ollama not running)
+    # Try to create LLM (may fail if server not running)
     try:
         from ..llm import create_llm
 
@@ -40,7 +40,6 @@ async def lifespan(app: FastAPI):
             model=settings.llm_model,
             base_url=settings.ollama_url if settings.llm_backend == "ollama" else settings.llamacpp_url,
             timeout=settings.llm_timeout,
-            max_retries=settings.llm_max_retries,
         )
         app.state.llm = llm
     except Exception:

@@ -1,23 +1,25 @@
 services:
-  ollama:
-    image: ollama/ollama:latest
-    container_name: featcat-ollama
-    environment:
-      HTTP_PROXY: "${HTTP_PROXY:-}"
-      HTTPS_PROXY: "${HTTPS_PROXY:-}"
-      http_proxy: "${HTTP_PROXY:-}"
-      https_proxy: "${HTTPS_PROXY:-}"
-      NO_PROXY: "localhost,127.0.0.1,featcat,featcat-server"
-      no_proxy: "localhost,127.0.0.1,featcat,featcat-server"
+  llm:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    container_name: featcat-llm
     volumes:
-      - ollama_data:/root/.ollama
+      - ./models:/models
     ports:
-      - "11434:11434"
+      - "8080:8080"
+    command: >
+      --model /models/Qwen3.5-0.8B-Q4_K_M.gguf
+      --host 0.0.0.0
+      --port 8080
+      --threads 4
+      --ctx-size 2048
+      --batch-size 256
+      --flash-attn
+      --no-mmap
     restart: unless-stopped
     deploy:
       resources:
         limits:
-          memory: 4G
+          memory: 2G
 
   featcat:
     build:
@@ -31,16 +33,17 @@ services:
       - "${FEATCAT_PORT:-8000}:8000"
     environment:
       - FEATCAT_CATALOG_DB_PATH=/data/catalog.db
-      - FEATCAT_OLLAMA_URL=http://ollama:11434
-      - FEATCAT_LLM_MODEL=${LLM_MODEL:-qwen3.5:0.8b}
+      - FEATCAT_LLM_BACKEND=llamacpp
+      - FEATCAT_LLAMACPP_URL=http://llm:8080
+      - FEATCAT_LLM_MODEL=${LLM_MODEL:-qwen3.5-0.8b}
       - FEATCAT_SERVER_AUTH_TOKEN=${SERVER_AUTH:-}
       - HTTP_PROXY=${HTTP_PROXY:-}
       - HTTPS_PROXY=${HTTPS_PROXY:-}
-      - NO_PROXY=localhost,127.0.0.1,ollama,featcat-ollama
+      - NO_PROXY=localhost,127.0.0.1,llm,featcat-llm
+      - no_proxy=localhost,127.0.0.1,llm,featcat-llm
     depends_on:
-      - ollama
+      - llm
     restart: unless-stopped
 
 volumes:
-  ollama_data:
   featcat_data:

@@ -37,7 +37,7 @@ class AskRequest(BaseModel):
 async def discover(body: DiscoverRequest, db=Depends(get_db), llm=Depends(get_llm), settings=Depends(get_settings)):
     """Feature discovery for a use case."""
     if llm is None:
-        raise HTTPException(status_code=503, detail="LLM not available. Is Ollama running?")
+        raise HTTPException(status_code=503, detail="LLM not available. Is LLM server running?")
 
     from ...plugins.discovery import DiscoveryPlugin
 

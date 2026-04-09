@@ -30,12 +30,19 @@ class MockLLM(BaseLLM):
         system: str | None = None,
         temperature: float = 0.3,
         json_mode: bool = False,
+        think: bool = False,
     ) -> str:
         idx = min(self._call_count, len(self._responses) - 1)
         self._call_count += 1
         return self._responses[idx]
 
-    def stream(self, prompt: str, system: str | None = None, temperature: float = 0.3) -> Iterator[str]:
+    def stream(
+        self,
+        prompt: str,
+        system: str | None = None,
+        temperature: float = 0.3,
+        think: bool = False,
+    ) -> Iterator[str]:
         response = self.generate(prompt, system, temperature)
         for word in response.split():
             yield word + " "
