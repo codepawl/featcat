@@ -30,6 +30,7 @@ export function Jobs() {
   const [cronInput, setCronInput] = useState('')
   const [saving, setSaving] = useState(false)
   const [page, setPage] = useState(0)
+  const [runningJob, setRunningJob] = useState<string | null>(null)
 
   const load = () => {
     setLoading(true)
@@ -44,11 +45,16 @@ export function Jobs() {
   useEffect(() => { load() }, [])
 
   const runJob = async (name: string) => {
+    if (runningJob) return
+    if (!window.confirm(`Run "${name}" now? This may take 30-60 seconds.`)) return
+    setRunningJob(name)
     try {
       await api.jobs.run(name)
       invalidateCache('/jobs')
       setTimeout(load, 2000)
-    } catch { /* ignore */ }
+    } catch { /* ignore */ } finally {
+      setTimeout(() => setRunningJob(null), 2000)
+    }
   }
 
   const toggleJob = async (name: string, enabled: boolean) => {
@@ -108,9 +114,10 @@ export function Jobs() {
                 </button>
                 <button
                   onClick={() => runJob(j.job_name)}
-                  className="flex items-center gap-1 px-2.5 py-1 text-xs bg-accent text-white rounded-md"
+                  disabled={runningJob === j.job_name}
+                  className="flex items-center gap-1 px-2.5 py-1 text-xs bg-accent text-white rounded-md disabled:opacity-50"
                 >
-                  <Play size={12} /> Run Now
+                  {runningJob === j.job_name ? <><Loader2 size={12} className="animate-spin" /> Running...</> : <><Play size={12} /> Run Now</>}
                 </button>
                 <button
                   onClick={() => { setScheduleModal(j); setCronInput(j.cron_expression); }}

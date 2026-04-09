@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Plus, RefreshCw, Check, AlertTriangle, Shield } from 'lucide-react'
+import { Plus, RefreshCw, Check, AlertTriangle, Shield, FileText } from 'lucide-react'
 import { api, invalidateCache, timeAgo } from '../api'
 import { DataTable } from '../components/DataTable'
 import { Badge } from '../components/Badge'
@@ -19,6 +19,7 @@ export function Features() {
   const [sourceFilter, setSourceFilter] = useState('')
   const [selected, setSelected] = useState<any>(null)
   const [addModalOpen, setAddModalOpen] = useState(false)
+  const [genProgress, setGenProgress] = useState<string | null>(null)
 
   const load = () => {
     setLoading(true)
@@ -70,6 +71,22 @@ export function Features() {
     navigate('/features', { replace: true })
   }
 
+  const undocCount = features.filter((f) => !f.has_doc).length
+
+  const generateAllDocs = async () => {
+    if (genProgress) return
+    if (!window.confirm(`Generate docs for ${undocCount} undocumented features? This may take 1-2 minutes.`)) return
+    setGenProgress('Generating...')
+    try {
+      await api.docs.generate({})
+      invalidateCache('/features')
+      invalidateCache('/docs')
+      load()
+    } catch { /* ignore */ } finally {
+      setGenProgress(null)
+    }
+  }
+
   const handleAddSource = async (form: Record<string, string>) => {
     try {
       const payload: any = { path: form.path }
@@ -114,6 +131,15 @@ export function Features() {
           <option value="">All Sources</option>
           {sources.map((s: any) => <option key={s.name} value={s.name}>{s.name}</option>)}
         </select>
+        {undocCount > 0 && (
+          <button
+            onClick={generateAllDocs}
+            disabled={!!genProgress}
+            className="flex items-center gap-1.5 px-4 py-2 border border-[var(--border-default)] rounded-lg text-[13px] font-medium hover:bg-[var(--bg-secondary)] disabled:opacity-50 transition-colors"
+          >
+            {genProgress ? <><RefreshCw size={14} className="animate-spin" /> {genProgress}</> : <><FileText size={14} /> Generate Docs ({undocCount} remaining)</>}
+          </button>
+        )}
         <button onClick={() => setAddModalOpen(true)} className="flex items-center gap-1.5 px-4 py-2 bg-accent text-white rounded-lg text-[13px] font-medium hover:bg-accent-emphasis transition-colors">
           <Plus size={16} /> Add Source
         </button>
