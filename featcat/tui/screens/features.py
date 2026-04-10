@@ -43,11 +43,9 @@ class FeaturesScreen(Screen):
 
     def _load_features(self) -> None:
         try:
-            from ...catalog.db import CatalogDB
-            from ...config import load_settings
+            from ...catalog.factory import get_backend
 
-            settings = load_settings()
-            db = CatalogDB(settings.catalog_db_path)
+            db = get_backend()
             self._features = db.list_features()
             db.close()
 
@@ -72,12 +70,10 @@ class FeaturesScreen(Screen):
             # Try to load doc
             doc = None
             try:
-                from ...catalog.db import CatalogDB
-                from ...config import load_settings
+                from ...catalog.factory import get_backend
                 from ...plugins.autodoc import get_doc
 
-                settings = load_settings()
-                db = CatalogDB(settings.catalog_db_path)
+                db = get_backend()
                 doc = get_doc(db, feature.name)
                 db.close()
             except Exception:

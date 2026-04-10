@@ -23,11 +23,24 @@ class CountingLLM(BaseLLM):
         self.call_count = 0
         self._response = response
 
-    def generate(self, prompt: str, system: str | None = None, temperature: float = 0.3) -> str:
+    def generate(
+        self,
+        prompt: str,
+        system: str | None = None,
+        temperature: float = 0.3,
+        json_mode: bool = False,
+        think: bool = False,
+    ) -> str:
         self.call_count += 1
         return self._response
 
-    def stream(self, prompt: str, system: str | None = None, temperature: float = 0.3) -> Iterator[str]:
+    def stream(
+        self,
+        prompt: str,
+        system: str | None = None,
+        temperature: float = 0.3,
+        think: bool = False,
+    ) -> Iterator[str]:
         yield self._response
 
     def health_check(self) -> bool:

@@ -20,7 +20,14 @@ if TYPE_CHECKING:
 class MockAutodocLLM(BaseLLM):
     """Mock LLM that returns autodoc responses."""
 
-    def generate(self, prompt: str, system: str | None = None, temperature: float = 0.3) -> str:
+    def generate(
+        self,
+        prompt: str,
+        system: str | None = None,
+        temperature: float = 0.3,
+        json_mode: bool = False,
+        think: bool = False,
+    ) -> str:
         if "batch" in prompt.lower() or "following features" in prompt.lower():
             return json.dumps(
                 [
@@ -52,7 +59,13 @@ class MockAutodocLLM(BaseLLM):
             }
         )
 
-    def stream(self, prompt: str, system: str | None = None, temperature: float = 0.3) -> Iterator[str]:
+    def stream(
+        self,
+        prompt: str,
+        system: str | None = None,
+        temperature: float = 0.3,
+        think: bool = False,
+    ) -> Iterator[str]:
         yield self.generate(prompt, system, temperature)
 
     def health_check(self) -> bool:

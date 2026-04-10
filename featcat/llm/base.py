@@ -28,6 +28,8 @@ class BaseLLM(ABC):
         prompt: str,
         system: str | None = None,
         temperature: float = 0.3,
+        json_mode: bool = False,
+        think: bool = False,
     ) -> str:
         """Generate a text response from the LLM."""
 
@@ -37,6 +39,7 @@ class BaseLLM(ABC):
         prompt: str,
         system: str | None = None,
         temperature: float = 0.3,
+        think: bool = False,
     ) -> Iterator[str]:
         """Stream response chunks from the LLM."""
 
@@ -49,14 +52,17 @@ class BaseLLM(ABC):
         prompt: str,
         system: str | None = None,
         temperature: float = 0.1,
-        max_retries: int = 2,
+        max_retries: int = 1,
+        think: bool = False,
     ) -> dict:
         """Generate a JSON response, with retry on parse failure.
 
+        Uses json_mode when available for more reliable output.
         Attempts to extract JSON from the response text. If parsing fails,
         sends a fix-up prompt asking the LLM to correct the output.
         """
-        response = self.generate(prompt, system=system, temperature=temperature)
+        response = self.generate(prompt, system=system, temperature=temperature, json_mode=True, think=think)
+        response = strip_thinking_tags(response)
 
         for attempt in range(max_retries + 1):
             parsed = _extract_json(response)
@@ -69,9 +75,14 @@ class BaseLLM(ABC):
                     f"Here is what you returned:\n\n{response}\n\n"
                     f"Please return ONLY a valid JSON object, no markdown fences or extra text."
                 )
-                response = self.generate(fix_prompt, system=system, temperature=0.0)
+                response = self.generate(fix_prompt, system=system, temperature=0.0, think=False)
 
         raise ValueError(f"Failed to parse JSON after {max_retries + 1} attempts. Last response: {response[:500]}")
+
+
+def strip_thinking_tags(text: str) -> str:
+    """Strip <think>...</think> reasoning blocks from LLM response."""
+    return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
 
 
 def _extract_json(text: str) -> dict | None:
@@ -91,19 +102,20 @@ def _extract_json(text: str) -> dict | None:
         except json.JSONDecodeError:
             pass
 
-    # Try finding first { ... } block
-    brace_start = text.find("{")
-    if brace_start != -1:
-        depth = 0
-        for i in range(brace_start, len(text)):
-            if text[i] == "{":
-                depth += 1
-            elif text[i] == "}":
-                depth -= 1
-                if depth == 0:
-                    try:
-                        return json.loads(text[brace_start : i + 1])
-                    except json.JSONDecodeError:
-                        break
+    # Try finding first { ... } or [ ... ] block
+    for open_char, close_char in [("{", "}"), ("[", "]")]:
+        start = text.find(open_char)
+        if start != -1:
+            depth = 0
+            for i in range(start, len(text)):
+                if text[i] == open_char:
+                    depth += 1
+                elif text[i] == close_char:
+                    depth -= 1
+                    if depth == 0:
+                        try:
+                            return json.loads(text[start : i + 1])
+                        except json.JSONDecodeError:
+                            break
 
     return None

@@ -28,7 +28,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - run: uv pip install --system -e ".[dev,tui]"
+      - run: uv pip install --system -e ".[dev,tui,s3,server]"
       - run: pytest --cov=featcat --cov-report=xml --cov-report=term-missing
 
   build:
@@ -66,12 +66,24 @@ jobs:
     needs: publish-testpypi
     runs-on: ubuntu-latest
     steps:
-      - run: sleep 30
       - uses: astral-sh/setup-uv@v7
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - run: uv pip install --system --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ featcat
+      - name: Install from TestPyPI (with retry)
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          for i in 1 2 3; do
+            echo "Attempt $i: installing featcat==${TAG} from TestPyPI..."
+            sleep 30
+            if uv pip install --system --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ --index-strategy unsafe-best-match "featcat==${TAG}" 2>&1; then
+              echo "Success!"
+              exit 0
+            fi
+            echo "Not available yet, retrying..."
+          done
+          echo "Failed after 3 attempts"
+          exit 1
       - run: featcat --help
       - name: Verify version matches tag
         run: |

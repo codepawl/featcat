@@ -5,6 +5,59 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+### Changed
+
+### Fixed
+
+## [0.2.4] - 2026-04-06
+
+### Fixed
+
+- **CLI remote mode**: `ask`, `discover`, `doc generate`, `monitor check`, and `monitor baseline` now call server API endpoints when `FEATCAT_SERVER_URL` is set, instead of trying to connect to local Ollama
+- **RemoteBackend**: Added `ai_ask`, `ai_discover`, `doc_generate`, `monitor_check`, `monitor_baseline` methods for server-side operations
+
+## [0.2.3] - 2026-04-06
+
+### Fixed
+
+- **Discovery plugin**: Handle LLM returning feature names as strings instead of dicts
+- **Publish workflow**: Pin version + use `--index-strategy unsafe-best-match` for TestPyPI verification
+
+## [0.2.1] - 2026-04-06
+
+### Fixed
+
+- **CLI remote mode**: `doctor` command now checks server connectivity when `FEATCAT_SERVER_URL` is set instead of only checking local SQLite
+- **Job CLI remote mode**: All `featcat job` commands (list, logs, run, enable, disable, schedule) now call the server API in remote mode instead of requiring local SQLite access
+
+## [0.2.0] - 2026-04-06
+
+### Added
+
+- **CatalogBackend Interface**: Abstract interface for local/remote catalog backends with factory pattern
+- **`featcat add` Command**: One-step source registration + scan + auto-doc shortcut
+- **Config Management**: YAML config file support (`featcat.yaml`, `~/.config/featcat/config.yaml`) with `featcat config show/set/get/reset/path` commands and layered priority (env > project > user > defaults)
+- **Server Mode**: FastAPI server (`featcat serve`) with REST API for all catalog operations, RemoteBackend HTTP client, optional auth token, CORS support
+- **Vietnamese Support**: Generalized bilingual support across all plugins via `localize_system_prompt()`, language detection in `utils/lang.py`
+- **LFM 2.5 Optimizations**: JSON mode for Ollama, per-task LLM config (model/temperature), reduced prompt lengths, improved JSON extraction with array support
+- **Job Scheduler**: APScheduler-based internal scheduler with 4 default jobs (monitor_check, doc_generate, source_scan, baseline_refresh), execution logging, retention policy, sparkline stats
+- **Job API**: `/api/jobs` endpoints for listing, running, updating, and monitoring scheduled jobs
+- **Job CLI**: `featcat job list/logs/run/enable/disable/schedule` commands
+- **Web UI Dashboard**: 5-page vanilla HTML/JS/CSS dashboard served by FastAPI alongside the API
+  - Dashboard: metric cards, drift alerts, job activity, sparkline visualization
+  - Feature Browser: search, filter, sort, pagination, detail panel, add source modal
+  - Monitoring: severity summary, drift table, Chart.js trend chart, baseline refresh, report export
+  - Jobs: schedule cards with toggle/edit, execution history, stats chart
+  - AI Chat: SSE streaming, shortcut buttons, discovery integration
+- **Dark Mode**: CSS variables with `prefers-color-scheme` media query across all Web UI pages
+- **Responsive Design**: Desktop, tablet, and mobile breakpoints for Web UI
+- **SSE Streaming**: Server-Sent Events endpoint for real-time AI chat responses
+- **LLM Benchmark Script**: `scripts/benchmark_llm.py` for measuring latency and JSON parse success rate
+
 ## [0.1.0] - 2026-04-03
 
 ### Added
@@ -22,4 +75,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Configuration**: Pydantic settings loaded from `FEATCAT_*` environment variables
 - **Documentation**: README, setup guide, user guide, and admin guide (Vietnamese with English technical terms)
 
+[Unreleased]: https://github.com/codepawl/featcat/compare/v0.2.4...HEAD
+[0.2.4]: https://github.com/codepawl/featcat/compare/v0.2.3...v0.2.4
+[0.2.3]: https://github.com/codepawl/featcat/compare/v0.2.1...v0.2.3
+[0.2.1]: https://github.com/codepawl/featcat/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/codepawl/featcat/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/codepawl/featcat/releases/tag/v0.1.0

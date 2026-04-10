@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from ..utils.catalog_context import get_feature_detail
+from ..utils.lang import localize_system_prompt
 from ..utils.prompts import MONITORING_ANALYSIS_PROMPT, MONITORING_SYSTEM
 from ..utils.statistics import (
     check_null_spike,
@@ -42,6 +43,7 @@ class MonitoringPlugin(BasePlugin):
         **kwargs: Any,
     ) -> PluginResult:
         action: str = kwargs.get("action", "check")
+        language: str = kwargs.get("language", "en")
 
         if action == "baseline":
             return self._compute_baseline(catalog_db, kwargs.get("feature_name"))
@@ -52,6 +54,7 @@ class MonitoringPlugin(BasePlugin):
                 feature_name=kwargs.get("feature_name"),
                 refresh_baseline=kwargs.get("refresh_baseline", False),
                 use_llm=kwargs.get("use_llm", False),
+                language=language,
             )
         else:
             return PluginResult(status="error", errors=[f"Unknown action: {action}"])
@@ -82,6 +85,7 @@ class MonitoringPlugin(BasePlugin):
         feature_name: str | None = None,
         refresh_baseline: bool = False,
         use_llm: bool = False,
+        language: str = "en",
     ) -> PluginResult:
         if feature_name:
             features = [db.get_feature_by_name(feature_name)]
@@ -95,25 +99,36 @@ class MonitoringPlugin(BasePlugin):
         critical = 0
 
         for f in features:
-            baseline = db.get_baseline(f.id)
-            if baseline is None:
-                continue
+            try:
+                baseline = db.get_baseline(f.id)
+                if baseline is None:
+                    continue
 
-            result = self._check_feature(f, baseline)
-            details.append(result)
+                result = self._check_feature(f, baseline)
+                details.append(result)
 
-            severity = result["severity"]
-            if severity == "healthy":
-                healthy += 1
-            elif severity == "warning":
-                warnings += 1
-            else:
+                severity = result["severity"]
+                if severity == "healthy":
+                    healthy += 1
+                elif severity == "warning":
+                    warnings += 1
+                else:
+                    critical += 1
+            except Exception as e:
+                details.append(
+                    {
+                        "feature": f.name,
+                        "severity": "error",
+                        "psi": None,
+                        "issues": [{"issue": "check_failed", "message": str(e)}],
+                    }
+                )
                 critical += 1
 
         issues = [d for d in details if d["severity"] != "healthy"]
         if use_llm and issues:
             with contextlib.suppress(Exception):
-                self._add_llm_analysis(db, llm, issues)
+                self._add_llm_analysis(db, llm, issues, language=language)
 
         if refresh_baseline:
             self._compute_baseline(db)
@@ -131,7 +146,15 @@ class MonitoringPlugin(BasePlugin):
         return PluginResult(status="success", data=report)
 
     def _check_feature(self, feature: Feature, baseline: dict) -> dict:
-        current = feature.stats
+        current = feature.stats or {}
+        if not current:
+            return {
+                "feature": feature.name,
+                "severity": "healthy",
+                "psi": None,
+                "issues": [],
+            }
+
         issues: list[dict] = []
 
         psi = compute_psi(baseline, current)
@@ -162,7 +185,7 @@ class MonitoringPlugin(BasePlugin):
 
         return result
 
-    def _add_llm_analysis(self, db: CatalogBackend, llm: BaseLLM, issues: list[dict]) -> None:
+    def _add_llm_analysis(self, db: CatalogBackend, llm: BaseLLM, issues: list[dict], language: str = "en") -> None:
         drift_report = json.dumps(issues, indent=2)
         feature_context = "\n\n".join(get_feature_detail(db, issue["feature"]) for issue in issues)
 
@@ -172,7 +195,8 @@ class MonitoringPlugin(BasePlugin):
         )
 
         try:
-            analysis = llm.generate_json(prompt, system=MONITORING_SYSTEM)
+            system = localize_system_prompt(MONITORING_SYSTEM, language)
+            analysis = llm.generate_json(prompt, system=system, think=True)
             analyses = analysis.get("analyses", [])
             for a in analyses:
                 fname = a.get("feature", "")

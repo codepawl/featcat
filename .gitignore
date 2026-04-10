@@ -31,10 +31,15 @@ coverage.xml
 
 # Project runtime
 catalog.db
+*.db-journal
 docs/features.md
 docs/monitoring_report.md
 .env
 .env.local
+featcat.yaml
+
+# Config
+.config/featcat/
 
 # Parquet fixtures (keep test ones)
 *.parquet
@@ -45,3 +50,14 @@ docs/monitoring_report.md
 
 # ruff
 .ruff_cache/
+
+# Superpowers brainstorm sessions
+.superpowers/
+
+# GGUF models
+deploy/models/*.gguf
+
+# Web frontend
+web/node_modules/
+web/dist/
+featcat/server/static/

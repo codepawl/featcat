@@ -52,7 +52,7 @@ featcat feature info device_perf.cpu_usage
 
 # 5. (Tuỳ chọn) Bật AI features — cần Ollama
 ollama serve &
-ollama pull qwen2.5:7b
+ollama pull lfm2.5-thinking
 featcat discover "churn prediction cho khách hàng"
 featcat ask "features liên quan đến behavior người dùng"
 ```

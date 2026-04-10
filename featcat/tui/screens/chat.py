@@ -54,12 +54,12 @@ class ChatScreen(Screen):
         messages = self.query_one("#chat-messages", ChatMessages)
 
         try:
-            from ...catalog.db import CatalogDB
+            from ...catalog.factory import get_backend
             from ...config import load_settings
             from ...llm.base import LLMConnectionError
 
             settings = load_settings()
-            db = CatalogDB(settings.catalog_db_path)
+            db = get_backend()
 
             # Route commands
             if query.startswith("/discover "):

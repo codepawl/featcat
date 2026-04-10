@@ -51,10 +51,10 @@ curl -fsSL https://ollama.ai/install.sh | sh
 ollama serve
 
 # Pull model (cửa sổ terminal khác)
-ollama pull qwen2.5:7b
+ollama pull lfm2.5-thinking
 ```
 
-> **Tip**: Model `qwen2.5:7b` chạy tốt trên máy 8GB RAM. Nếu máy yếu hơn, thử `qwen2.5:3b`.
+> **Tip**: Model `lfm2.5-thinking` chạy tốt trên máy 8GB RAM.
 
 ### Tự động khởi động Ollama (systemd)
 
@@ -118,7 +118,7 @@ featcat đọc cấu hình từ environment variables (prefix `FEATCAT_`):
 | Biến | Mặc định | Mô tả |
 |------|----------|-------|
 | `FEATCAT_LLM_BACKEND` | `ollama` | Backend LLM: `ollama` hoặc `llamacpp` |
-| `FEATCAT_LLM_MODEL` | `qwen2.5:7b` | Model name |
+| `FEATCAT_LLM_MODEL` | `lfm2.5-thinking` | Model name |
 | `FEATCAT_OLLAMA_URL` | `http://localhost:11434` | Ollama server URL |
 | `FEATCAT_CATALOG_DB_PATH` | `catalog.db` | Đường dẫn database |
 | `FEATCAT_MAX_CONTEXT_FEATURES` | `100` | Số features tối đa gửi cho LLM |
@@ -130,7 +130,7 @@ featcat đọc cấu hình từ environment variables (prefix `FEATCAT_`):
 
 Ví dụ file `.env`:
 ```bash
-FEATCAT_LLM_MODEL=qwen2.5:7b
+FEATCAT_LLM_MODEL=lfm2.5-thinking
 FEATCAT_S3_ENDPOINT_URL=http://minio.internal:9000
 FEATCAT_S3_ACCESS_KEY=minioadmin
 FEATCAT_S3_SECRET_KEY=minioadmin

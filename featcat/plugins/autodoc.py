@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
-from ..utils.prompts import AUTODOC_PROMPT_BATCH, AUTODOC_PROMPT_SINGLE, AUTODOC_SYSTEM
+from ..utils.lang import localize_system_prompt
+from ..utils.prompts import AUTODOC_PROMPT_SINGLE, AUTODOC_SYSTEM
 from .base import BasePlugin, PluginResult
 
 if TYPE_CHECKING:
     from ..catalog.backend import CatalogBackend
     from ..catalog.models import Feature
     from ..llm.base import BaseLLM
+
+logger = logging.getLogger(__name__)
 
 
 class AutodocPlugin(BasePlugin):
@@ -31,19 +35,87 @@ class AutodocPlugin(BasePlugin):
         **kwargs: Any,
     ) -> PluginResult:
         feature_name: str | None = kwargs.get("feature_name")
-        batch_size: int = kwargs.get("batch_size", 10)
         progress_callback = kwargs.get("progress_callback")
+        language: str = kwargs.get("language", "en")
+        regenerate_all: bool = kwargs.get("regenerate_all", False)
+        system = localize_system_prompt(AUTODOC_SYSTEM, language)
 
         if feature_name:
-            return self._document_single(catalog_db, llm, feature_name)
+            return self._document_single(catalog_db, llm, feature_name, system)
         else:
-            return self._document_all(catalog_db, llm, batch_size, progress_callback)
+            return self._document_all(catalog_db, llm, progress_callback, system, regenerate_all)
 
-    def _document_single(self, db: CatalogBackend, llm: BaseLLM, feature_name: str) -> PluginResult:
+    def _document_single(
+        self,
+        db: CatalogBackend,
+        llm: BaseLLM,
+        feature_name: str,
+        system: str = AUTODOC_SYSTEM,
+    ) -> PluginResult:
         feature = db.get_feature_by_name(feature_name)
         if feature is None:
             return PluginResult(status="error", errors=[f"Feature not found: {feature_name}"])
 
+        doc = self._generate_one(db, llm, feature, system)
+        if doc is None:
+            return PluginResult(status="error", errors=[f"Failed to generate doc for: {feature_name}"])
+
+        return PluginResult(status="success", data={"documented": 1, "features": {feature.name: doc}})
+
+    def _document_all(
+        self,
+        db: CatalogBackend,
+        llm: BaseLLM,
+        progress_callback: Any,
+        system: str = AUTODOC_SYSTEM,
+        regenerate_all: bool = False,
+    ) -> PluginResult:
+        if regenerate_all:
+            to_process = db.list_features()
+            logger.info("Regenerate all: processing %d features", len(to_process))
+        else:
+            to_process = db.list_undocumented_features()
+            logger.info("Found %d undocumented features", len(to_process))
+
+        if not to_process:
+            return PluginResult(status="success", data={"documented": 0, "message": "All features are documented"})
+
+        total = len(to_process)
+        documented = 0
+        all_docs: dict[str, dict] = {}
+        errors: list[str] = []
+
+        for i, feature in enumerate(to_process):
+            try:
+                doc = self._generate_one(db, llm, feature, system)
+                if doc:
+                    all_docs[feature.name] = doc
+                    documented += 1
+                    logger.info("Generated doc for %s (%d/%d)", feature.name, documented, total)
+                else:
+                    logger.warning("No doc generated for %s — LLM returned empty/invalid", feature.name)
+            except Exception as e:
+                logger.error("Failed to generate doc for %s: %s", feature.name, e)
+                errors.append(f"{feature.name}: {e}")
+
+            if progress_callback:
+                progress_callback(i + 1, total)
+
+        status = "success" if not errors else "partial"
+        return PluginResult(
+            status=status,
+            data={"documented": documented, "total": total, "features": all_docs},
+            errors=errors,
+        )
+
+    def _generate_one(
+        self,
+        db: CatalogBackend,
+        llm: BaseLLM,
+        feature: Feature,
+        system: str,
+    ) -> dict | None:
+        """Generate documentation for a single feature. Returns doc dict or None."""
         source = db.get_source_by_name(feature.name.split(".")[0]) if "." in feature.name else None
         source_name = source.name if source else "unknown"
         source_path = source.path if source else "unknown"
@@ -64,83 +136,21 @@ class AutodocPlugin(BasePlugin):
             sibling_columns=sibling_names or "(none)",
         )
 
+        model_name = getattr(llm, "model", "unknown")
+
         try:
-            doc = llm.generate_json(prompt, system=AUTODOC_SYSTEM)
-        except Exception as e:
-            return PluginResult(status="error", errors=[str(e)])
+            doc = llm.generate_json(prompt, system=system)
+        except Exception:
+            # Retry once with higher temperature
+            logger.debug("Retry for %s with higher temperature", feature.name)
+            try:
+                doc = llm.generate_json(prompt, system=system, temperature=0.3)
+            except Exception as e:
+                logger.error("Retry also failed for %s: %s", feature.name, e)
+                return None
 
-        model_name = getattr(llm, "model", "unknown")
         db.save_feature_doc(feature.id, doc, model_used=model_name)
-
-        return PluginResult(status="success", data={"documented": 1, "features": {feature.name: doc}})
-
-    def _document_all(self, db: CatalogBackend, llm: BaseLLM, batch_size: int, progress_callback: Any) -> PluginResult:
-        undocumented = db.list_undocumented_features()
-        if not undocumented:
-            return PluginResult(status="success", data={"documented": 0, "message": "All features are documented"})
-
-        total = len(undocumented)
-        documented = 0
-        all_docs: dict[str, dict] = {}
-        errors: list[str] = []
-
-        by_source: dict[str, list[Feature]] = {}
-        for f in undocumented:
-            src = f.name.split(".")[0] if "." in f.name else "unknown"
-            by_source.setdefault(src, []).append(f)
-
-        model_name = getattr(llm, "model", "unknown")
-
-        for source_name, features in by_source.items():
-            source = db.get_source_by_name(source_name)
-            source_path = source.path if source else "unknown"
-
-            for i in range(0, len(features), batch_size):
-                batch = features[i : i + batch_size]
-                features_text = self._format_batch(batch)
-
-                prompt = AUTODOC_PROMPT_BATCH.format(
-                    source_name=source_name,
-                    source_path=source_path,
-                    features_text=features_text,
-                )
-
-                try:
-                    result = llm.generate_json(prompt, system=AUTODOC_SYSTEM)
-                    docs_list = result if isinstance(result, list) else [result]
-
-                    for doc in docs_list:
-                        fname = doc.get("feature_name", "")
-                        matching = [f for f in batch if f.name == fname or f.column_name == fname]
-                        if matching:
-                            db.save_feature_doc(matching[0].id, doc, model_used=model_name)
-                            all_docs[matching[0].name] = doc
-                            documented += 1
-                except Exception as e:
-                    errors.append(f"Batch error ({source_name}): {e}")
-
-                if progress_callback:
-                    progress_callback(min(documented + i + len(batch), total), total)
-
-        status = "success" if not errors else "partial"
-        return PluginResult(
-            status=status,
-            data={"documented": documented, "total": total, "features": all_docs},
-            errors=errors,
-        )
-
-    def _format_batch(self, features: list[Feature]) -> str:
-        lines = []
-        for f in features:
-            stats = "\n".join(f"    {k}: {v}" for k, v in f.stats.items()) if f.stats else "    (no stats)"
-            lines.append(
-                f"Feature: {f.name}\n"
-                f"  Column: {f.column_name}\n"
-                f"  Dtype: {f.dtype}\n"
-                f"  Tags: {', '.join(f.tags) if f.tags else '(none)'}\n"
-                f"  Stats:\n{stats}\n"
-            )
-        return "\n".join(lines)
+        return doc
 
 
 def get_doc(db, feature_name: str) -> dict | None:

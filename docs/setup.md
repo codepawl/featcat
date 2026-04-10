@@ -51,10 +51,10 @@ curl -fsSL https://ollama.ai/install.sh | sh
 ollama serve
 
 # Pull a model (in another terminal)
-ollama pull qwen2.5:7b
+ollama pull lfm2.5-thinking
 ```
 
-> **Tip**: `qwen2.5:7b` runs well on machines with 8GB RAM. For less powerful machines, try `qwen2.5:3b`.
+> **Tip**: `lfm2.5-thinking` runs well on machines with 8GB RAM.
 
 ### Auto-start Ollama (systemd)
 
@@ -119,7 +119,7 @@ featcat reads configuration from environment variables (prefix `FEATCAT_`):
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `FEATCAT_LLM_BACKEND` | `ollama` | LLM backend: `ollama` or `llamacpp` |
-| `FEATCAT_LLM_MODEL` | `qwen2.5:7b` | Model name |
+| `FEATCAT_LLM_MODEL` | `lfm2.5-thinking` | Model name |
 | `FEATCAT_OLLAMA_URL` | `http://localhost:11434` | Ollama server URL |
 | `FEATCAT_CATALOG_DB_PATH` | `catalog.db` | Database path |
 | `FEATCAT_MAX_CONTEXT_FEATURES` | `100` | Max features sent to LLM |
@@ -131,7 +131,7 @@ featcat reads configuration from environment variables (prefix `FEATCAT_`):
 
 Example `.env` file:
 ```bash
-FEATCAT_LLM_MODEL=qwen2.5:7b
+FEATCAT_LLM_MODEL=lfm2.5-thinking
 FEATCAT_S3_ENDPOINT_URL=http://minio.internal:9000
 FEATCAT_S3_ACCESS_KEY=minioadmin
 FEATCAT_S3_SECRET_KEY=minioadmin

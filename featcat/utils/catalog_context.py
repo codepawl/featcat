@@ -5,10 +5,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ..catalog.db import CatalogDB
+    from ..catalog.backend import CatalogBackend
 
 
-def get_feature_summary(db: CatalogDB, max_features: int = 100) -> str:
+def get_feature_summary(db: CatalogBackend, max_features: int = 100) -> str:
     """Format catalog features as a text summary for LLM prompts.
 
     Returns a concise table-like text listing all features with key metadata.
@@ -36,7 +36,33 @@ def get_feature_summary(db: CatalogDB, max_features: int = 100) -> str:
     return "\n".join(lines)
 
 
-def get_feature_detail(db: CatalogDB, feature_name: str) -> str:
+def get_monitoring_summary(db: CatalogBackend) -> str:
+    """Get latest monitoring/baseline status as text for LLM context."""
+    try:
+        features = db.list_features()
+        if not features:
+            return "No features in catalog."
+
+        lines = []
+        has_baseline = 0
+        for f in features:
+            b = db.get_baseline(f.id)
+            if b:
+                has_baseline += 1
+                computed = b.get("computed_at", "unknown")
+                lines.append(f"- {f.name}: baseline set (computed {computed})")
+            else:
+                lines.append(f"- {f.name}: no baseline")
+
+        if has_baseline == 0:
+            return "No monitoring baselines have been computed yet. Run `featcat monitor baseline` first."
+
+        return f"Baselines set for {has_baseline}/{len(features)} features:\n" + "\n".join(lines)
+    except Exception:
+        return "Monitoring data unavailable."
+
+
+def get_feature_detail(db: CatalogBackend, feature_name: str) -> str:
     """Format detailed information about one feature for LLM context."""
     feature = db.get_feature_by_name(feature_name)
     if feature is None:
@@ -59,7 +85,7 @@ def get_feature_detail(db: CatalogDB, feature_name: str) -> str:
     return "\n".join(lines)
 
 
-def get_source_schema(db: CatalogDB, source_name: str) -> str:
+def get_source_schema(db: CatalogBackend, source_name: str) -> str:
     """Format the schema of a data source (all its features) for LLM context."""
     source = db.get_source_by_name(source_name)
     if source is None:
@@ -88,7 +114,7 @@ def get_source_schema(db: CatalogDB, source_name: str) -> str:
     return "\n".join(lines)
 
 
-def get_all_sources_schema(db: CatalogDB) -> str:
+def get_all_sources_schema(db: CatalogBackend) -> str:
     """Format schemas for all data sources."""
     sources = db.list_sources()
     if not sources:
@@ -101,7 +127,7 @@ def get_all_sources_schema(db: CatalogDB) -> str:
     return "\n\n".join(parts)
 
 
-def get_features_for_source(db: CatalogDB, source_name: str) -> list[dict]:
+def get_features_for_source(db: CatalogBackend, source_name: str) -> list[dict]:
     """Get features as simple dicts for a data source (for batch prompts)."""
     features = db.list_features(source_name=source_name)
     return [

@@ -1,5 +1,11 @@
 # ruff: noqa: E501
-"""Prompt templates for all AI plugins."""
+"""Prompt templates for all AI plugins.
+
+Optimized for small models (LFM 2.5, 1.2B params):
+- Short system prompts (role + output format only)
+- One compact example max
+- Explicit "Output ONLY valid JSON" instruction
+"""
 
 from __future__ import annotations
 
@@ -8,16 +14,8 @@ from __future__ import annotations
 # =============================================================================
 
 DISCOVERY_SYSTEM = """\
-You are an expert data scientist working with a feature catalog.
-Your task is to analyze a feature catalog and suggest relevant features for a given use case.
-
-Think step-by-step:
-1. Understand the use case requirements
-2. Review each available feature and assess its relevance
-3. Identify gaps — features that would help but don't exist yet
-4. Suggest new features that could be derived from existing data sources
-
-Always return valid JSON. Do not include markdown fences or extra text outside the JSON."""
+You are a data scientist analyzing a feature catalog. Suggest relevant features for a use case.
+Output ONLY valid JSON, no explanation before or after."""
 
 DISCOVERY_PROMPT = """\
 USE CASE: {use_case}
@@ -28,27 +26,15 @@ AVAILABLE FEATURES:
 DATA SOURCES:
 {source_schemas}
 
-Based on the feature catalog above, return a JSON object with this structure:
+Return a JSON object:
 {{
   "existing_features": [
-    {{"name": "feature_name", "relevance": 0.9, "reason": "why this feature is relevant"}}
+    {{"name": "feature_name", "relevance": 0.9, "reason": "why relevant"}}
   ],
   "new_feature_suggestions": [
-    {{"name": "suggested_name", "source": "data_source_name", "column_expression": "how to compute", "reason": "why this would help"}}
+    {{"name": "suggested_name", "source": "data_source_name", "column_expression": "how to compute", "reason": "why helpful"}}
   ],
-  "summary": "overall feature engineering strategy for this use case"
-}}
-
-Example of a good response:
-{{
-  "existing_features": [
-    {{"name": "user_behavior_30d.session_count", "relevance": 0.95, "reason": "Session frequency is a strong churn predictor"}},
-    {{"name": "user_behavior_30d.complaint_count", "relevance": 0.90, "reason": "Complaints directly correlate with churn intent"}}
-  ],
-  "new_feature_suggestions": [
-    {{"name": "session_trend_7d", "source": "user_behavior_30d", "column_expression": "slope of session_count over last 7 days", "reason": "Declining trend captures early churn signals"}}
-  ],
-  "summary": "Focus on behavioral engagement features and their trends over time"
+  "summary": "feature engineering strategy for this use case"
 }}
 
 Return ONLY the JSON object."""
@@ -58,11 +44,8 @@ Return ONLY the JSON object."""
 # =============================================================================
 
 AUTODOC_SYSTEM = """\
-You are a data documentation specialist for a telecom data science team.
-Generate clear, accurate documentation for data features based on their metadata and statistics.
-Documentation should be helpful for data scientists who need to understand and use these features.
-
-Always return valid JSON. No markdown fences or extra text."""
+You are a data documentation specialist. Generate clear, accurate documentation for data features.
+Output ONLY valid JSON, no explanation before or after."""
 
 AUTODOC_PROMPT_SINGLE = """\
 Generate documentation for this feature:
@@ -87,11 +70,11 @@ Return a JSON object:
 }}"""
 
 AUTODOC_PROMPT_BATCH = """\
-Generate documentation for the following features from source "{source_name}" ({source_path}):
+Generate documentation for features from source "{source_name}" ({source_path}):
 
 {features_text}
 
-For EACH feature, return a JSON object with this structure. Return a JSON array of objects:
+For EACH feature, return a JSON array:
 [
   {{
     "feature_name": "the feature name",
@@ -110,28 +93,26 @@ Return ONLY the JSON array."""
 # =============================================================================
 
 MONITORING_SYSTEM = """\
-You are a data quality expert analyzing drift reports for a telecom data science team.
-Explain detected issues in practical terms and suggest actionable next steps.
-
-Always return valid JSON."""
+You are a data quality expert. Analyze drift reports and suggest actionable next steps.
+Output ONLY valid JSON, no explanation before or after."""
 
 MONITORING_ANALYSIS_PROMPT = """\
-A data quality check detected the following issues:
+Data quality issues detected:
 
 {drift_report}
 
 Feature context:
 {feature_context}
 
-Analyze each issue and return a JSON object:
+Return a JSON object:
 {{
   "analyses": [
     {{
       "feature": "feature_name",
       "likely_cause": "most probable reason for the drift",
-      "severity_assessment": "how urgent is this — low/medium/high",
+      "severity_assessment": "low/medium/high",
       "recommended_actions": ["action 1", "action 2"],
-      "should_retrain": true/false
+      "should_retrain": true
     }}
   ],
   "overall_assessment": "brief summary of data quality status"
@@ -142,12 +123,9 @@ Analyze each issue and return a JSON object:
 # =============================================================================
 
 NL_QUERY_SYSTEM = """\
-You are a feature catalog search expert for a data science team.
-Given a user's natural language query, search and rank features from the catalog.
-Respond in the same language as the user's query (English or Vietnamese).
-Feature names always stay in English.
-
-Always return valid JSON."""
+You are a feature catalog search expert. Rank features by relevance to the user's query.
+Respond in the same language as the query. Feature names stay in English.
+Output ONLY valid JSON, no explanation before or after."""
 
 NL_QUERY_PROMPT = """\
 FEATURE CATALOG:
@@ -155,21 +133,11 @@ FEATURE CATALOG:
 
 USER QUERY: {query}
 
-Search the catalog and return a JSON object:
-{{
-  "results": [
-    {{"feature": "feature_name", "score": 0.95, "reason": "why this matches the query"}}
-  ],
-  "interpretation": "how you understood the query",
-  "follow_up": "a suggested follow-up query that might also be useful"
-}}
+Search the catalog above. Return a JSON object with these fields:
+- "results": array of objects, each with "feature" (exact feature name from catalog), "score" (0.0 to 1.0), "reason" (short explanation)
+- "interpretation": how you understood the query
+- "follow_up": a suggested follow-up query or null
 
-Rank results by relevance score (0.0 to 1.0). Include only features with score >= 0.3.
-Return ONLY the JSON object."""
+Rules: max 5 results, only features with score >= 0.3, return ONLY valid JSON, no markdown fences."""
 
-NL_QUERY_SYSTEM_VI = """\
-You are a feature catalog search expert for a data science team.
-Given a user's query in Vietnamese, search and rank features from the catalog.
-Respond in Vietnamese. Feature names always stay in English.
-
-Always return valid JSON."""
+# NL_QUERY_SYSTEM_VI was removed — use localize_system_prompt() from utils.lang instead.

@@ -35,10 +35,10 @@ featcat source scan minio_data
 ### Dùng model khác trên Ollama
 
 ```bash
-# Pull model mới
+# Pull model khác
 ollama pull llama3.1:8b
 
-# Cấu hình featcat
+# Cấu hình featcat để dùng model đó
 export FEATCAT_LLM_MODEL=llama3.1:8b
 
 # Kiểm tra
@@ -60,8 +60,7 @@ export FEATCAT_LLAMACPP_URL=http://localhost:8080
 
 | Model | RAM | Tốc độ | Chất lượng |
 |-------|-----|--------|------------|
-| `qwen2.5:3b` | 4GB | Nhanh | Tạm ổn |
-| `qwen2.5:7b` | 8GB | Trung bình | Tốt |
+| `lfm2.5-thinking` | 4GB | Nhanh | Tốt (mặc định) |
 | `llama3.1:8b` | 8GB | Trung bình | Tốt |
 | `qwen2.5:14b` | 16GB | Chậm | Rất tốt |
 
@@ -126,7 +125,7 @@ featcat doctor
 **Nguyên nhân**: Model quá lớn, hoặc máy không đủ RAM.
 
 **Cách xử lý**:
-- Dùng model nhỏ hơn: `export FEATCAT_LLM_MODEL=qwen2.5:3b`
+- Thử model khác: `export FEATCAT_LLM_MODEL=lfm2.5-thinking`
 - Tăng timeout: `export FEATCAT_LLM_TIMEOUT=300`
 - Giảm số features gửi cho LLM: `export FEATCAT_MAX_CONTEXT_FEATURES=50`
 - Sử dụng cache (mặc định bật, chỉ cần chạy lại cùng query)

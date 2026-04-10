@@ -30,12 +30,14 @@ dependencies = [
     "rapidfuzz>=3.0",
     "scipy>=1.11",
     "numpy>=1.24",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]
 tui = ["textual>=0.50"]
 s3 = ["s3fs>=2024.0"]
-all = ["featcat[tui,s3]"]
+server = ["fastapi>=0.110", "uvicorn[standard]>=0.27", "sse-starlette>=1.6", "apscheduler>=3.10"]
+all = ["featcat[tui,s3,server]"]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
@@ -64,9 +66,13 @@ path = "featcat/__init__.py"
 [tool.ruff]
 target-version = "py310"
 line-length = 120
+extend-exclude = ["docs"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "A", "SIM", "TCH"]
+
+[tool.ruff.lint.per-file-ignores]
+"featcat/server/**" = ["B008"]  # Depends() in defaults is standard FastAPI pattern
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -75,13 +81,21 @@ addopts = "--cov=featcat --cov-report=term-missing --cov-report=xml"
 [tool.mypy]
 python_version = "3.10"
 ignore_missing_imports = true
-disallow_untyped_defs = false
 check_untyped_defs = true
 warn_return_any = false
 warn_unused_ignores = true
+disallow_untyped_defs = false
 
 [[tool.mypy.overrides]]
 module = "featcat.tui.*"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "featcat.server.*"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "featcat.config"
 ignore_errors = true
 
 [[tool.mypy.overrides]]

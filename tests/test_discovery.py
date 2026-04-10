@@ -38,10 +38,23 @@ class MockDiscoveryLLM(BaseLLM):
         }
     )
 
-    def generate(self, prompt: str, system: str | None = None, temperature: float = 0.3) -> str:
+    def generate(
+        self,
+        prompt: str,
+        system: str | None = None,
+        temperature: float = 0.3,
+        json_mode: bool = False,
+        think: bool = False,
+    ) -> str:
         return self.RESPONSE
 
-    def stream(self, prompt: str, system: str | None = None, temperature: float = 0.3) -> Iterator[str]:
+    def stream(
+        self,
+        prompt: str,
+        system: str | None = None,
+        temperature: float = 0.3,
+        think: bool = False,
+    ) -> Iterator[str]:
         yield self.RESPONSE
 
     def health_check(self) -> bool:

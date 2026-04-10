@@ -53,6 +53,39 @@ CREATE TABLE IF NOT EXISTS monitoring_baselines (
     baseline_stats TEXT DEFAULT '{}',
     computed_at TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS job_schedules (
+    job_name TEXT PRIMARY KEY,
+    cron_expression TEXT NOT NULL,
+    enabled INTEGER DEFAULT 1,
+    last_run_at TIMESTAMP,
+    next_run_at TIMESTAMP,
+    description TEXT DEFAULT '',
+    max_log_retention_days INTEGER DEFAULT 30
+);
+
+CREATE TABLE IF NOT EXISTS job_logs (
+    id TEXT PRIMARY KEY,
+    job_name TEXT NOT NULL,
+    status TEXT NOT NULL,
+    started_at TIMESTAMP NOT NULL,
+    finished_at TIMESTAMP,
+    duration_seconds REAL,
+    result_summary TEXT DEFAULT '{}',
+    error_message TEXT,
+    triggered_by TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS feature_versions (
+    id TEXT PRIMARY KEY,
+    feature_id TEXT NOT NULL REFERENCES features(id) ON DELETE CASCADE,
+    version INTEGER NOT NULL,
+    snapshot TEXT NOT NULL,
+    change_summary TEXT DEFAULT '',
+    changed_by TEXT DEFAULT '',
+    created_at TIMESTAMP NOT NULL,
+    UNIQUE(feature_id, version)
+);
 """
 
 
@@ -71,8 +104,25 @@ sqlite3.register_converter("TIMESTAMP", _convert_datetime)
 def _row_to_feature(row: sqlite3.Row) -> Feature:
     """Convert a sqlite3.Row to a Feature model, parsing JSON fields."""
     d = dict(row)
-    d["tags"] = json.loads(d["tags"]) if isinstance(d["tags"], str) else d["tags"]
-    d["stats"] = json.loads(d["stats"]) if isinstance(d["stats"], str) else d["stats"]
+    d["tags"] = json.loads(d["tags"]) if isinstance(d.get("tags"), str) else (d.get("tags") or [])
+    d["stats"] = json.loads(d["stats"]) if isinstance(d.get("stats"), str) else (d.get("stats") or {})
+    # Provide defaults for required fields that might be None from schema mismatches
+    d.setdefault("id", "")
+    d.setdefault("name", "")
+    d.setdefault("data_source_id", "")
+    d.setdefault("column_name", "")
+    d.setdefault("dtype", "unknown")
+    d.setdefault("description", "")
+    d.setdefault("owner", "")
+    if d.get("dtype") is None:
+        d["dtype"] = "unknown"
+    if d.get("description") is None:
+        d["description"] = ""
+    if d.get("owner") is None:
+        d["owner"] = ""
+    # Filter out any extra columns not in the Feature model (e.g. from ALTER TABLE)
+    valid_fields = Feature.model_fields
+    d = {k: v for k, v in d.items() if k in valid_fields}
     return Feature(**d)
 
 
@@ -84,12 +134,18 @@ class LocalBackend(CatalogBackend):
         self.conn = sqlite3.connect(
             db_path,
             detect_types=sqlite3.PARSE_DECLTYPES,
+            check_same_thread=False,
         )
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys = ON")
 
     def init_db(self) -> None:
+        import contextlib
+
         self.conn.executescript(SCHEMA_SQL)
+        # Add auto_refresh column if not present (added in Phase 6)
+        with contextlib.suppress(sqlite3.OperationalError):
+            self.conn.execute("ALTER TABLE data_sources ADD COLUMN auto_refresh INTEGER DEFAULT 0")
         self.conn.commit()
 
     def close(self) -> None:
@@ -172,13 +228,78 @@ class LocalBackend(CatalogBackend):
             return None
         return _row_to_feature(row)
 
-    def update_feature_tags(self, feature_id: str, tags: list[str]) -> None:
+    _VERSIONED_FIELDS = frozenset({"description", "tags", "owner", "dtype", "column_name", "data_source_id"})
+
+    def _snapshot_feature(self, feature_id: str, changes: dict[str, tuple], changed_by: str = "") -> None:
+        from .models import _new_id
+
+        row = self.conn.execute("SELECT * FROM features WHERE id = ?", (feature_id,)).fetchone()
+        if row is None:
+            return
+        snapshot = dict(row)
+        raw_tags = snapshot.get("tags")
+        snapshot["tags"] = json.loads(raw_tags) if isinstance(raw_tags, str) else (raw_tags or [])
+        raw_stats = snapshot.get("stats")
+        snapshot["stats"] = json.loads(raw_stats) if isinstance(raw_stats, str) else (raw_stats or {})
+        for k, v in snapshot.items():
+            if isinstance(v, datetime):
+                snapshot[k] = v.isoformat()
+        next_version = self.conn.execute(
+            "SELECT COALESCE(MAX(version), 0) + 1 FROM feature_versions WHERE feature_id = ?",
+            (feature_id,),
+        ).fetchone()[0]
+        parts = [f"{field}: {old!r} -> {new!r}" for field, (old, new) in changes.items()]
         now = datetime.now(timezone.utc)
         self.conn.execute(
-            "UPDATE features SET tags = ?, updated_at = ? WHERE id = ?",
-            (json.dumps(tags), now, feature_id),
+            """INSERT INTO feature_versions (id, feature_id, version, snapshot, change_summary, changed_by, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (_new_id(), feature_id, next_version, json.dumps(snapshot), "; ".join(parts), changed_by, now),
         )
+
+    def update_feature_metadata(self, feature_id: str, _rollback_version: int | None = None, **kwargs) -> None:
+        row = self.conn.execute("SELECT * FROM features WHERE id = ?", (feature_id,)).fetchone()
+        if row is None:
+            return
+        current = dict(row)
+        raw_tags = current.get("tags")
+        current["tags"] = json.loads(raw_tags) if isinstance(raw_tags, str) else (raw_tags or [])
+        changes: dict[str, tuple] = {}
+        for field in self._VERSIONED_FIELDS:
+            if field not in kwargs:
+                continue
+            old_val = current.get(field)
+            new_val = kwargs[field]
+            if old_val != new_val:
+                changes[field] = (old_val, new_val)
+        if not changes:
+            return
+        self._snapshot_feature(feature_id, changes, changed_by=kwargs.get("owner", current.get("owner", "")))
+        if _rollback_version is not None:
+            self.conn.execute(
+                "UPDATE feature_versions SET change_summary = 'rollback to v' || ? || ': ' || change_summary"
+                " WHERE feature_id = ? AND version = (SELECT MAX(version) FROM feature_versions WHERE feature_id = ?)",
+                (str(_rollback_version), feature_id, feature_id),
+            )
+        now = datetime.now(timezone.utc)
+        sets, vals = [], []
+        for k, v in kwargs.items():
+            if k.startswith("_"):
+                continue
+            if k == "tags":
+                sets.append("tags = ?")
+                vals.append(json.dumps(v))
+            elif k in self._VERSIONED_FIELDS:
+                sets.append(f"{k} = ?")
+                vals.append(v)
+        if sets:
+            sets.append("updated_at = ?")
+            vals.append(now)
+            vals.append(feature_id)
+            self.conn.execute(f"UPDATE features SET {', '.join(sets)} WHERE id = ?", vals)  # noqa: S608
         self.conn.commit()
+
+    def update_feature_tags(self, feature_id: str, tags: list[str]) -> None:
+        self.update_feature_metadata(feature_id, tags=tags)
 
     def search_features(self, query: str) -> list[Feature]:
         pattern = f"%{query}%"
@@ -189,6 +310,40 @@ class LocalBackend(CatalogBackend):
             (pattern, pattern, pattern, pattern),
         ).fetchall()
         return [_row_to_feature(r) for r in rows]
+
+    def list_feature_versions(self, feature_id: str) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT * FROM feature_versions WHERE feature_id = ? ORDER BY version DESC",
+            (feature_id,),
+        ).fetchall()
+        result = []
+        for r in rows:
+            d = dict(r)
+            d["snapshot"] = json.loads(d["snapshot"]) if isinstance(d.get("snapshot"), str) else d.get("snapshot", {})
+            result.append(d)
+        return result
+
+    def get_feature_version(self, feature_id: str, version: int) -> dict | None:
+        row = self.conn.execute(
+            "SELECT * FROM feature_versions WHERE feature_id = ? AND version = ?",
+            (feature_id, version),
+        ).fetchone()
+        if row is None:
+            return None
+        d = dict(row)
+        d["snapshot"] = json.loads(d["snapshot"]) if isinstance(d.get("snapshot"), str) else d.get("snapshot", {})
+        return d
+
+    def rollback_feature(self, feature_id: str, version: int) -> dict:
+        v = self.get_feature_version(feature_id, version)
+        if v is None:
+            msg = f"Version {version} not found for feature {feature_id}"
+            raise ValueError(msg)
+        snapshot = v["snapshot"]
+        updates = {k: snapshot[k] for k in ("description", "tags", "owner", "dtype") if k in snapshot}
+        self.update_feature_metadata(feature_id, _rollback_version=version, **updates)
+        feature = self.conn.execute("SELECT * FROM features WHERE id = ?", (feature_id,)).fetchone()
+        return dict(feature) if feature else {}
 
     # --- Feature Docs ---
 

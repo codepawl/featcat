@@ -11,7 +11,8 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from .catalog.db import DEFAULT_DB, CatalogDB
+from .catalog.factory import get_backend
+from .catalog.local import DEFAULT_DB, LocalBackend
 from .catalog.models import DataSource, Feature
 from .catalog.scanner import scan_source
 from .config import load_settings
@@ -22,18 +23,21 @@ feature_app = typer.Typer(help="Manage features")
 doc_app = typer.Typer(help="AI-generated feature documentation")
 monitor_app = typer.Typer(help="Feature quality monitoring")
 cache_app = typer.Typer(help="Manage LLM response cache")
+config_app = typer.Typer(help="Configuration management")
+job_app = typer.Typer(help="Scheduled job management")
 app.add_typer(source_app, name="source")
 app.add_typer(feature_app, name="feature")
 app.add_typer(doc_app, name="doc")
 app.add_typer(monitor_app, name="monitor")
 app.add_typer(cache_app, name="cache")
+app.add_typer(config_app, name="config")
+app.add_typer(job_app, name="job")
 
 console = Console()
 
 
-def _get_db() -> CatalogDB:
-    settings = load_settings()
-    return CatalogDB(settings.catalog_db_path)
+def _get_db():
+    return get_backend()
 
 
 def _get_llm(use_cache: bool = True):
@@ -68,7 +72,7 @@ def _get_llm(use_cache: bool = True):
 @app.command()
 def init() -> None:
     """Initialize the catalog database."""
-    db = CatalogDB(DEFAULT_DB)
+    db = LocalBackend(DEFAULT_DB)
     db.init_db()
     # Also create cache table
     from .utils.cache import ResponseCache
@@ -79,10 +83,117 @@ def init() -> None:
 
 
 @app.command()
+def add(
+    path: str = typer.Argument(help="Path to data file (Parquet/CSV) or directory"),
+    name: str | None = typer.Option(None, "--name", "-n", help="Source name (auto from filename if omitted)"),
+    owner: str = typer.Option("", "--owner", "-o", help="Owner name"),
+    tags: str | None = typer.Option(None, "--tags", "-t", help="Comma-separated tags"),
+    skip_docs: bool = typer.Option(False, "--skip-docs", help="Skip auto documentation"),
+    description: str = typer.Option("", "--desc", "-d", help="Source description"),
+    fmt: str = typer.Option("parquet", "--format", help="File format: parquet or csv"),
+    no_cache: bool = typer.Option(False, "--no-cache", help="Bypass LLM response cache"),
+) -> None:
+    """Add a data source: register, scan, and optionally generate docs in one step."""
+    # 1. Auto-generate name from filename
+    if name is None:
+        name = Path(path).stem
+
+    # 2. Resolve path and storage type
+    storage_type = "s3" if path.startswith("s3://") else "local"
+    if storage_type == "local":
+        resolved = Path(path).resolve()
+        if not resolved.exists():
+            console.print(f"[red]Path not found:[/red] {path}")
+            raise typer.Exit(1)
+        path = str(resolved)
+
+    # 3. Register source
+    source = DataSource(
+        name=name,
+        path=path,
+        storage_type=storage_type,
+        format=fmt,
+        description=description,
+    )
+    db = _get_db()
+    try:
+        db.add_source(source)
+        console.print(f"[green]\u2713[/green] Source [cyan]{name}[/cyan] registered")
+    except Exception as e:
+        console.print(f"[red]Error registering source:[/red] {e}")
+        db.close()
+        raise typer.Exit(1) from None
+
+    # 4. Scan source
+    console.print(f"[blue]Scanning:[/blue] {path}")
+    try:
+        columns = scan_source(path)
+    except Exception as e:
+        console.print(f"[red]Scan failed:[/red] {e}")
+        db.close()
+        raise typer.Exit(1) from None
+
+    tag_list = [t.strip() for t in tags.split(",")] if tags else []
+
+    registered = 0
+    for col in columns:
+        feature_name = f"{name}.{col.column_name}"
+        feature = Feature(
+            name=feature_name,
+            data_source_id=source.id,
+            column_name=col.column_name,
+            dtype=col.dtype,
+            stats=col.stats,
+            owner=owner,
+            tags=tag_list,
+        )
+        db.upsert_feature(feature)
+        registered += 1
+
+    console.print(f"[green]\u2713[/green] {registered} features discovered")
+
+    # 5. Optionally generate docs
+    documented = 0
+    if not skip_docs:
+        llm = _get_llm(use_cache=not no_cache)
+        if llm is None:
+            console.print("[yellow]Docs skipped (Ollama not running). Run 'featcat doc generate' later.[/yellow]")
+        else:
+            from .plugins.autodoc import AutodocPlugin
+
+            plugin = AutodocPlugin()
+            console.print("[blue]Generating documentation...[/blue]")
+            result = plugin.execute(db, llm)
+            if result.status == "error":
+                console.print(f"[yellow]Doc generation errors:[/yellow] {'; '.join(result.errors)}")
+            else:
+                documented = result.data.get("documented", 0)
+                console.print(f"[green]\u2713[/green] Docs generated for {documented} features")
+
+    db.close()
+
+    # 6. Print summary
+    summary_lines = [
+        f"[bold]{name}[/bold]",
+        f"  Path:     {path}",
+        f"  Features: {registered}",
+    ]
+    if documented:
+        summary_lines.append(f"  Docs:     {documented}")
+    if owner:
+        summary_lines.append(f"  Owner:    {owner}")
+    if tag_list:
+        summary_lines.append(f"  Tags:     {', '.join(tag_list)}")
+
+    console.print(Panel("\n".join(summary_lines), title="Source Added", border_style="green"))
+
+
+@app.command()
 def doctor() -> None:
     """Check system health and report status."""
     settings = load_settings()
     all_ok = True
+    remote_mode = bool(settings.server_url)
 
     # Python version
     py_ver = sys.version_info
@@ -91,16 +202,36 @@ def doctor() -> None:
     if not ok:
         all_ok = False
 
-    # Catalog DB
-    db_exists = Path(settings.catalog_db_path).exists()
-    _print_check(db_exists, f"SQLite catalog exists ({settings.catalog_db_path})")
-    if not db_exists:
-        all_ok = False
-        console.print()
-        return
+    if remote_mode:
+        # Remote mode: check server connectivity
+        console.print(f"\n[bold]Mode:[/bold] Remote ({settings.server_url})")
+        try:
+            import httpx
 
-    # Feature count
-    db = CatalogDB(settings.catalog_db_path)
+            resp = httpx.get(f"{settings.server_url}/api/health", timeout=5)
+            health = resp.json()
+            _print_check(True, f"Server reachable at {settings.server_url}")
+            _print_check(health.get("db", False), "Server database connected")
+            _print_check(health.get("llm", False), f"Server LLM ({health.get('model', 'unknown')})")
+        except Exception as e:
+            _print_check(False, f"Server at {settings.server_url}: {e}")
+            all_ok = False
+            console.print()
+            console.print("[yellow]Cannot reach server. Check FEATCAT_SERVER_URL.[/yellow]")
+            return
+    else:
+        console.print("\n[bold]Mode:[/bold] Local")
+
+    # Catalog check (works for both local and remote via get_backend)
+    if not remote_mode:
+        db_exists = Path(settings.catalog_db_path).exists()
+        _print_check(db_exists, f"SQLite catalog exists ({settings.catalog_db_path})")
+        if not db_exists:
+            all_ok = False
+            console.print()
+            return
+
+    db = _get_db()
     try:
         features = db.list_features()
         sources = db.list_sources()
@@ -133,43 +264,43 @@ def doctor() -> None:
     finally:
         db.close()
 
-    # Ollama
-    try:
-        from .llm.ollama import OllamaLLM
+    # Ollama (only check in local mode — remote server manages its own LLM)
+    if not remote_mode:
+        try:
+            from .llm.ollama import OllamaLLM
 
-        ollama = OllamaLLM(model=settings.llm_model, base_url=settings.ollama_url)
-        reachable = ollama.health_check()
-        _print_check(reachable, f"Ollama running at {settings.ollama_url}")
-        if reachable:
-            # Check model availability
-            import json
-            from urllib.request import urlopen
+            ollama = OllamaLLM(model=settings.llm_model, base_url=settings.ollama_url)
+            reachable = ollama.health_check()
+            _print_check(reachable, f"Ollama running at {settings.ollama_url}")
+            if reachable:
+                import json
+                from urllib.request import urlopen
 
-            resp = urlopen(f"{settings.ollama_url}/api/tags", timeout=5)
-            data = json.loads(resp.read())
-            model_names = [m.get("name", "") for m in data.get("models", [])]
-            model_found = any(settings.llm_model in n for n in model_names)
-            _print_check(model_found, f"Model {settings.llm_model} available")
-            if not model_found:
+                resp = urlopen(f"{settings.ollama_url}/api/tags", timeout=5)
+                data = json.loads(resp.read())
+                model_names = [m.get("name", "") for m in data.get("models", [])]
+                model_found = any(settings.llm_model in n for n in model_names)
+                _print_check(model_found, f"Model {settings.llm_model} available")
+                if not model_found:
+                    all_ok = False
+            else:
                 all_ok = False
-        else:
+                _print_check(False, f"Model {settings.llm_model} (Ollama not running)")
+        except Exception:
+            _print_check(False, f"Ollama at {settings.ollama_url}")
+            _print_check(False, f"Model {settings.llm_model}")
             all_ok = False
-            _print_check(False, f"Model {settings.llm_model} (Ollama not running)")
-    except Exception:
-        _print_check(False, f"Ollama at {settings.ollama_url}")
-        _print_check(False, f"Model {settings.llm_model}")
-        all_ok = False
 
-    # Cache stats
-    try:
-        from .utils.cache import ResponseCache
+        # Cache stats (local only)
+        try:
+            from .utils.cache import ResponseCache
 
-        cache = ResponseCache(settings.catalog_db_path)
-        cs = cache.stats()
-        cache.close()
-        _print_check(True, f"Cache: {cs['active']} active entries, {cs['expired']} expired")
-    except Exception:
-        pass
+            cache = ResponseCache(settings.catalog_db_path)
+            cs = cache.stats()
+            cache.close()
+            _print_check(True, f"Cache: {cs['active']} active entries, {cs['expired']} expired")
+        except Exception:
+            pass
 
     console.print()
     if all_ok:
@@ -499,6 +630,111 @@ def feature_search(
     console.print(table)
 
 
+@feature_app.command("history")
+def feature_history(
+    name: str = typer.Argument(help="Feature name (e.g. source.column)"),
+) -> None:
+    """Show version history for a feature."""
+    db = _get_db()
+    feature = db.get_feature_by_name(name)
+    if feature is None:
+        console.print(f"[red]Feature not found:[/red] {name}")
+        db.close()
+        raise typer.Exit(1)
+    versions = db.list_feature_versions(feature.id)
+    db.close()
+    if not versions:
+        console.print(f"No version history for [cyan]{name}[/cyan]")
+        return
+    table = Table(title=f"Version History: {name}")
+    table.add_column("Version", style="bold", justify="right")
+    table.add_column("Changed", style="dim")
+    table.add_column("Summary")
+    table.add_column("By", style="dim")
+    for v in versions:
+        ts = v["created_at"]
+        if hasattr(ts, "strftime"):
+            ts = ts.strftime("%Y-%m-%d %H:%M")
+        table.add_row(str(v["version"]), str(ts), v.get("change_summary", ""), v.get("changed_by", ""))
+    console.print(table)
+
+
+@feature_app.command("diff")
+def feature_diff(
+    name: str = typer.Argument(help="Feature name"),
+    v1: int | None = typer.Option(None, "--v1", help="First version (default: previous)"),
+    v2: int | None = typer.Option(None, "--v2", help="Second version (default: latest)"),
+) -> None:
+    """Diff two versions of a feature's metadata."""
+    db = _get_db()
+    feature = db.get_feature_by_name(name)
+    if feature is None:
+        console.print(f"[red]Feature not found:[/red] {name}")
+        db.close()
+        raise typer.Exit(1)
+    versions = db.list_feature_versions(feature.id)
+    db.close()
+    if not versions:
+        console.print(f"No version history for [cyan]{name}[/cyan]")
+        return
+    if v2 is None:
+        v2 = versions[0]["version"]
+    if v1 is None:
+        v1 = versions[1]["version"] if len(versions) > 1 else versions[0]["version"]
+    snap_v1 = next((v["snapshot"] for v in versions if v["version"] == v1), None)
+    snap_v2 = next((v["snapshot"] for v in versions if v["version"] == v2), None)
+    if snap_v1 is None or snap_v2 is None:
+        console.print("[red]Version not found[/red]")
+        raise typer.Exit(1)
+    console.print(f"\n[bold]Comparing v{v2} vs v{v1}:[/bold]")
+    has_diff = False
+    for field in ("description", "tags", "owner", "dtype", "column_name"):
+        old = snap_v1.get(field)
+        new = snap_v2.get(field)
+        if old != new:
+            console.print(f"  [cyan]{field}:[/cyan]  {old!r} -> {new!r}")
+            has_diff = True
+    if not has_diff:
+        console.print("  (no differences)")
+    console.print()
+
+
+@feature_app.command("rollback")
+def feature_rollback(
+    name: str = typer.Argument(help="Feature name"),
+    version: int = typer.Option(..., "--version", "-v", help="Version number to rollback to"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
+) -> None:
+    """Rollback feature metadata to a previous version."""
+    db = _get_db()
+    feature = db.get_feature_by_name(name)
+    if feature is None:
+        console.print(f"[red]Feature not found:[/red] {name}")
+        db.close()
+        raise typer.Exit(1)
+    target = db.get_feature_version(feature.id, version)
+    if target is None:
+        console.print(f"[red]Version {version} not found[/red]")
+        db.close()
+        raise typer.Exit(1)
+    if not yes:
+        console.print(f"\nRollback [cyan]{name}[/cyan] to version {version}?")
+        snapshot = target["snapshot"]
+        for field in ("description", "tags", "owner", "dtype"):
+            old = getattr(feature, field, None)
+            new = snapshot.get(field)
+            if old != new:
+                console.print(f"  [cyan]{field}:[/cyan]  {old!r} -> {new!r}")
+        if not typer.confirm("Confirm?"):
+            db.close()
+            raise typer.Exit(0)
+    db.rollback_feature(feature.id, version)
+    versions = db.list_feature_versions(feature.id)
+    new_ver = versions[0]["version"] if versions else "?"
+    db.close()
+    console.print(f"[green]Rolled back.[/green] New version {new_ver} created.")
+
+
 # =========================================================================
 # Discover command
 # =========================================================================
@@ -509,32 +745,46 @@ def discover(
     use_case: str = typer.Argument(help="Description of the use case"),
 ) -> None:
     """Discover relevant features for a use case using AI."""
-    llm = _get_llm(use_cache=False)  # Discovery: no cache
-    if llm is None:
-        console.print("[red]LLM unavailable.[/red] Ensure Ollama is running: ollama serve")
-        raise typer.Exit(1)
+    from .catalog.remote import RemoteBackend
 
     db = _get_db()
-    settings = load_settings()
 
-    from .plugins.discovery import DiscoveryPlugin
+    if isinstance(db, RemoteBackend):
+        with console.status("[blue]Analyzing catalog (remote)..."):
+            try:
+                data = db.ai_discover(use_case)
+            except Exception as e:
+                db.close()
+                console.print(f"[red]Error:[/red] {e}")
+                raise typer.Exit(1) from None
+        db.close()
+    else:
+        llm = _get_llm(use_cache=False)
+        if llm is None:
+            db.close()
+            console.print("[red]LLM unavailable.[/red] Ensure Ollama is running: ollama serve")
+            raise typer.Exit(1)
 
-    plugin = DiscoveryPlugin()
+        settings = load_settings()
 
-    with console.status("[blue]Analyzing catalog..."):
-        result = plugin.execute(
-            db,
-            llm,
-            use_case=use_case,
-            max_features=settings.max_context_features,
-        )
-    db.close()
+        from .plugins.discovery import DiscoveryPlugin
 
-    if result.status == "error":
-        console.print(f"[red]Error:[/red] {'; '.join(result.errors)}")
-        raise typer.Exit(1)
+        plugin = DiscoveryPlugin()
 
-    data = result.data
+        with console.status("[blue]Analyzing catalog..."):
+            result = plugin.execute(
+                db,
+                llm,
+                use_case=use_case,
+                max_features=settings.max_context_features,
+            )
+        db.close()
+
+        if result.status == "error":
+            console.print(f"[red]Error:[/red] {'; '.join(result.errors)}")
+            raise typer.Exit(1)
+
+        data = result.data
 
     existing = data.get("existing_features", [])
     if existing:
@@ -577,26 +827,39 @@ def ask(
     no_cache: bool = typer.Option(False, "--no-cache", help="Bypass response cache"),
 ) -> None:
     """Search features using natural language."""
+    from .catalog.remote import RemoteBackend
+
     db = _get_db()
-    llm = _get_llm(use_cache=not no_cache)
 
-    from .plugins.nl_query import NLQueryPlugin
+    if isinstance(db, RemoteBackend):
+        with console.status("[blue]Searching (remote)..."):
+            try:
+                data = db.ai_ask(query)
+            except Exception as e:
+                db.close()
+                console.print(f"[red]Error:[/red] {e}")
+                raise typer.Exit(1) from None
+        db.close()
+    else:
+        llm = _get_llm(use_cache=not no_cache)
 
-    plugin = NLQueryPlugin()
-    fallback = llm is None
+        from .plugins.nl_query import NLQueryPlugin
 
-    if fallback:
-        console.print("[dim]LLM unavailable, using keyword search.[/dim]")
+        plugin = NLQueryPlugin()
+        fallback = llm is None
 
-    with console.status("[blue]Searching..."):
-        result = plugin.execute(db, llm, query=query, fallback_only=fallback)
-    db.close()
+        if fallback:
+            console.print("[dim]LLM unavailable, using keyword search.[/dim]")
 
-    if result.status == "error":
-        console.print(f"[red]Error:[/red] {'; '.join(result.errors)}")
-        raise typer.Exit(1)
+        with console.status("[blue]Searching..."):
+            result = plugin.execute(db, llm, query=query, fallback_only=fallback)
+        db.close()
 
-    data = result.data
+        if result.status == "error":
+            console.print(f"[red]Error:[/red] {'; '.join(result.errors)}")
+            raise typer.Exit(1)
+
+        data = result.data
     results = data.get("results", [])
 
     if not results:
@@ -633,14 +896,31 @@ def ask(
 def doc_generate(
     name: str | None = typer.Argument(None, help="Feature name (or omit for all)"),
     no_cache: bool = typer.Option(False, "--no-cache", help="Bypass response cache"),
+    all_features: bool = typer.Option(False, "--all", help="Regenerate docs for ALL features, even documented ones"),
 ) -> None:
     """Generate AI documentation for features."""
-    llm = _get_llm(use_cache=not no_cache)
-    if llm is None:
-        console.print("[red]LLM unavailable.[/red] Ensure Ollama is running: ollama serve")
-        raise typer.Exit(1)
+    from .catalog.remote import RemoteBackend
 
     db = _get_db()
+
+    if isinstance(db, RemoteBackend):
+        with console.status(f"[blue]Generating docs (remote){'for ' + name if name else ''}..."):
+            try:
+                data = db.doc_generate(feature_name=name)
+            except Exception as e:
+                db.close()
+                console.print(f"[red]Error:[/red] {e}")
+                raise typer.Exit(1) from None
+        db.close()
+        documented = data.get("documented", 0)
+        console.print(f"[green]Done:[/green] {documented} features documented")
+        return
+
+    llm = _get_llm(use_cache=not no_cache)
+    if llm is None:
+        db.close()
+        console.print("[red]LLM unavailable.[/red] Ensure Ollama is running: ollama serve")
+        raise typer.Exit(1)
 
     from rich.progress import Progress
 
@@ -658,7 +938,7 @@ def doc_generate(
             def on_progress(current: int, total: int) -> None:
                 progress.update(task, completed=current, total=total)
 
-            result = plugin.execute(db, llm, progress_callback=on_progress)
+            result = plugin.execute(db, llm, progress_callback=on_progress, regenerate_all=all_features)
 
     db.close()
 
@@ -748,7 +1028,17 @@ def doc_stats() -> None:
 @monitor_app.command("baseline")
 def monitor_baseline() -> None:
     """Compute and save baseline statistics for all features."""
+    from .catalog.remote import RemoteBackend
+
     db = _get_db()
+
+    if isinstance(db, RemoteBackend):
+        with console.status("[blue]Computing baselines (remote)..."):
+            data = db.monitor_baseline()
+        db.close()
+        console.print(f"[green]Baseline saved:[/green] {data.get('baselines_saved', 0)} features")
+        return
+
     from .plugins.monitoring import MonitoringPlugin
 
     plugin = MonitoringPlugin()
@@ -764,25 +1054,33 @@ def monitor_check(
     use_llm: bool = typer.Option(False, "--llm", help="Include LLM analysis for issues"),
 ) -> None:
     """Check features for quality issues and drift."""
+    from .catalog.remote import RemoteBackend
+
     db = _get_db()
-    llm = _get_llm() if use_llm else None
 
-    from .plugins.monitoring import MonitoringPlugin
+    if isinstance(db, RemoteBackend):
+        with console.status("[blue]Running quality checks (remote)..."):
+            report = db.monitor_check(feature_name=name, use_llm=use_llm)
+        db.close()
+    else:
+        llm = _get_llm() if use_llm else None
 
-    plugin = MonitoringPlugin()
+        from .plugins.monitoring import MonitoringPlugin
 
-    with console.status("[blue]Running quality checks..."):
-        result = plugin.execute(
-            db,
-            llm,
-            action="check",
-            feature_name=name,
-            refresh_baseline=refresh_baseline,
-            use_llm=use_llm and llm is not None,
-        )
-    db.close()
+        plugin = MonitoringPlugin()
 
-    report = result.data
+        with console.status("[blue]Running quality checks..."):
+            result = plugin.execute(
+                db,
+                llm,
+                action="check",
+                feature_name=name,
+                refresh_baseline=refresh_baseline,
+                use_llm=use_llm and llm is not None,
+            )
+        db.close()
+
+        report = result.data
     checked = report.get("checked", 0)
     healthy = report.get("healthy", 0)
     warnings = report.get("warnings", 0)
@@ -872,6 +1170,338 @@ def cache_clear() -> None:
 
 
 # =========================================================================
+# Config commands
+# =========================================================================
+
+
+@config_app.command("show")
+def config_show() -> None:
+    """Show all current configuration."""
+    from .config import get_all_setting_sources
+
+    settings = load_settings()
+    sources = get_all_setting_sources()
+
+    table = Table(title="featcat Configuration")
+    table.add_column("Setting", style="cyan")
+    table.add_column("Value")
+    table.add_column("Source", style="dim")
+
+    for key, value in sorted(settings.model_dump().items()):
+        source = sources.get(key, "default")
+        source_style = {"env": "green", "project": "yellow", "user": "blue"}.get(source, "dim")
+        display_val = str(value) if value is not None else "(not set)"
+        # Mask sensitive values
+        if "secret" in key or "password" in key:
+            display_val = "****" if value else "(not set)"
+        table.add_row(key, display_val, f"[{source_style}]{source}[/{source_style}]")
+
+    console.print(table)
+
+
+@config_app.command("get")
+def config_get(
+    key: str = typer.Argument(help="Configuration key"),
+) -> None:
+    """Get a configuration value."""
+    settings = load_settings()
+    data = settings.model_dump()
+    if key not in data:
+        console.print(f"[red]Unknown key:[/red] {key}")
+        console.print(f"[dim]Available: {', '.join(sorted(data.keys()))}[/dim]")
+        raise typer.Exit(1)
+    console.print(f"{data[key]}")
+
+
+@config_app.command("set")
+def config_set(
+    key: str = typer.Argument(help="Configuration key"),
+    value: str = typer.Argument(help="Configuration value"),
+    user: bool = typer.Option(False, "--user", help="Save to user config instead of project"),
+) -> None:
+    """Set a configuration value."""
+    # Validate key
+    from .config import CONFIG_PROJECT_PATH, CONFIG_USER_PATH, Settings, _load_yaml, _save_yaml
+
+    defaults = Settings().model_dump()
+    if key not in defaults:
+        console.print(f"[red]Unknown key:[/red] {key}")
+        console.print(f"[dim]Available: {', '.join(sorted(defaults.keys()))}[/dim]")
+        raise typer.Exit(1)
+
+    # Type coercion based on default value type
+    default_val = defaults[key]
+    if isinstance(default_val, bool):
+        typed_value = value.lower() in ("true", "1", "yes")
+    elif isinstance(default_val, int):
+        typed_value = int(value)
+    elif isinstance(default_val, float):
+        typed_value = float(value)
+    elif value.lower() == "none" or value == "":
+        typed_value = None
+    else:
+        typed_value = value
+
+    config_path = CONFIG_USER_PATH if user else CONFIG_PROJECT_PATH
+    data = _load_yaml(config_path)
+    data[key] = typed_value
+    _save_yaml(config_path, data)
+
+    location = "user" if user else "project"
+    console.print(f"[green]Set[/green] {key} = {typed_value} [dim]({location} config)[/dim]")
+
+
+@config_app.command("reset")
+def config_reset(
+    user: bool = typer.Option(False, "--user", help="Reset user config"),
+    project: bool = typer.Option(False, "--project", help="Reset project config"),
+    all_configs: bool = typer.Option(False, "--all", help="Reset both user and project config"),
+) -> None:
+    """Reset configuration to defaults."""
+    from .config import CONFIG_PROJECT_PATH, CONFIG_USER_PATH
+
+    if all_configs:
+        user = project = True
+
+    if not user and not project:
+        project = True  # default to project
+
+    if project and CONFIG_PROJECT_PATH.exists():
+        CONFIG_PROJECT_PATH.unlink()
+        console.print(f"[green]Removed:[/green] {CONFIG_PROJECT_PATH}")
+
+    if user and CONFIG_USER_PATH.exists():
+        CONFIG_USER_PATH.unlink()
+        console.print(f"[green]Removed:[/green] {CONFIG_USER_PATH}")
+
+    console.print("[green]Config reset to defaults.[/green]")
+
+
+@config_app.command("path")
+def config_path() -> None:
+    """Show configuration file locations."""
+    from .config import CONFIG_PROJECT_PATH, CONFIG_USER_PATH
+
+    console.print(f"  User config:    {CONFIG_USER_PATH}", end="")
+    console.print(" [green](exists)[/green]" if CONFIG_USER_PATH.exists() else " [dim](not created)[/dim]")
+    console.print(f"  Project config: {CONFIG_PROJECT_PATH.resolve()}", end="")
+    console.print(" [green](exists)[/green]" if CONFIG_PROJECT_PATH.exists() else " [dim](not created)[/dim]")
+
+
+# =========================================================================
+# Job commands
+# =========================================================================
+
+
+def _job_api():
+    """Get httpx client for remote job API, or None if local mode."""
+    settings = load_settings()
+    if settings.server_url:
+        import httpx
+
+        headers = {}
+        if settings.server_auth_token:
+            headers["Authorization"] = f"Bearer {settings.server_auth_token}"
+        return httpx.Client(base_url=settings.server_url, timeout=30, headers=headers)
+    return None
+
+
+def _job_local_scheduler():
+    """Create a local FeatcatScheduler for direct job access."""
+    try:
+        from .server.scheduler import FeatcatScheduler
+    except ImportError:
+        console.print("[red]Job commands require server extras.[/red] Install: uv pip install 'featcat[server]'")
+        raise typer.Exit(1) from None
+
+    settings = load_settings()
+    db = LocalBackend(settings.catalog_db_path)
+    db.init_db()
+    scheduler = FeatcatScheduler(backend=db, llm=None, settings=settings)
+    scheduler.setup_default_jobs()
+    return scheduler, db
+
+
+@job_app.command("list")
+def job_list() -> None:
+    """Show all scheduled jobs."""
+    api = _job_api()
+    if api:
+        rows = api.get("/api/jobs").json()
+        api.close()
+    else:
+        scheduler, db = _job_local_scheduler()
+        rows = scheduler.get_schedules()
+        db.close()
+
+    if not rows:
+        console.print("[dim]No scheduled jobs found.[/dim]")
+        return
+
+    table = Table(title="Scheduled Jobs")
+    table.add_column("Job", style="cyan")
+    table.add_column("Schedule")
+    table.add_column("Enabled")
+    table.add_column("Last Run")
+    table.add_column("Description")
+
+    for row in rows:
+        enabled = "[green]yes[/green]" if row.get("enabled") else "[red]no[/red]"
+        last_run = str(row.get("last_run_at", ""))[:19] if row.get("last_run_at") else "[dim]never[/dim]"
+        table.add_row(
+            row.get("job_name", ""), row.get("cron_expression", ""), enabled, last_run, row.get("description", "")
+        )
+
+    console.print(table)
+
+
+@job_app.command("logs")
+def job_logs(
+    job: str | None = typer.Option(None, "--job", "-j", help="Filter by job name"),
+    limit: int = typer.Option(20, "--limit", "-n", help="Max rows"),
+) -> None:
+    """Show recent job execution logs."""
+    api = _job_api()
+    if api:
+        params: dict = {"limit": limit}
+        if job:
+            params["job_name"] = job
+        rows = api.get("/api/jobs/logs", params=params).json()
+        api.close()
+    else:
+        scheduler, db = _job_local_scheduler()
+        rows = scheduler.get_logs(job_name=job, limit=limit)
+        db.close()
+
+    if not rows:
+        console.print("[dim]No job logs found.[/dim]")
+        return
+
+    table = Table(title="Job Logs")
+    table.add_column("Job", style="cyan")
+    table.add_column("Status")
+    table.add_column("Started")
+    table.add_column("Duration")
+    table.add_column("Triggered By")
+
+    for row in rows:
+        status = row.get("status", "")
+        color = {"success": "green", "failed": "red", "warning": "yellow", "running": "blue"}.get(status, "dim")
+        dur = row.get("duration_seconds")
+        duration = f"{dur:.1f}s" if dur else "-"
+        started = str(row.get("started_at", ""))[:19] if row.get("started_at") else "-"
+        table.add_row(
+            row.get("job_name", ""), f"[{color}]{status}[/{color}]", started, duration, row.get("triggered_by", "")
+        )
+
+    console.print(table)
+
+
+@job_app.command("run")
+def job_run(
+    name: str = typer.Argument(help="Job name to run"),
+) -> None:
+    """Manually trigger a job."""
+    api = _job_api()
+    if api:
+        with console.status(f"[blue]Running {name} (remote)..."):
+            resp = api.post(f"/api/jobs/{name}/run")
+            result = resp.json()
+        api.close()
+    else:
+        import asyncio
+
+        scheduler, db = _job_local_scheduler()
+        with console.status(f"[blue]Running {name}..."):
+            result = asyncio.run(scheduler.run_job(name, triggered_by="manual"))
+        db.close()
+
+    status = result.get("status", "unknown")
+    color = "green" if status == "success" else "red" if status == "failed" else "yellow"
+    dur = result.get("duration_seconds", 0)
+    console.print(f"[{color}]{status}[/{color}] {name} ({dur:.1f}s)")
+    if result.get("error_message"):
+        console.print(f"[red]Error:[/red] {result['error_message']}")
+
+
+@job_app.command("enable")
+def job_enable(name: str = typer.Argument(help="Job name")) -> None:
+    """Enable a scheduled job."""
+    api = _job_api()
+    if api:
+        api.patch(f"/api/jobs/{name}", json={"enabled": True})
+        api.close()
+    else:
+        scheduler, db = _job_local_scheduler()
+        scheduler.update_schedule(name, cron=None, enabled=True)
+        db.close()
+    console.print(f"[green]Enabled:[/green] {name}")
+
+
+@job_app.command("disable")
+def job_disable(name: str = typer.Argument(help="Job name")) -> None:
+    """Disable a scheduled job."""
+    api = _job_api()
+    if api:
+        api.patch(f"/api/jobs/{name}", json={"enabled": False})
+        api.close()
+    else:
+        scheduler, db = _job_local_scheduler()
+        scheduler.update_schedule(name, cron=None, enabled=False)
+        db.close()
+    console.print(f"[yellow]Disabled:[/yellow] {name}")
+
+
+@job_app.command("schedule")
+def job_schedule(
+    name: str = typer.Argument(help="Job name"),
+    cron: str = typer.Argument(help="Cron expression (e.g. '0 */6 * * *')"),
+) -> None:
+    """Change a job's cron schedule."""
+    api = _job_api()
+    if api:
+        api.patch(f"/api/jobs/{name}", json={"cron_expression": cron})
+        api.close()
+    else:
+        scheduler, db = _job_local_scheduler()
+        scheduler.update_schedule(name, cron=cron, enabled=None)
+        db.close()
+    console.print(f"[green]Updated:[/green] {name} -> {cron}")
+
+
+# =========================================================================
+# Server command
+# =========================================================================
+
+
+@app.command()
+def serve(
+    host: str = typer.Option("0.0.0.0", help="Host to bind"),
+    port: int = typer.Option(8000, help="Port to bind"),
+    reload: bool = typer.Option(False, help="Auto-reload on code changes"),
+) -> None:
+    """Start the featcat API server."""
+    try:
+        import uvicorn
+
+        from .server import create_app as _check_server  # noqa: F401
+    except ImportError:
+        console.print("[red]Server requires extras.[/red] Install with: uv pip install 'featcat[server]'")
+        raise typer.Exit(1) from None
+
+    console.print(f"[green]Starting featcat server[/green] at http://{host}:{port}")
+    console.print("[dim]Press Ctrl+C to stop.[/dim]")
+    uvicorn.run(
+        "featcat.server:create_app",
+        host=host,
+        port=port,
+        reload=reload,
+        workers=1 if reload else 1,
+        factory=True,
+    )
+
+
+# =========================================================================
 # TUI command
 # =========================================================================
 
@@ -885,7 +1515,7 @@ def ui() -> None:
         app_instance = FeatcatApp()
         app_instance.run()
     except ImportError:
-        console.print("[red]TUI requires textual.[/red] Install with: pip install 'featcat[tui]'")
+        console.print("[red]TUI requires textual.[/red] Install with: uv pip install 'featcat[tui]'")
         raise typer.Exit(1) from None
 
 

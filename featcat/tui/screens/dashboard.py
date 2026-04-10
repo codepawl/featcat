@@ -22,6 +22,7 @@ class DashboardScreen(Screen):
         ("f", "switch_screen('features')", "Features"),
         ("m", "switch_screen('monitoring')", "Monitor"),
         ("c", "switch_screen('chat')", "Chat"),
+        ("a", "add_source", "Add"),
         ("q", "quit", "Quit"),
     ]
 
@@ -41,12 +42,10 @@ class DashboardScreen(Screen):
     def _refresh_data(self) -> None:
         """Load stats from the catalog DB."""
         try:
-            from ...catalog.db import CatalogDB
-            from ...config import load_settings
+            from ...catalog.factory import get_backend
             from ...plugins.autodoc import get_doc_stats
 
-            settings = load_settings()
-            db = CatalogDB(settings.catalog_db_path)
+            db = get_backend()
 
             features = db.list_features()
             sources = db.list_sources()
@@ -84,6 +83,9 @@ class DashboardScreen(Screen):
         except Exception as e:
             welcome = self.query_one("#welcome", Static)
             welcome.update(f"[red]Error loading catalog:[/red] {e}")
+
+    def action_add_source(self) -> None:
+        self.notify("Use 'featcat add <path>' from the CLI to add a source.", title="Add Source")
 
     def action_switch_screen(self, screen_name: str) -> None:
         self.app.switch_mode(screen_name)
