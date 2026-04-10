@@ -129,6 +129,17 @@ class RemoteBackend(CatalogBackend):
         # Baseline computation happens via server endpoint
         self._request("POST", "/api/monitor/baseline")
 
+    # --- Feature Versions ---
+
+    def list_feature_versions(self, feature_id: str) -> list[dict]:
+        return []
+
+    def get_feature_version(self, feature_id: str, version: int) -> dict | None:
+        return None
+
+    def rollback_feature(self, feature_id: str, version: int) -> dict:
+        return {}
+
     # --- Stats ---
 
     def get_catalog_stats(self) -> dict:

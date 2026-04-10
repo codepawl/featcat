@@ -630,6 +630,111 @@ def feature_search(
     console.print(table)
 
 
+@feature_app.command("history")
+def feature_history(
+    name: str = typer.Argument(help="Feature name (e.g. source.column)"),
+) -> None:
+    """Show version history for a feature."""
+    db = _get_db()
+    feature = db.get_feature_by_name(name)
+    if feature is None:
+        console.print(f"[red]Feature not found:[/red] {name}")
+        db.close()
+        raise typer.Exit(1)
+    versions = db.list_feature_versions(feature.id)
+    db.close()
+    if not versions:
+        console.print(f"No version history for [cyan]{name}[/cyan]")
+        return
+    table = Table(title=f"Version History: {name}")
+    table.add_column("Version", style="bold", justify="right")
+    table.add_column("Changed", style="dim")
+    table.add_column("Summary")
+    table.add_column("By", style="dim")
+    for v in versions:
+        ts = v["created_at"]
+        if hasattr(ts, "strftime"):
+            ts = ts.strftime("%Y-%m-%d %H:%M")
+        table.add_row(str(v["version"]), str(ts), v.get("change_summary", ""), v.get("changed_by", ""))
+    console.print(table)
+
+
+@feature_app.command("diff")
+def feature_diff(
+    name: str = typer.Argument(help="Feature name"),
+    v1: int | None = typer.Option(None, "--v1", help="First version (default: previous)"),
+    v2: int | None = typer.Option(None, "--v2", help="Second version (default: latest)"),
+) -> None:
+    """Diff two versions of a feature's metadata."""
+    db = _get_db()
+    feature = db.get_feature_by_name(name)
+    if feature is None:
+        console.print(f"[red]Feature not found:[/red] {name}")
+        db.close()
+        raise typer.Exit(1)
+    versions = db.list_feature_versions(feature.id)
+    db.close()
+    if not versions:
+        console.print(f"No version history for [cyan]{name}[/cyan]")
+        return
+    if v2 is None:
+        v2 = versions[0]["version"]
+    if v1 is None:
+        v1 = versions[1]["version"] if len(versions) > 1 else versions[0]["version"]
+    snap_v1 = next((v["snapshot"] for v in versions if v["version"] == v1), None)
+    snap_v2 = next((v["snapshot"] for v in versions if v["version"] == v2), None)
+    if snap_v1 is None or snap_v2 is None:
+        console.print("[red]Version not found[/red]")
+        raise typer.Exit(1)
+    console.print(f"\n[bold]Comparing v{v2} vs v{v1}:[/bold]")
+    has_diff = False
+    for field in ("description", "tags", "owner", "dtype", "column_name"):
+        old = snap_v1.get(field)
+        new = snap_v2.get(field)
+        if old != new:
+            console.print(f"  [cyan]{field}:[/cyan]  {old!r} -> {new!r}")
+            has_diff = True
+    if not has_diff:
+        console.print("  (no differences)")
+    console.print()
+
+
+@feature_app.command("rollback")
+def feature_rollback(
+    name: str = typer.Argument(help="Feature name"),
+    version: int = typer.Option(..., "--version", "-v", help="Version number to rollback to"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
+) -> None:
+    """Rollback feature metadata to a previous version."""
+    db = _get_db()
+    feature = db.get_feature_by_name(name)
+    if feature is None:
+        console.print(f"[red]Feature not found:[/red] {name}")
+        db.close()
+        raise typer.Exit(1)
+    target = db.get_feature_version(feature.id, version)
+    if target is None:
+        console.print(f"[red]Version {version} not found[/red]")
+        db.close()
+        raise typer.Exit(1)
+    if not yes:
+        console.print(f"\nRollback [cyan]{name}[/cyan] to version {version}?")
+        snapshot = target["snapshot"]
+        for field in ("description", "tags", "owner", "dtype"):
+            old = getattr(feature, field, None)
+            new = snapshot.get(field)
+            if old != new:
+                console.print(f"  [cyan]{field}:[/cyan]  {old!r} -> {new!r}")
+        if not typer.confirm("Confirm?"):
+            db.close()
+            raise typer.Exit(0)
+    db.rollback_feature(feature.id, version)
+    versions = db.list_feature_versions(feature.id)
+    new_ver = versions[0]["version"] if versions else "?"
+    db.close()
+    console.print(f"[green]Rolled back.[/green] New version {new_ver} created.")
+
+
 # =========================================================================
 # Discover command
 # =========================================================================

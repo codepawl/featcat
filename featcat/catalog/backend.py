@@ -59,6 +59,18 @@ class CatalogBackend(ABC):
     def search_features(self, query: str) -> list:
         """Keyword search across name, description, tags, column_name."""
 
+    @abstractmethod
+    def list_feature_versions(self, feature_id: str) -> list[dict]:
+        """Return all versions for a feature, ordered by version descending."""
+
+    @abstractmethod
+    def get_feature_version(self, feature_id: str, version: int) -> dict | None:
+        """Return a specific version snapshot, or None if not found."""
+
+    @abstractmethod
+    def rollback_feature(self, feature_id: str, version: int) -> dict:
+        """Restore feature metadata from a version snapshot. Creates a new version record."""
+
     # --- Feature Docs ---
 
     @abstractmethod
