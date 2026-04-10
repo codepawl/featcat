@@ -60,4 +60,8 @@ deploy/models/*.gguf
 # Web frontend
 web/node_modules/
 web/dist/
+web/.vite/
 featcat/server/static/
+
+# OpenPawl
+.openpawl/
