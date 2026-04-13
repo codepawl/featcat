@@ -35,22 +35,25 @@ class LlamaCppLLM(BaseLLM):
         messages.append({"role": "user", "content": prompt})
         return messages
 
-    def generate(
+    def chat(
         self,
-        prompt: str,
-        system: str | None = None,
+        messages: list[dict],
         temperature: float = 0.3,
-        json_mode: bool = False,
-        think: bool = False,
-    ) -> str:
-        """Generate a complete response from llama.cpp server."""
+        tools: list[dict] | None = None,
+    ) -> dict:
+        """Send chat completion with optional tool calling.
+
+        Returns dict with: content, tool_calls, finish_reason
+        """
         payload: dict = {
             "model": self.model,
-            "messages": self._build_messages(prompt, system),
+            "messages": messages,
             "temperature": temperature,
             "stream": False,
             "max_tokens": 2048,
         }
+        if tools:
+            payload["tools"] = tools
 
         body = json.dumps(payload).encode("utf-8")
         req = Request(
@@ -70,20 +73,23 @@ class LlamaCppLLM(BaseLLM):
         except TimeoutError as e:
             raise LLMTimeoutError(f"llama.cpp request timed out after {self.timeout}s") from e
 
-        content = data["choices"][0]["message"]["content"]
-        return strip_thinking_tags(content)
+        choice = data["choices"][0]
+        message = choice["message"]
+        return {
+            "content": message.get("content"),
+            "tool_calls": message.get("tool_calls"),
+            "finish_reason": choice.get("finish_reason", "stop"),
+        }
 
-    def stream(
+    def stream_chat(
         self,
-        prompt: str,
-        system: str | None = None,
+        messages: list[dict],
         temperature: float = 0.3,
-        think: bool = False,
     ) -> Iterator[str]:
-        """Stream response chunks from llama.cpp server."""
+        """Stream chat completion tokens from message history."""
         payload: dict = {
             "model": self.model,
-            "messages": self._build_messages(prompt, system),
+            "messages": messages,
             "temperature": temperature,
             "stream": True,
             "max_tokens": 2048,
@@ -117,6 +123,31 @@ class LlamaCppLLM(BaseLLM):
             ) from e
         except TimeoutError as e:
             raise LLMTimeoutError(f"llama.cpp request timed out after {self.timeout}s") from e
+
+    def generate(
+        self,
+        prompt: str,
+        system: str | None = None,
+        temperature: float = 0.3,
+        json_mode: bool = False,
+        think: bool = False,
+    ) -> str:
+        """Generate a complete response from llama.cpp server."""
+        messages = self._build_messages(prompt, system)
+        result = self.chat(messages, temperature=temperature)
+        content = result["content"] or ""
+        return strip_thinking_tags(content)
+
+    def stream(
+        self,
+        prompt: str,
+        system: str | None = None,
+        temperature: float = 0.3,
+        think: bool = False,
+    ) -> Iterator[str]:
+        """Stream response chunks from llama.cpp server."""
+        messages = self._build_messages(prompt, system)
+        yield from self.stream_chat(messages, temperature=temperature)
 
     def health_check(self) -> bool:
         """Check if llama.cpp server is running."""

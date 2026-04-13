@@ -73,7 +73,7 @@ class ChatScreen(Screen):
             db.close()
 
         except LLMConnectionError:
-            messages.add_ai_message("[red]LLM unavailable.[/red] Is Ollama running?")
+            messages.add_ai_message("[red]LLM unavailable.[/red] Is LLM server running?")
         except Exception as e:
             messages.add_ai_message(f"[red]Error:[/red] {e}")
 
@@ -116,7 +116,7 @@ class ChatScreen(Screen):
         llm = self._create_llm(settings)
 
         if llm is None:
-            messages.add_ai_message("[red]Discovery requires an LLM. Start Ollama first.[/red]")
+            messages.add_ai_message("[red]Discovery requires an LLM. Start LLM server first.[/red]")
             return
 
         msg_widget = messages.add_ai_message("Analyzing catalog...")
@@ -183,7 +183,7 @@ class ChatScreen(Screen):
             llm = create_llm(
                 backend=settings.llm_backend,
                 model=settings.llm_model,
-                base_url=settings.ollama_url if settings.llm_backend == "ollama" else settings.llamacpp_url,
+                base_url=settings.llamacpp_url,
             )
             if llm.health_check():
                 return llm

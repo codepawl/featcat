@@ -38,7 +38,7 @@ async def lifespan(app: FastAPI):
         llm = create_llm(
             backend=settings.llm_backend,
             model=settings.llm_model,
-            base_url=settings.ollama_url if settings.llm_backend == "ollama" else settings.llamacpp_url,
+            base_url=settings.llamacpp_url,
             timeout=settings.llm_timeout,
         )
         app.state.llm = llm

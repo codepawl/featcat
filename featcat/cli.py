@@ -49,7 +49,7 @@ def _get_llm(use_cache: bool = True):
         llm = create_llm(
             backend=settings.llm_backend,
             model=settings.llm_model,
-            base_url=settings.ollama_url if settings.llm_backend == "ollama" else settings.llamacpp_url,
+            base_url=settings.llamacpp_url,
             timeout=settings.llm_timeout,
             max_retries=settings.llm_max_retries,
         )
@@ -157,7 +157,7 @@ def add(
     if not skip_docs:
         llm = _get_llm(use_cache=not no_cache)
         if llm is None:
-            console.print("[yellow]Docs skipped (Ollama not running). Run 'featcat doc generate' later.[/yellow]")
+            console.print("[yellow]Docs skipped (LLM server not running). Run 'featcat doc generate' later.[/yellow]")
         else:
             from .plugins.autodoc import AutodocPlugin
 
@@ -264,31 +264,18 @@ def doctor() -> None:
     finally:
         db.close()
 
-    # Ollama (only check in local mode — remote server manages its own LLM)
+    # LLM server (only check in local mode — remote server manages its own LLM)
     if not remote_mode:
         try:
-            from .llm.ollama import OllamaLLM
+            from .llm.llamacpp import LlamaCppLLM
 
-            ollama = OllamaLLM(model=settings.llm_model, base_url=settings.ollama_url)
-            reachable = ollama.health_check()
-            _print_check(reachable, f"Ollama running at {settings.ollama_url}")
-            if reachable:
-                import json
-                from urllib.request import urlopen
-
-                resp = urlopen(f"{settings.ollama_url}/api/tags", timeout=5)
-                data = json.loads(resp.read())
-                model_names = [m.get("name", "") for m in data.get("models", [])]
-                model_found = any(settings.llm_model in n for n in model_names)
-                _print_check(model_found, f"Model {settings.llm_model} available")
-                if not model_found:
-                    all_ok = False
-            else:
+            llm = LlamaCppLLM(model=settings.llm_model, base_url=settings.llamacpp_url)
+            reachable = llm.health_check()
+            _print_check(reachable, f"LLM server running at {settings.llamacpp_url}")
+            if not reachable:
                 all_ok = False
-                _print_check(False, f"Model {settings.llm_model} (Ollama not running)")
         except Exception:
-            _print_check(False, f"Ollama at {settings.ollama_url}")
-            _print_check(False, f"Model {settings.llm_model}")
+            _print_check(False, f"LLM server at {settings.llamacpp_url}")
             all_ok = False
 
         # Cache stats (local only)
@@ -762,7 +749,7 @@ def discover(
         llm = _get_llm(use_cache=False)
         if llm is None:
             db.close()
-            console.print("[red]LLM unavailable.[/red] Ensure Ollama is running: ollama serve")
+            console.print("[red]LLM unavailable.[/red] Ensure LLM server is running")
             raise typer.Exit(1)
 
         settings = load_settings()
@@ -919,7 +906,7 @@ def doc_generate(
     llm = _get_llm(use_cache=not no_cache)
     if llm is None:
         db.close()
-        console.print("[red]LLM unavailable.[/red] Ensure Ollama is running: ollama serve")
+        console.print("[red]LLM unavailable.[/red] Ensure LLM server is running")
         raise typer.Exit(1)
 
     from rich.progress import Progress
