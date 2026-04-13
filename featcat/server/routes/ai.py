@@ -193,3 +193,74 @@ async def stream_ask(query: str, db=Depends(get_db), llm=Depends(get_llm)):
         yield {"event": "message", "data": json.dumps({"type": "done"})}
 
     return EventSourceResponse(event_generator())
+
+
+# ---------------------------------------------------------------------------
+# Agentic chat with tool calling
+# ---------------------------------------------------------------------------
+
+
+class ChatRequest(BaseModel):
+    query: str
+    session_id: str | None = None
+
+
+@router.post("/chat")
+async def agent_chat(body: ChatRequest, db=Depends(get_db), llm=Depends(get_llm)):
+    """Agentic chat endpoint with tool calling and session support."""
+    import contextlib
+    import uuid
+
+    from sse_starlette.sse import EventSourceResponse
+
+    from ...ai import CatalogAgent, FallbackAgent, SessionManager
+
+    query = body.query.strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="Empty query")
+
+    session_id = body.session_id or str(uuid.uuid4())
+
+    # Lazily initialize session manager on app state
+    if not hasattr(agent_chat, "_session_mgr"):
+        agent_chat._session_mgr = SessionManager()  # type: ignore[attr-defined]
+    session_mgr: SessionManager = agent_chat._session_mgr  # type: ignore[attr-defined]
+    session = session_mgr.get_or_create(session_id)
+
+    async def event_stream():
+        llm_ok = False
+        if llm is not None:
+            with contextlib.suppress(Exception):
+                llm_ok = await run_in_threadpool(llm.health_check)
+
+        full_response = ""
+        try:
+            if llm_ok:
+                agent = CatalogAgent(llm, db)
+                gen = agent.chat(query, history=session.get_history())
+            else:
+                agent = FallbackAgent(db)
+                gen = agent.chat(query)
+
+            async for event in gen:
+                if event.get("type") == "token":
+                    full_response += event.get("content", "")
+                yield {"event": "message", "data": json.dumps(event)}
+
+        except Exception as e:
+            yield {"event": "message", "data": json.dumps({"type": "error", "content": str(e)})}
+            # Try fallback
+            fallback = FallbackAgent(db)
+            async for event in fallback.chat(query):
+                if event.get("type") == "token":
+                    full_response += event.get("content", "")
+                yield {"event": "message", "data": json.dumps(event)}
+
+        session.add_message("user", query)
+        if full_response:
+            session.add_message("assistant", full_response)
+
+    return EventSourceResponse(
+        event_stream(),
+        headers={"X-Session-Id": session_id},
+    )
