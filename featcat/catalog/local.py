@@ -354,6 +354,11 @@ class LocalBackend(CatalogBackend):
         return dict(row)
 
     def save_feature_doc(self, feature_id: str, doc: dict, model_used: str = "unknown") -> None:
+        def _str(val: object) -> str:
+            if isinstance(val, list):
+                return "; ".join(str(v) for v in val)
+            return str(val) if val else ""
+
         now = datetime.now(timezone.utc)
         self.conn.execute("DELETE FROM feature_docs WHERE feature_id = ?", (feature_id,))
         self.conn.execute(
@@ -363,10 +368,10 @@ class LocalBackend(CatalogBackend):
                VALUES (?, ?, ?, ?, ?, ?, ?)""",
             (
                 feature_id,
-                doc.get("short_description", ""),
-                doc.get("long_description", ""),
-                doc.get("expected_range", ""),
-                doc.get("potential_issues", ""),
+                _str(doc.get("short_description", "")),
+                _str(doc.get("long_description", "")),
+                _str(doc.get("expected_range", "")),
+                _str(doc.get("potential_issues", "")),
                 now,
                 model_used,
             ),
