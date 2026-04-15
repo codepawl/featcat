@@ -10,7 +10,7 @@ fi
 # --- One-time setup ---
 
 # Download GGUF model if not present
-MODEL_FILE="deploy/models/Qwen3.5-0.8B-Q4_K_M.gguf"
+MODEL_FILE="deploy/models/gemma-4-E2B-it-Q4_K_M.gguf"
 if [ ! -f "$MODEL_FILE" ]; then
   echo "Downloading GGUF model (~533 MB)..."
   mkdir -p deploy/models
@@ -19,7 +19,7 @@ if [ ! -f "$MODEL_FILE" ]; then
     PROXY_FLAG="-x $HTTP_PROXY"
   fi
   curl $PROXY_FLAG -L -o "$MODEL_FILE" \
-    "https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q4_K_M.gguf"
+    "https://huggingface.co/google/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q4_K_M.gguf"
 fi
 
 # Start llama.cpp server via Docker if not already running
@@ -30,10 +30,10 @@ if ! curl -s http://localhost:8080/health >/dev/null 2>&1; then
     -v "$(pwd)/deploy/models:/models" \
     -p 8080:8080 \
     ghcr.io/ggml-org/llama.cpp:server \
-    --model /models/Qwen3.5-0.8B-Q4_K_M.gguf \
+    --model /models/gemma-4-E2B-it-Q4_K_M.gguf \
     --host 0.0.0.0 --port 8080 \
     --threads 4 --ctx-size 2048 --batch-size 256 \
-    --flash-attn on --no-mmap --reasoning off
+    --flash-attn on --no-mmap --jinja
 
   echo "Waiting for LLM server..."
   until curl -s http://localhost:8080/health >/dev/null 2>&1; do
@@ -57,6 +57,8 @@ if [ "$FEATURE_COUNT" -lt 2 ]; then
   featcat add tests/fixtures/user_behavior_30d.parquet --owner dev --skip-docs 2>/dev/null || true
   featcat add tests/fixtures/device_performance.parquet --owner dev --skip-docs 2>/dev/null || true
 fi
+
+export FEATCAT_LLM_MODEL=gemma-4-E2B-it-Q4_K_M.gguf
 
 # --- Start services ---
 

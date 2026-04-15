@@ -65,30 +65,28 @@ class TestS3Storage:
     def test_read_s3_schema(self, s3_env):
         from featcat.catalog.storage import _s3_read_schema
 
-        # Use pyarrow.fs directly with moto's mock
-        # Note: This requires pyarrow's S3 filesystem to work with moto
-        # In practice, moto + pyarrow.fs.S3FileSystem may not work together
-        # without additional setup. This test documents the expected interface.
+        # PyArrow uses its own C++ S3 client, not boto3, so moto can't intercept it.
+        # Skip immediately instead of waiting for DNS timeout.
+        pytest.skip("PyArrow S3FileSystem doesn't work with moto — uses C++ client, not boto3")
+
         uri = f"s3://{BUCKET}/{KEY}"
-        try:
-            schema = _s3_read_schema(uri)
-            field_names = [f.name for f in schema]
-            assert "user_id" in field_names
-            assert "score" in field_names
-        except Exception:
-            pytest.skip("PyArrow S3FileSystem doesn't work with moto in this environment")
+        schema = _s3_read_schema(uri)
+        field_names = [f.name for f in schema]
+        assert "user_id" in field_names
+        assert "score" in field_names
 
     def test_scan_s3_source(self, s3_env):
         from featcat.catalog.scanner import scan_source
 
+        # PyArrow uses its own C++ S3 client, not boto3, so moto can't intercept it.
+        # Skip immediately instead of waiting for DNS timeout.
+        pytest.skip("PyArrow S3FileSystem doesn't work with moto — uses C++ client, not boto3")
+
         uri = f"s3://{BUCKET}/{KEY}"
-        try:
-            columns = scan_source(uri)
-            assert len(columns) == 3
-            names = {c.column_name for c in columns}
-            assert names == {"user_id", "score", "city"}
-        except Exception:
-            pytest.skip("PyArrow S3FileSystem doesn't work with moto in this environment")
+        columns = scan_source(uri)
+        assert len(columns) == 3
+        names = {c.column_name for c in columns}
+        assert names == {"user_id", "score", "city"}
 
     def test_s3_uri_to_path(self):
         from featcat.catalog.storage import _s3_uri_to_path

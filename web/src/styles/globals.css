@@ -4,34 +4,57 @@
 
 :root {
   --bg-primary: #FFFFFF;
-  --bg-secondary: #F6F8FA;
-  --bg-tertiary: #F0F2F5;
-  --text-primary: #1F2328;
-  --text-secondary: #656D76;
-  --text-tertiary: #8B949E;
-  --border-default: #D0D7DE;
-  --border-subtle: #E8ECEF;
-  --code-bg: #F6F8FA;
+  --bg-secondary: #F8F9FC;
+  --bg-tertiary: #EEF1F6;
+  --text-primary: #1A1F36;
+  --text-secondary: #6B7280;
+  --text-tertiary: #9CA3AF;
+  --border-default: #E2E6EF;
+  --border-subtle: #F0F2F8;
+  --code-bg: #F4F6FA;
+  --accent: #D97706;
+  --accent-subtle: #FEF3C7;
+  --accent-emphasis: #B45309;
+  --accent-muted: #FFFBEB;
+  --glow: 0 0 12px rgba(217, 119, 6, 0.15);
 }
 
 .dark {
-  --bg-primary: #0D1117;
-  --bg-secondary: #161B22;
-  --bg-tertiary: #1C2128;
-  --text-primary: #E6EDF3;
-  --text-secondary: #8B949E;
-  --text-tertiary: #6E7681;
-  --border-default: #30363D;
-  --border-subtle: #1B1F24;
-  --code-bg: #161B22;
+  --bg-primary: #0F1629;
+  --bg-secondary: #141D2F;
+  --bg-tertiary: #1A2540;
+  --text-primary: #E8ECF4;
+  --text-secondary: #8892A8;
+  --text-tertiary: #505B73;
+  --border-default: #1E2A45;
+  --border-subtle: #151E33;
+  --code-bg: #141D2F;
+  --accent: #F59E0B;
+  --accent-subtle: rgba(245, 158, 11, 0.1);
+  --accent-emphasis: #D97706;
+  --accent-muted: rgba(245, 158, 11, 0.06);
+  --glow: 0 0 16px rgba(245, 158, 11, 0.12);
 }
 
 body {
   background: var(--bg-secondary);
   color: var(--text-primary);
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
-::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 4px; }
+::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 999px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-tertiary); }
+
+/* Glass panel utility */
+.glass-panel {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  backdrop-filter: blur(8px);
+}
+
+.dark .glass-panel {
+  background: rgba(15, 22, 41, 0.8);
+}

@@ -43,10 +43,12 @@ async def discover(body: DiscoverRequest, db=Depends(get_db), llm=Depends(get_ll
     from ...plugins.discovery import DiscoveryPlugin
 
     plugin = DiscoveryPlugin()
+    # Cap context to avoid exceeding small model's context window
+    max_features = min(settings.max_context_features, 30)
     try:
         result = await asyncio.wait_for(
             run_in_threadpool(
-                plugin.execute, db, llm, use_case=body.use_case, max_features=settings.max_context_features
+                plugin.execute, db, llm, use_case=body.use_case, max_features=max_features,
             ),
             timeout=LLM_TIMEOUT,
         )
@@ -54,7 +56,12 @@ async def discover(body: DiscoverRequest, db=Depends(get_db), llm=Depends(get_ll
         return {"existing_features": [], "new_feature_suggestions": [], "summary": "Request timed out. LLM is slow."}
 
     if result.status == "error":
-        raise HTTPException(status_code=500, detail="; ".join(result.errors))
+        # Return empty result instead of 500 — LLM may be overloaded or context too large
+        return {
+            "existing_features": [],
+            "new_feature_suggestions": [],
+            "summary": f"AI discovery failed: {'; '.join(result.errors)}",
+        }
 
     return result.data
 
@@ -65,10 +72,12 @@ async def ask(body: AskRequest, db=Depends(get_db), llm=Depends(get_llm)):
     from ...plugins.nl_query import NLQueryPlugin
 
     plugin = NLQueryPlugin()
-    fallback = llm is None
+    if llm is None:
+        result = await run_in_threadpool(plugin.execute, db, llm, query=body.query, fallback_only=True)
+        return result.data
     try:
         result = await asyncio.wait_for(
-            run_in_threadpool(plugin.execute, db, llm, query=body.query, fallback_only=fallback),
+            run_in_threadpool(plugin.execute, db, llm, query=body.query, fallback_only=False),
             timeout=LLM_TIMEOUT,
         )
     except asyncio.TimeoutError:
@@ -76,6 +85,17 @@ async def ask(body: AskRequest, db=Depends(get_db), llm=Depends(get_llm)):
 
     if result.status == "error":
         raise HTTPException(status_code=500, detail="; ".join(result.errors))
+
+    # Log usage for referenced features
+    if result.data and "results" in result.data:
+        from ...catalog.usage import log_feature_usage
+
+        for r in result.data["results"]:
+            feat_name = r.get("feature")
+            if feat_name:
+                feat = db.get_feature_by_name(feat_name)
+                if feat:
+                    log_feature_usage(db, feat.id, "query", context=body.query)
 
     return result.data
 

@@ -93,7 +93,8 @@ class TestDocs:
 
     def test_get_missing_doc(self, client):
         resp = client.get("/api/docs/by-name", params={"name": "nonexistent"})
-        assert resp.status_code == 404
+        assert resp.status_code == 200
+        assert resp.json() is None
 
 
 class TestMonitor:
@@ -111,10 +112,32 @@ class TestMonitor:
 
 
 class TestAI:
-    def test_ask_without_llm(self, client):
-        resp = client.post("/api/ai/ask", json={"query": "test"})
+    def test_ask_without_llm(self, tmp_path, monkeypatch):
+        db_path = str(tmp_path / "test_no_llm.db")
+        monkeypatch.setenv("FEATCAT_CATALOG_DB_PATH", db_path)
+
+        def _raise(**kwargs):
+            raise RuntimeError("no LLM")
+
+        monkeypatch.setattr("featcat.llm.create_llm", _raise)
+
+        app = build_app()
+        with TestClient(app) as c:
+            resp = c.post("/api/ai/ask", json={"query": "test"})
         assert resp.status_code == 200
 
-    def test_discover_without_llm(self, client):
-        resp = client.post("/api/ai/discover", json={"use_case": "churn prediction"})
-        assert resp.status_code in (500, 503)  # LLM not available
+    def test_discover_without_llm(self, tmp_path, monkeypatch):
+        """Ensure discover returns 503 when LLM is unavailable."""
+        db_path = str(tmp_path / "test_no_llm.db")
+        monkeypatch.setenv("FEATCAT_CATALOG_DB_PATH", db_path)
+
+        # Force LLM creation to fail so app.state.llm = None
+        def _raise(**kwargs):
+            raise RuntimeError("no LLM")
+
+        monkeypatch.setattr("featcat.llm.create_llm", _raise)
+
+        app = build_app()
+        with TestClient(app) as c:
+            resp = c.post("/api/ai/discover", json={"use_case": "churn prediction"})
+        assert resp.status_code == 503

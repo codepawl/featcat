@@ -30,6 +30,7 @@ dependencies = [
     "rapidfuzz>=3.0",
     "scipy>=1.11",
     "numpy>=1.24",
+    "scikit-learn>=1.3",
     "pyyaml>=6.0",
 ]
 
@@ -48,6 +49,7 @@ dev = [
     "ruff>=0.4",
     "mypy>=1.8",
     "pre-commit>=3.0",
+    "pytest-timeout>=2.0",
 ]
 
 [project.urls]
@@ -77,6 +79,7 @@ select = ["E", "F", "W", "I", "N", "UP", "B", "A", "SIM", "TCH"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--cov=featcat --cov-report=term-missing --cov-report=xml"
+timeout = 10
 
 [tool.mypy]
 python_version = "3.10"

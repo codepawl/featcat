@@ -1,0 +1,72 @@
+# Dependencies
+web/node_modules/
+.venv/
+venv/
+
+# Build output
+web/dist/
+dist/
+build/
+wheels/
+featcat/server/static/
+*.whl
+*.egg
+*.egg-info/
+
+# Lock files (large, not useful for understanding code)
+uv.lock
+web/bun.lock
+web/package-lock.json
+
+# Compiled / bytecode
+__pycache__/
+*.py[cod]
+*.so
+
+# GGUF models (large binaries)
+deploy/models/*.gguf
+
+# Test / coverage artifacts
+.pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
+test_results.txt
+
+# Caches
+.mypy_cache/
+.ruff_cache/
+web/.vite/
+
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Runtime data
+catalog.db
+*.db-journal
+.env
+.env.local
+
+# Parquet data files
+*.parquet
+
+# Tool directories
+.openpawl/
+.superpowers/
+
+# Generated docs (not source of truth)
+docs/features.md
+docs/monitoring_report.md
+
+# Docker readme (not code)
+deploy/README.md
+
+# Project meta docs
+CHANGELOG.md
+CONTRIBUTING.md
+LICENSE

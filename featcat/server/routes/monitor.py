@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query
 from starlette.concurrency import run_in_threadpool
 
 from ..deps import get_db, get_llm
@@ -72,3 +72,25 @@ async def monitoring_report(db=Depends(get_db)):
     plugin = MonitoringPlugin()
     result = await run_in_threadpool(plugin.execute, db, None, action="check")
     return result.data
+
+
+@router.get("/history/{feature_spec:path}")
+def monitoring_history(
+    feature_spec: str,
+    days: int = Query(30, ge=1, le=365),
+    db=Depends(get_db),  # noqa: B008
+):
+    """Get PSI check history for a feature."""
+    return db.get_monitoring_history(feature_spec, days=days)
+
+
+@router.get("/baseline/{feature_spec:path}")
+def get_baseline(
+    feature_spec: str,
+    db=Depends(get_db),  # noqa: B008
+):
+    """Get baseline statistics for a feature by name."""
+    result = db.get_baseline_for_feature(feature_spec)
+    if result is None:
+        raise HTTPException(status_code=404, detail="No baseline found for this feature")
+    return result
