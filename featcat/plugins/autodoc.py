@@ -116,14 +116,60 @@ class AutodocPlugin(BasePlugin):
         system: str,
     ) -> dict | None:
         """Generate documentation for a single feature. Returns doc dict or None."""
+        from ..catalog.context_builder import build_doc_context
+
         source = db.get_source_by_name(feature.name.split(".")[0]) if "." in feature.name else None
         source_name = source.name if source else "unknown"
         source_path = source.path if source else "unknown"
 
-        siblings = db.list_features(source_name=source_name) if source else []
-        sibling_names = ", ".join(f.column_name for f in siblings if f.name != feature.name)
+        # Build rich context using TF-IDF similarity
+        context_features = build_doc_context(feature.id, db, max_context_features=8)
 
-        stats_text = "\n".join(f"  {k}: {v}" for k, v in feature.stats.items()) if feature.stats else "  (no stats)"
+        # Build stats text
+        stats_keys = ("mean", "std", "null_ratio", "min", "max")
+        stats_parts = [f"{k}={feature.stats[k]}" for k in stats_keys if k in feature.stats]
+        stats_text = ", ".join(stats_parts) if stats_parts else "(no stats)"
+
+        # Build hints section
+        hint = feature.generation_hints
+        hints_section = ""
+        if hint:
+            hints_section = f'Hint from data owner: "{hint}" ← treat as ground truth'
+
+        # Build same-source context section
+        same_source = [c for c in context_features if c.source != "cross_source"]
+        same_lines = []
+        for c in same_source:
+            parts = [f"{c.spec}: {c.dtype}"]
+            if c.stats_summary.get("mean") is not None:
+                parts.append(f"mean={c.stats_summary['mean']}")
+            if c.stats_summary.get("null_ratio") is not None:
+                parts.append(f"null={c.stats_summary['null_ratio']}%")
+            if c.generation_hints:
+                parts.append(f'hint: "{c.generation_hints}"')
+            same_lines.append("  " + ", ".join(parts))
+
+        same_source_section = ""
+        if same_lines:
+            same_source_section = (
+                "RELATED FEATURES IN SAME SOURCE:\n" + "\n".join(same_lines)
+            )
+
+        # Build cross-source context section
+        cross_source = [c for c in context_features if c.source == "cross_source"]
+        cross_lines = []
+        for c in cross_source:
+            src = c.spec.split(".")[0] if "." in c.spec else "?"
+            parts = [f"{c.spec} (from {src}): {c.dtype}"]
+            if c.stats_summary.get("mean") is not None:
+                parts.append(f"mean={c.stats_summary['mean']}")
+            cross_lines.append("  " + ", ".join(parts))
+
+        cross_source_section = ""
+        if cross_lines:
+            cross_source_section = (
+                "CROSS-SOURCE RELATED FEATURES:\n" + "\n".join(cross_lines)
+            )
 
         prompt = AUTODOC_PROMPT_SINGLE.format(
             feature_name=feature.name,
@@ -133,23 +179,41 @@ class AutodocPlugin(BasePlugin):
             source_path=source_path,
             tags=", ".join(feature.tags) if feature.tags else "(none)",
             stats_text=stats_text,
-            sibling_columns=sibling_names or "(none)",
+            hints_section=hints_section,
+            same_source_section=same_source_section,
+            cross_source_section=cross_source_section,
         )
 
         model_name = getattr(llm, "model", "unknown")
 
         try:
             doc = llm.generate_json(prompt, system=system)
+            logger.debug("LLM response for %s: %s", feature.name, str(doc)[:500])
         except Exception:
-            # Retry once with higher temperature
             logger.debug("Retry for %s with higher temperature", feature.name)
             try:
                 doc = llm.generate_json(prompt, system=system, temperature=0.3)
+                logger.debug("LLM retry response for %s: %s", feature.name, str(doc)[:500])
             except Exception as e:
                 logger.error("Retry also failed for %s: %s", feature.name, e)
                 return None
 
-        db.save_feature_doc(feature.id, doc, model_used=model_name)
+        # Small models sometimes wrap JSON in an array
+        if isinstance(doc, list):
+            doc = doc[0] if doc and isinstance(doc[0], dict) else {}
+
+        if not doc.get("short_description"):
+            logger.warning("LLM returned empty short_description for %s, skipping save", feature.name)
+            return None
+
+        context_specs = [c.spec for c in context_features]
+        db.save_feature_doc(
+            feature.id,
+            doc,
+            model_used=model_name,
+            hints_used=hint,
+            context_features=context_specs or None,
+        )
         return doc
 
 

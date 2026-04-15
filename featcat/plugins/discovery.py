@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from ..utils.catalog_context import get_all_sources_schema, get_feature_summary
+from ..utils.catalog_context import get_feature_summary
 from ..utils.lang import detect_language, localize_system_prompt
 from ..utils.prompts import DISCOVERY_PROMPT, DISCOVERY_SYSTEM
 from .base import BasePlugin, PluginResult
@@ -46,12 +46,14 @@ class DiscoveryPlugin(BasePlugin):
         max_features = kwargs.get("max_features", 100)
 
         feature_summary = get_feature_summary(catalog_db, max_features=max_features)
-        source_schemas = get_all_sources_schema(catalog_db)
+        # List source names only (full schemas are redundant with feature summary)
+        sources = catalog_db.list_sources()
+        source_list = ", ".join(s.name for s in sources) if sources else "none"
 
         prompt = DISCOVERY_PROMPT.format(
             use_case=use_case,
             feature_summary=feature_summary,
-            source_schemas=source_schemas,
+            source_schemas=f"Sources: {source_list}",
         )
 
         lang = detect_language(use_case)

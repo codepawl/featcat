@@ -43,10 +43,12 @@ async def discover(body: DiscoverRequest, db=Depends(get_db), llm=Depends(get_ll
     from ...plugins.discovery import DiscoveryPlugin
 
     plugin = DiscoveryPlugin()
+    # Cap context to avoid exceeding small model's context window
+    max_features = min(settings.max_context_features, 30)
     try:
         result = await asyncio.wait_for(
             run_in_threadpool(
-                plugin.execute, db, llm, use_case=body.use_case, max_features=settings.max_context_features
+                plugin.execute, db, llm, use_case=body.use_case, max_features=max_features,
             ),
             timeout=LLM_TIMEOUT,
         )
@@ -54,7 +56,12 @@ async def discover(body: DiscoverRequest, db=Depends(get_db), llm=Depends(get_ll
         return {"existing_features": [], "new_feature_suggestions": [], "summary": "Request timed out. LLM is slow."}
 
     if result.status == "error":
-        raise HTTPException(status_code=500, detail="; ".join(result.errors))
+        # Return empty result instead of 500 — LLM may be overloaded or context too large
+        return {
+            "existing_features": [],
+            "new_feature_suggestions": [],
+            "summary": f"AI discovery failed: {'; '.join(result.errors)}",
+        }
 
     return result.data
 
@@ -65,10 +72,12 @@ async def ask(body: AskRequest, db=Depends(get_db), llm=Depends(get_llm)):
     from ...plugins.nl_query import NLQueryPlugin
 
     plugin = NLQueryPlugin()
-    fallback = llm is None
+    if llm is None:
+        result = await run_in_threadpool(plugin.execute, db, llm, query=body.query, fallback_only=True)
+        return result.data
     try:
         result = await asyncio.wait_for(
-            run_in_threadpool(plugin.execute, db, llm, query=body.query, fallback_only=fallback),
+            run_in_threadpool(plugin.execute, db, llm, query=body.query, fallback_only=False),
             timeout=LLM_TIMEOUT,
         )
     except asyncio.TimeoutError:
@@ -76,6 +85,17 @@ async def ask(body: AskRequest, db=Depends(get_db), llm=Depends(get_llm)):
 
     if result.status == "error":
         raise HTTPException(status_code=500, detail="; ".join(result.errors))
+
+    # Log usage for referenced features
+    if result.data and "results" in result.data:
+        from ...catalog.usage import log_feature_usage
+
+        for r in result.data["results"]:
+            feat_name = r.get("feature")
+            if feat_name:
+                feat = db.get_feature_by_name(feat_name)
+                if feat:
+                    log_feature_usage(db, feat.id, "query", context=body.query)
 
     return result.data
 
@@ -193,3 +213,74 @@ async def stream_ask(query: str, db=Depends(get_db), llm=Depends(get_llm)):
         yield {"event": "message", "data": json.dumps({"type": "done"})}
 
     return EventSourceResponse(event_generator())
+
+
+# ---------------------------------------------------------------------------
+# Agentic chat with tool calling
+# ---------------------------------------------------------------------------
+
+
+class ChatRequest(BaseModel):
+    query: str
+    session_id: str | None = None
+
+
+@router.post("/chat")
+async def agent_chat(body: ChatRequest, db=Depends(get_db), llm=Depends(get_llm)):
+    """Agentic chat endpoint with tool calling and session support."""
+    import contextlib
+    import uuid
+
+    from sse_starlette.sse import EventSourceResponse
+
+    from ...ai import CatalogAgent, FallbackAgent, SessionManager
+
+    query = body.query.strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="Empty query")
+
+    session_id = body.session_id or str(uuid.uuid4())
+
+    # Lazily initialize session manager on app state
+    if not hasattr(agent_chat, "_session_mgr"):
+        agent_chat._session_mgr = SessionManager()  # type: ignore[attr-defined]
+    session_mgr: SessionManager = agent_chat._session_mgr  # type: ignore[attr-defined]
+    session = session_mgr.get_or_create(session_id)
+
+    async def event_stream():
+        llm_ok = False
+        if llm is not None:
+            with contextlib.suppress(Exception):
+                llm_ok = await run_in_threadpool(llm.health_check)
+
+        full_response = ""
+        try:
+            if llm_ok:
+                agent = CatalogAgent(llm, db)
+                gen = agent.chat(query, history=session.get_history())
+            else:
+                agent = FallbackAgent(db)
+                gen = agent.chat(query)
+
+            async for event in gen:
+                if event.get("type") == "token":
+                    full_response += event.get("content", "")
+                yield {"event": "message", "data": json.dumps(event)}
+
+        except Exception as e:
+            yield {"event": "message", "data": json.dumps({"type": "error", "content": str(e)})}
+            # Try fallback
+            fallback = FallbackAgent(db)
+            async for event in fallback.chat(query):
+                if event.get("type") == "token":
+                    full_response += event.get("content", "")
+                yield {"event": "message", "data": json.dumps(event)}
+
+        session.add_message("user", query)
+        if full_response:
+            session.add_message("assistant", full_response)
+
+    return EventSourceResponse(
+        event_stream(),
+        headers={"X-Session-Id": session_id},
+    )

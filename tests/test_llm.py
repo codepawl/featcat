@@ -1,4 +1,4 @@
-"""Tests for the LLM layer: base, ollama, llamacpp."""
+"""Tests for the LLM layer: base, llamacpp."""
 
 from __future__ import annotations
 
@@ -9,7 +9,6 @@ import pytest
 from featcat.llm import create_llm
 from featcat.llm.base import BaseLLM, LLMConnectionError, _extract_json
 from featcat.llm.llamacpp import LlamaCppLLM
-from featcat.llm.ollama import OllamaLLM
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -119,29 +118,30 @@ class TestMockStream:
 
 
 class TestFactory:
-    def test_create_ollama(self):
-        llm = create_llm("ollama", model="test", base_url="http://localhost:11434")
-        assert isinstance(llm, OllamaLLM)
-        assert llm.model == "test"
-
     def test_create_llamacpp(self):
         llm = create_llm("llamacpp", base_url="http://localhost:8080")
         assert isinstance(llm, LlamaCppLLM)
+
+    def test_create_ollama_returns_llamacpp(self):
+        """Backward compat: 'ollama' backend maps to LlamaCppLLM."""
+        llm = create_llm("ollama", model="test", base_url="http://localhost:8080")
+        assert isinstance(llm, LlamaCppLLM)
+        assert llm.model == "test"
 
     def test_unknown_backend(self):
         with pytest.raises(ValueError, match="Unknown LLM backend"):
             create_llm("unknown")
 
 
-# --- Ollama connection error test ---
+# --- LlamaCpp connection error test ---
 
 
-class TestOllamaErrors:
+class TestLlamaCppErrors:
     def test_health_check_unreachable(self):
-        llm = OllamaLLM(base_url="http://localhost:99999")
+        llm = LlamaCppLLM(base_url="http://localhost:99999")
         assert llm.health_check() is False
 
     def test_generate_connection_error(self):
-        llm = OllamaLLM(base_url="http://localhost:99999")
+        llm = LlamaCppLLM(base_url="http://localhost:99999")
         with pytest.raises(LLMConnectionError):
             llm.generate("test")

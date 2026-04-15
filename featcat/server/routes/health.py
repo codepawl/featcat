@@ -35,3 +35,15 @@ def health(db=Depends(get_db), llm=Depends(get_llm), settings=Depends(get_settin
 def stats(db=Depends(get_db)):
     """Catalog overview statistics."""
     return db.get_catalog_stats()
+
+
+@router.get("/stats/doc-debt")
+def doc_debt(db=Depends(get_db)):
+    """Documentation debt by owner and source."""
+    return db.get_doc_debt()
+
+
+@router.get("/stats/by-source")
+def stats_by_source(db=Depends(get_db)):
+    """Per-source stats for dashboard visualization."""
+    return db.get_stats_by_source()

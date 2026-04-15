@@ -65,11 +65,15 @@ class TestLocalStorage:
 
 class TestS3Storage:
     def test_s3_schema_attempts_connection(self):
-        """S3 reads now attempt real connections (tested separately in test_s3_storage.py)."""
-        with pytest.raises((OSError, Exception)):
+        """S3 reads attempt real connections — mock to avoid DNS timeout."""
+        from unittest.mock import patch
+
+        with patch("pyarrow.fs.S3FileSystem", side_effect=OSError("mocked S3")), pytest.raises((OSError, Exception)):
             read_parquet_schema("s3://bucket/file.parquet")
 
     def test_s3_sample_attempts_connection(self):
-        """S3 reads now attempt real connections (tested separately in test_s3_storage.py)."""
-        with pytest.raises((OSError, Exception)):
+        """S3 reads attempt real connections — mock to avoid DNS timeout."""
+        from unittest.mock import patch
+
+        with patch("pyarrow.fs.S3FileSystem", side_effect=OSError("mocked S3")), pytest.raises((OSError, Exception)):
             read_parquet_sample("s3://bucket/file.parquet")

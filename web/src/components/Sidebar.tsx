@@ -1,18 +1,21 @@
 import { NavLink } from 'react-router-dom'
 import { useEffect, useState } from 'react'
-import { LayoutDashboard, Database, Activity, Clock, MessageSquare, Server, Cpu } from 'lucide-react'
+import { LayoutDashboard, Database, Activity, Clock, MessageSquare, FolderKanban, GitBranch, History } from 'lucide-react'
 import { api } from '../api'
 import { ThemeToggle } from './ThemeToggle'
 
 const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/features', label: 'Features', icon: Database },
+  { to: '/groups', label: 'Groups', icon: FolderKanban },
+  { to: '/similarity', label: 'Similarity', icon: GitBranch },
+  { to: '/audit', label: 'Audit', icon: History },
   { to: '/monitoring', label: 'Monitoring', icon: Activity },
   { to: '/jobs', label: 'Jobs', icon: Clock },
   { to: '/chat', label: 'AI Chat', icon: MessageSquare },
 ]
 
-export function Sidebar() {
+export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const [llm, setLlm] = useState<{ ok: boolean; model: string }>({ ok: false, model: 'checking...' })
   const [serverOk, setServerOk] = useState(false)
 
@@ -27,34 +30,48 @@ export function Sidebar() {
 
   return (
     <nav className="w-[220px] shrink-0 sticky top-0 h-screen overflow-y-auto flex flex-col bg-[var(--bg-primary)] border-r border-[var(--border-subtle)] py-4 transition-all">
-      <div className="font-mono text-base font-bold text-accent px-5 pb-5 tracking-tight">featcat</div>
+      {/* Brand */}
+      <div className="px-5 pb-6 pt-1">
+        <span className="font-mono text-base font-bold tracking-tight">
+          feat<span className="text-accent">cat</span>
+        </span>
+      </div>
+
+      {/* Navigation */}
       {NAV.map((n) => (
         <NavLink
           key={n.to}
           to={n.to}
           end={n.to === '/'}
+          onClick={onNavigate}
           className={({ isActive }) =>
-            `flex items-center gap-2.5 px-5 py-2 text-[13px] border-l-2 transition-all no-underline ${
+            `flex items-center gap-2.5 px-5 py-2.5 text-[13px] font-medium border-l-2 transition-all no-underline ${
               isActive
-                ? 'text-accent border-accent bg-accent-subtle'
+                ? 'text-accent border-accent bg-accent-muted'
                 : 'text-[var(--text-secondary)] border-transparent hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] hover:pl-6'
             }`
           }
         >
-          <n.icon size={16} />
+          <n.icon size={16} strokeWidth={1.8} />
           {n.label}
         </NavLink>
       ))}
-      <div className="mt-auto px-5 text-xs text-[var(--text-tertiary)] flex flex-col gap-1.5">
-        <div className="flex items-center gap-2">
-          <Server size={14} className={serverOk ? 'text-green-500' : 'text-[var(--border-default)]'} />
-          Server
+
+      {/* Footer */}
+      <div className="mt-auto px-5 flex flex-col gap-3">
+        <div className="border-t border-[var(--border-subtle)] pt-3 flex flex-col gap-2 text-xs text-[var(--text-tertiary)]">
+          <div className="flex items-center gap-2">
+            <span className={`size-1.5 rounded-full ${serverOk ? 'bg-green-500 animate-glow-pulse' : 'bg-[var(--border-default)]'}`} />
+            Server
+          </div>
+          <div className="flex items-center gap-2 truncate">
+            <span className={`size-1.5 rounded-full ${llm.ok ? 'bg-green-500 animate-glow-pulse' : 'bg-red-500'}`} />
+            <span className="truncate">LLM: {llm.model}</span>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Cpu size={14} className={llm.ok ? 'text-green-500' : 'text-red-500'} />
-          LLM: {llm.model}
+        <div className="border-t border-[var(--border-subtle)] pt-3 pb-1">
+          <ThemeToggle />
         </div>
-        <ThemeToggle />
       </div>
     </nav>
   )
