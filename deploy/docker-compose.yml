@@ -7,15 +7,11 @@ services:
     ports:
       - "8080:8080"
     command: >
-      --model /models/Qwen3.5-0.8B-Q4_K_M.gguf
-      --host 0.0.0.0
+      --model /models/qwen3.5-0.8b-q8_0.gguf
+      --ctx-size 4096
       --port 8080
-      --threads 4
-      --ctx-size 2048
-      --batch-size 256
-      --flash-attn on
-      --no-mmap
-      --reasoning off
+      --host 0.0.0.0
+      --jinja
     restart: unless-stopped
     deploy:
       resources:

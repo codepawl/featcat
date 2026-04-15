@@ -42,6 +42,10 @@ class Feature(BaseModel):
     tags: list[str] = Field(default_factory=list)
     owner: str = ""
     stats: dict[str, Any] = Field(default_factory=dict)
+    definition: str | None = None
+    definition_type: str | None = None  # "sql" | "python" | "manual"
+    definition_updated_at: datetime | None = None
+    generation_hints: str | None = None
     created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)
 
@@ -64,6 +68,29 @@ class MonitoringBaseline(BaseModel):
     feature_id: str
     baseline_stats: dict[str, Any] = Field(default_factory=dict)
     computed_at: datetime = Field(default_factory=_utcnow)
+
+
+class FeatureGroup(BaseModel):
+    """A named group of features for organizing related features."""
+
+    id: str = Field(default_factory=_new_id)
+    name: str
+    description: str = ""
+    project: str = ""
+    owner: str = ""
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
+
+
+class UsageEvent(BaseModel):
+    """A logged usage event for a feature."""
+
+    id: str = Field(default_factory=_new_id)
+    feature_id: str
+    action: str  # "view" | "search" | "query" | "group_add"
+    user: str = ""
+    context: str = ""
+    created_at: datetime = Field(default_factory=_utcnow)
 
 
 class ColumnInfo(BaseModel):

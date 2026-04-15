@@ -11,6 +11,23 @@ from .models import ColumnInfo
 from .storage import read_parquet_sample, read_parquet_schema, resolve_parquet_path
 
 
+def discover_parquet_files(path: str, recursive: bool = False) -> list[Path]:
+    """Walk a directory and return all .parquet file paths.
+
+    Args:
+        path: Directory path to search.
+        recursive: If True, search subdirectories recursively.
+
+    Returns:
+        Sorted list of Path objects for .parquet files found.
+    """
+    root = Path(path).resolve()
+    if not root.is_dir():
+        raise NotADirectoryError(f"Not a directory: {path}")
+    pattern = "**/*.parquet" if recursive else "*.parquet"
+    return sorted(root.glob(pattern))
+
+
 def scan_source(path: str) -> list[ColumnInfo]:
     """Scan a data source and return column info with stats.
 

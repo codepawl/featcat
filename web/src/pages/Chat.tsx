@@ -92,8 +92,13 @@ export function Chat() {
   const { messages, addMessage, updateLastMessage, appendToLastMessage, clear } = useChatStore()
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
+  const [llmAvailable, setLlmAvailable] = useState<boolean | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const esRef = useRef<EventSource | null>(null)
+
+  useEffect(() => {
+    api.health().then((d: Record<string, unknown>) => setLlmAvailable(!!d.llm)).catch(() => setLlmAvailable(false))
+  }, [])
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -142,11 +147,21 @@ export function Chat() {
         case 'result':
           updateLastMessage({ result: data.content })
           break
-        case 'done':
-          updateLastMessage({ isStreaming: false })
+        case 'done': {
+          const last = messages[messages.length - 1]
+          const hasContent = last?.content?.trim() || last?.result || last?.html
+          if (!hasContent) {
+            updateLastMessage({
+              content: '\u26a0 LLM returned an empty response. Try again or check /api/health.',
+              isStreaming: false,
+            })
+          } else {
+            updateLastMessage({ isStreaming: false })
+          }
           es.close()
           setBusy(false)
           break
+        }
         case 'error':
           updateLastMessage({ content: `Error: ${data.content}`, isStreaming: false })
           es.close()
@@ -159,8 +174,20 @@ export function Chat() {
       es.close()
       // Fallback to non-streaming
       api.ai.ask(query)
-        .then((data) => updateLastMessage({ result: data, isStreaming: false }))
-        .catch(() => updateLastMessage({ content: 'Failed to get response.', isStreaming: false }))
+        .then((data) => {
+          if (!data || (Array.isArray(data.results) && data.results.length === 0 && !data.interpretation)) {
+            updateLastMessage({
+              content: '\u26a0 No response received. The LLM may be unavailable or still loading.',
+              isStreaming: false,
+            })
+          } else {
+            updateLastMessage({ result: data, isStreaming: false })
+          }
+        })
+        .catch(() => updateLastMessage({
+          content: '\u26a0 Connection lost. LLM server may be unavailable.',
+          isStreaming: false,
+        }))
         .finally(() => setBusy(false))
     }
   }
@@ -180,13 +207,15 @@ export function Chat() {
     addMessage({ role: 'user', content: '/monitor' })
     try {
       const data = await api.monitor.check()
-      const html = `<p><strong>${data.healthy || 0}</strong> healthy, <strong>${data.warnings || 0}</strong> warnings, <strong>${data.critical || 0}</strong> critical</p>`
+      const d = data as Record<string, unknown>
+      const html = `<p><strong>${d.healthy || 0}</strong> healthy, <strong>${d.warnings || 0}</strong> warnings, <strong>${d.critical || 0}</strong> critical</p>`
+      const details = (d.details || []) as { feature: string; psi: number; severity: string }[]
       addMessage({
         role: 'ai', content: '', html,
-        result: data.details?.length ? { results: data.details.map((d: any) => ({ feature: d.feature, score: d.psi, reason: d.severity })) } : undefined,
+        result: details.length ? { results: details.map(dd => ({ feature: dd.feature, score: dd.psi, reason: dd.severity })) } : undefined,
       })
-    } catch (e: any) {
-      addMessage({ role: 'ai', content: `Error: ${e.message}` })
+    } catch (e) {
+      addMessage({ role: 'ai', content: `Error: ${e instanceof Error ? e.message : String(e)}` })
     }
     setBusy(false)
   }
@@ -219,13 +248,22 @@ export function Chat() {
       {msg.result && <ResultTable data={msg.result} />}
       {!msg.result && msg.html && <div dangerouslySetInnerHTML={{ __html: msg.html }} />}
       {!msg.result && !msg.html && msg.content && (
-        tryParseResult(msg.content) ? <ResultTable data={tryParseResult(msg.content)} /> : <span>{msg.content}</span>
+        tryParseResult(msg.content)
+          ? <ResultTable data={tryParseResult(msg.content)} />
+          : msg.content.startsWith('\u26a0')
+            ? <div className="text-amber-400 text-sm italic">{msg.content}</div>
+            : <span>{msg.content}</span>
       )}
     </>
   )
 
   return (
     <div className="flex flex-col" style={{ height: 'calc(100vh - 48px)' }}>
+      {llmAvailable === false && (
+        <div className="bg-amber-900/30 border-b border-amber-500/40 px-4 py-2 text-amber-300 text-sm flex items-center gap-2">
+          <span>{'\u26a0'}</span> LLM is not available. AI responses may be limited to keyword search only.
+        </div>
+      )}
       <div className="flex-1 overflow-y-auto px-4">
         {messages.map((m) => (
           <ChatMessage key={m.id} role={m.role}>

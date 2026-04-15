@@ -20,13 +20,13 @@ export function SearchInput({ placeholder = 'Search...', onSearch, delay = 300, 
 
   return (
     <div className={`relative ${className}`}>
-      <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)]" />
+      <Search size={15} strokeWidth={1.8} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)]" />
       <input
         type="text"
         value={value}
         onChange={(e) => setValue(e.target.value)}
         placeholder={placeholder}
-        className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg pl-9 pr-3 py-2 text-[13px] text-[var(--text-primary)] focus:border-accent focus:ring-2 focus:ring-accent/20 outline-none transition-all"
+        className="w-full bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-lg pl-9 pr-3 py-2 text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:border-accent focus:ring-2 focus:ring-accent/15 outline-none transition-all duration-200"
       />
     </div>
   )

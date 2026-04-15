@@ -67,6 +67,9 @@ class BaseLLM(ABC):
         for attempt in range(max_retries + 1):
             parsed = _extract_json(response)
             if parsed is not None:
+                # Unwrap single-element arrays — small models sometimes wrap objects in []
+                if isinstance(parsed, list) and len(parsed) == 1 and isinstance(parsed[0], dict):
+                    parsed = parsed[0]
                 return parsed
 
             if attempt < max_retries:

@@ -30,6 +30,25 @@ def sample_parquet(tmp_path: Path) -> Path:
 
 
 @pytest.fixture()
+def sample_parquet_dir(tmp_path: Path) -> Path:
+    """Create a directory with multiple Parquet files for bulk scan testing."""
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    # File 1
+    t1 = pa.table({"user_id": pa.array([1, 2, 3]), "score": pa.array([0.5, 0.8, 0.3])})
+    pq.write_table(t1, data_dir / "users.parquet")
+    # File 2
+    t2 = pa.table({"item_id": pa.array([10, 20]), "price": pa.array([9.99, 19.99])})
+    pq.write_table(t2, data_dir / "items.parquet")
+    # Nested file
+    sub = data_dir / "sub"
+    sub.mkdir()
+    t3 = pa.table({"event": pa.array(["click", "view"]), "ts": pa.array([1000, 2000])})
+    pq.write_table(t3, sub / "events.parquet")
+    return data_dir
+
+
+@pytest.fixture()
 def db(tmp_path: Path) -> CatalogDB:
     """Create a temporary catalog database."""
     db_path = str(tmp_path / "test_catalog.db")

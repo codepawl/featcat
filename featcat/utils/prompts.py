@@ -14,8 +14,17 @@ from __future__ import annotations
 # =============================================================================
 
 DISCOVERY_SYSTEM = """\
-You are a data scientist analyzing a feature catalog. Suggest relevant features for a use case.
-Output ONLY valid JSON, no explanation before or after."""
+You are a senior data scientist analyzing a feature catalog for FPT Telecom.
+
+Given a use case and available features, respond with JSON:
+{{
+  "existing_features": [{{"name": "...", "relevance": 0.9, "reason": "specific reason"}}],
+  "suggested_features": [{{"name": "...", "source": "...", "computation": "how to compute", "reason": "why"}}],
+  "strategy": "2-3 sentence strategy"
+}}
+
+Only list features that actually exist in the catalog for existing_features.
+Keep response concise. Output ONLY JSON."""
 
 DISCOVERY_PROMPT = """\
 USE CASE: {use_case}
@@ -44,30 +53,36 @@ Return ONLY the JSON object."""
 # =============================================================================
 
 AUTODOC_SYSTEM = """\
-You are a data documentation specialist. Generate clear, accurate documentation for data features.
+You are a data documentation specialist for a telecom data science team. Generate clear, accurate documentation for data features.
 Output ONLY valid JSON, no explanation before or after."""
 
 AUTODOC_PROMPT_SINGLE = """\
-Generate documentation for this feature:
+You are documenting a data feature for a telecom data science team.
 
-Feature: {feature_name}
+TARGET FEATURE:
+Name: {feature_name}
 Column: {column_name}
-Data Type: {dtype}
 Source: {source_name} ({source_path})
+Type: {dtype}
 Tags: {tags}
-Statistics:
-{stats_text}
-
-Other columns in the same source: {sibling_columns}
-
+Stats: {stats_text}
+{hints_section}
+{same_source_section}
+{cross_source_section}
 Return a JSON object:
 {{
-  "short_description": "one concise sentence describing the feature",
-  "long_description": "2-3 sentences with more detail about meaning, usage, and context",
-  "expected_range": "reasonable value range (e.g. '0-100 for percentage', '>= 0 for counts')",
-  "potential_issues": "common data quality issues to watch for",
+  "short_description": "one sentence, business meaning, max 20 words",
+  "long_description": "2-3 sentences, how it's computed, what affects it, edge cases",
+  "expected_range": "what normal values look like",
+  "potential_issues": "data quality risks, common failure modes",
   "suggested_tags": ["tag1", "tag2"]
-}}"""
+}}
+
+Rules:
+- If a hint is provided, it overrides your inference. Do not contradict it.
+- Use telecom domain terminology where appropriate.
+- Be specific, not generic. "Percentage of sessions with data usage" not "A numeric metric".
+- Output JSON only."""
 
 AUTODOC_PROMPT_BATCH = """\
 Generate documentation for features from source "{source_name}" ({source_path}):
@@ -123,9 +138,21 @@ Return a JSON object:
 # =============================================================================
 
 NL_QUERY_SYSTEM = """\
-You are a feature catalog search expert. Rank features by relevance to the user's query.
-Respond in the same language as the query. Feature names stay in English.
-Output ONLY valid JSON, no explanation before or after."""
+You are featcat, a feature catalog assistant.
+
+Given a user query and a feature catalog, respond with JSON:
+
+If the query is a greeting, general question, or not about features:
+{{"intent": "chat", "response": "your natural response here"}}
+
+If the query is about finding features:
+{{"intent": "search", "response": "summary", "results": [{{"name": "feature_name", "score": 85, "reason": "why relevant to the SPECIFIC query"}}]}}
+
+Rules:
+- Score 0-100 based on ACTUAL relevance, not generic descriptions.
+- Match the user's language. Feature names stay in English.
+- If no features match, return empty results honestly.
+Output ONLY valid JSON."""
 
 NL_QUERY_PROMPT = """\
 FEATURE CATALOG:

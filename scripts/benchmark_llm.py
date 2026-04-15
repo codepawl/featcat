@@ -132,12 +132,12 @@ def main():
         llm = create_llm(
             backend=settings.llm_backend,
             model=model,
-            base_url=settings.ollama_url if settings.llm_backend == "ollama" else settings.llamacpp_url,
+            base_url=settings.llamacpp_url,
             timeout=settings.llm_timeout,
             max_retries=settings.llm_max_retries,
         )
         if not llm.health_check():
-            console.print("[red]LLM not reachable. Is Ollama running?[/red]")
+            console.print("[red]LLM not reachable. Is LLM server running?[/red]")
             sys.exit(1)
     except Exception as e:
         console.print(f"[red]Failed to create LLM: {e}[/red]")

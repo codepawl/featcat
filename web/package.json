@@ -8,10 +8,14 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@types/d3": "^7.4.3",
+    "d3": "^7.9.0",
     "lucide-react": "^1.7.0",
+    "motion": "^12.38.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-router-dom": "^7.0.0"
+    "react-router-dom": "^7.0.0",
+    "recharts": "^3.8.1"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",

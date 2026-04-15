@@ -13,8 +13,9 @@ from rich.table import Table
 
 from .catalog.factory import get_backend
 from .catalog.local import DEFAULT_DB, LocalBackend
-from .catalog.models import DataSource, Feature
-from .catalog.scanner import scan_source
+from .catalog.models import DataSource, Feature, FeatureGroup
+from .catalog.scanner import discover_parquet_files, scan_source
+from .catalog.usage import log_feature_usage
 from .config import load_settings
 
 app = typer.Typer(name="featcat", help="Lightweight AI-powered Feature Catalog")
@@ -25,6 +26,8 @@ monitor_app = typer.Typer(help="Feature quality monitoring")
 cache_app = typer.Typer(help="Manage LLM response cache")
 config_app = typer.Typer(help="Configuration management")
 job_app = typer.Typer(help="Scheduled job management")
+group_app = typer.Typer(help="Feature groups management")
+usage_app = typer.Typer(help="Feature usage analytics")
 app.add_typer(source_app, name="source")
 app.add_typer(feature_app, name="feature")
 app.add_typer(doc_app, name="doc")
@@ -32,6 +35,8 @@ app.add_typer(monitor_app, name="monitor")
 app.add_typer(cache_app, name="cache")
 app.add_typer(config_app, name="config")
 app.add_typer(job_app, name="job")
+app.add_typer(group_app, name="group")
+app.add_typer(usage_app, name="usage")
 
 console = Console()
 
@@ -49,7 +54,7 @@ def _get_llm(use_cache: bool = True):
         llm = create_llm(
             backend=settings.llm_backend,
             model=settings.llm_model,
-            base_url=settings.ollama_url if settings.llm_backend == "ollama" else settings.llamacpp_url,
+            base_url=settings.llamacpp_url,
             timeout=settings.llm_timeout,
             max_retries=settings.llm_max_retries,
         )
@@ -157,7 +162,7 @@ def add(
     if not skip_docs:
         llm = _get_llm(use_cache=not no_cache)
         if llm is None:
-            console.print("[yellow]Docs skipped (Ollama not running). Run 'featcat doc generate' later.[/yellow]")
+            console.print("[yellow]Docs skipped (LLM server not running). Run 'featcat doc generate' later.[/yellow]")
         else:
             from .plugins.autodoc import AutodocPlugin
 
@@ -264,31 +269,18 @@ def doctor() -> None:
     finally:
         db.close()
 
-    # Ollama (only check in local mode — remote server manages its own LLM)
+    # LLM server (only check in local mode — remote server manages its own LLM)
     if not remote_mode:
         try:
-            from .llm.ollama import OllamaLLM
+            from .llm.llamacpp import LlamaCppLLM
 
-            ollama = OllamaLLM(model=settings.llm_model, base_url=settings.ollama_url)
-            reachable = ollama.health_check()
-            _print_check(reachable, f"Ollama running at {settings.ollama_url}")
-            if reachable:
-                import json
-                from urllib.request import urlopen
-
-                resp = urlopen(f"{settings.ollama_url}/api/tags", timeout=5)
-                data = json.loads(resp.read())
-                model_names = [m.get("name", "") for m in data.get("models", [])]
-                model_found = any(settings.llm_model in n for n in model_names)
-                _print_check(model_found, f"Model {settings.llm_model} available")
-                if not model_found:
-                    all_ok = False
-            else:
+            llm = LlamaCppLLM(model=settings.llm_model, base_url=settings.llamacpp_url)
+            reachable = llm.health_check()
+            _print_check(reachable, f"LLM server running at {settings.llamacpp_url}")
+            if not reachable:
                 all_ok = False
-                _print_check(False, f"Model {settings.llm_model} (Ollama not running)")
         except Exception:
-            _print_check(False, f"Ollama at {settings.ollama_url}")
-            _print_check(False, f"Model {settings.llm_model}")
+            _print_check(False, f"LLM server at {settings.llamacpp_url}")
             all_ok = False
 
         # Cache stats (local only)
@@ -370,12 +362,25 @@ def stats() -> None:
 
 @app.command(name="export")
 def export_catalog(
-    fmt: str = typer.Option("json", "--format", help="Output format: json, csv, markdown"),
+    fmt: str = typer.Option("json", "--format", help="Output format: json, csv, markdown, parquet"),
     output: str | None = typer.Option(None, "--output", "-o", help="Output file (default: stdout)"),
+    group: str | None = typer.Option(None, "--group", "-g", help="Export data from a feature group"),
+    features: str | None = typer.Option(None, "--features", "-f", help="Comma-separated feature specs to export"),
+    join_on: str | None = typer.Option(None, "--join-on", help="Join column for multi-source export"),
 ) -> None:
-    """Export catalog data."""
+    """Export catalog metadata or feature data.
+
+    Without --group/--features: exports catalog metadata (json/csv/markdown).
+    With --group or --features: exports actual parquet/csv data from source files.
+    """
+    # Data export mode
+    if group or features:
+        _export_data(group=group, features=features, output=output, fmt=fmt, join_on=join_on)
+        return
+
+    # Metadata export mode (original behavior)
     db = _get_db()
-    features = db.list_features()
+    all_features = db.list_features()
     db.close()
 
     if fmt == "json":
@@ -389,13 +394,13 @@ def export_catalog(
                 "description": f.description,
                 "stats": f.stats,
             }
-            for f in features
+            for f in all_features
         ]
         text = json.dumps(data, indent=2, default=str)
 
     elif fmt == "csv":
         lines = ["name,column_name,dtype,tags,owner,null_ratio"]
-        for f in features:
+        for f in all_features:
             tags = "|".join(f.tags)
             null_ratio = f.stats.get("null_ratio", "")
             lines.append(f"{f.name},{f.column_name},{f.dtype},{tags},{f.owner},{null_ratio}")
@@ -405,7 +410,7 @@ def export_catalog(
         lines = ["# Feature Catalog Export", ""]
         lines.append("| Name | Dtype | Tags | Owner | Null Ratio |")
         lines.append("|------|-------|------|-------|------------|")
-        for f in features:
+        for f in all_features:
             tags = ", ".join(f.tags) if f.tags else ""
             nr = f.stats.get("null_ratio", "")
             nr_str = f"{nr:.1%}" if isinstance(nr, (int, float)) else str(nr)
@@ -421,6 +426,75 @@ def export_catalog(
         console.print(f"[green]Exported to:[/green] {output}")
     else:
         console.print(text)
+
+
+def _export_data(
+    group: str | None,
+    features: str | None,
+    output: str | None,
+    fmt: str,
+    join_on: str | None,
+) -> None:
+    """Export actual feature data from source parquet files."""
+    from .catalog.exporter import export_features
+
+    db = _get_db()
+
+    # Resolve feature specs
+    specs: list[str] = []
+    if group:
+        grp = db.get_group_by_name(group)
+        if grp is None:
+            db.close()
+            console.print(f"[red]Group not found:[/red] {group}")
+            raise typer.Exit(1)
+        members = db.list_group_members(grp.id)
+        specs = [m.name for m in members]
+        console.print(f"Exporting [bold]{len(specs)}[/bold] features from group [cyan]{group}[/cyan]...")
+    elif features:
+        specs = [s.strip() for s in features.split(",") if s.strip()]
+        console.print(f"Exporting [bold]{len(specs)}[/bold] features...")
+
+    if not specs:
+        db.close()
+        console.print("[red]No features to export.[/red]")
+        raise typer.Exit(1)
+
+    # Default format for data export
+    if fmt in ("json", "markdown"):
+        fmt = "parquet"
+
+    try:
+        result = export_features(
+            feature_specs=specs,
+            db=db,
+            output_path=output,
+            join_on=join_on,
+            fmt=fmt,
+        )
+    except ValueError as e:
+        db.close()
+        console.print(f"[red]Export failed:[/red] {e}")
+        raise typer.Exit(1) from e
+    finally:
+        db.close()
+
+    for src in result.sources_used:
+        console.print(f"  [green]\u2713[/green] {src}")
+    if result.join_column:
+        console.print(f"Join column: [cyan]{result.join_column}[/cyan]")
+    for w in result.warnings:
+        console.print(f"  [yellow]\u26a0[/yellow] {w}")
+
+    size_mb = result.file_size / (1024 * 1024)
+    console.print(f"\n[green]Export complete:[/green] {result.output_path}")
+    console.print(
+        f"Features: {result.feature_count}  |  "
+        f"Rows: {result.row_count:,}  |  "
+        f"Size: {size_mb:.1f} MB"
+    )
+    console.print(f"\n[dim]Python snippet:[/dim]")
+    console.print(f"[cyan]{result.code_snippet}[/cyan]")
 
 
 # =========================================================================
@@ -562,11 +636,13 @@ def feature_info(
     """Show detailed information about a feature."""
     db = _get_db()
     feature = db.get_feature_by_name(name)
-    db.close()
 
     if feature is None:
+        db.close()
         console.print(f"[red]Feature not found:[/red] {name}")
         raise typer.Exit(1)
+
+    log_feature_usage(db, feature.id, "view")
 
     console.print(f"\n[bold cyan]{feature.name}[/bold cyan]")
     console.print(f"  Column:      {feature.column_name}")
@@ -578,10 +654,18 @@ def feature_info(
     console.print(f"  Created:     {feature.created_at}")
     console.print(f"  Updated:     {feature.updated_at}")
 
+    # Show definition if set
+    defn = db.get_feature_definition(feature.id)
+    if defn:
+        console.print(f"\n  [bold]Definition ({defn['definition_type']}):[/bold]")
+        console.print(f"    {defn['definition']}")
+
     if feature.stats:
         console.print("\n  [bold]Statistics:[/bold]")
         for k, v in feature.stats.items():
             console.print(f"    {k}: {v}")
+
+    db.close()
     console.print()
 
 
@@ -611,6 +695,10 @@ def feature_search(
     """Search features by keyword (name, description, tags, column)."""
     db = _get_db()
     results = db.search_features(query)
+
+    for f in results:
+        log_feature_usage(db, f.id, "search", context=query)
+
     db.close()
 
     if not results:
@@ -628,6 +716,111 @@ def feature_search(
         table.add_row(f.name, f.column_name, f.dtype, tags_str)
 
     console.print(table)
+
+
+@feature_app.command("history")
+def feature_history(
+    name: str = typer.Argument(help="Feature name (e.g. source.column)"),
+) -> None:
+    """Show version history for a feature."""
+    db = _get_db()
+    feature = db.get_feature_by_name(name)
+    if feature is None:
+        console.print(f"[red]Feature not found:[/red] {name}")
+        db.close()
+        raise typer.Exit(1)
+    versions = db.list_feature_versions(feature.id)
+    db.close()
+    if not versions:
+        console.print(f"No version history for [cyan]{name}[/cyan]")
+        return
+    table = Table(title=f"Version History: {name}")
+    table.add_column("Version", style="bold", justify="right")
+    table.add_column("Changed", style="dim")
+    table.add_column("Summary")
+    table.add_column("By", style="dim")
+    for v in versions:
+        ts = v["created_at"]
+        if hasattr(ts, "strftime"):
+            ts = ts.strftime("%Y-%m-%d %H:%M")
+        table.add_row(str(v["version"]), str(ts), v.get("change_summary", ""), v.get("changed_by", ""))
+    console.print(table)
+
+
+@feature_app.command("diff")
+def feature_diff(
+    name: str = typer.Argument(help="Feature name"),
+    v1: int | None = typer.Option(None, "--v1", help="First version (default: previous)"),
+    v2: int | None = typer.Option(None, "--v2", help="Second version (default: latest)"),
+) -> None:
+    """Diff two versions of a feature's metadata."""
+    db = _get_db()
+    feature = db.get_feature_by_name(name)
+    if feature is None:
+        console.print(f"[red]Feature not found:[/red] {name}")
+        db.close()
+        raise typer.Exit(1)
+    versions = db.list_feature_versions(feature.id)
+    db.close()
+    if not versions:
+        console.print(f"No version history for [cyan]{name}[/cyan]")
+        return
+    if v2 is None:
+        v2 = versions[0]["version"]
+    if v1 is None:
+        v1 = versions[1]["version"] if len(versions) > 1 else versions[0]["version"]
+    snap_v1 = next((v["snapshot"] for v in versions if v["version"] == v1), None)
+    snap_v2 = next((v["snapshot"] for v in versions if v["version"] == v2), None)
+    if snap_v1 is None or snap_v2 is None:
+        console.print("[red]Version not found[/red]")
+        raise typer.Exit(1)
+    console.print(f"\n[bold]Comparing v{v2} vs v{v1}:[/bold]")
+    has_diff = False
+    for field in ("description", "tags", "owner", "dtype", "column_name"):
+        old = snap_v1.get(field)
+        new = snap_v2.get(field)
+        if old != new:
+            console.print(f"  [cyan]{field}:[/cyan]  {old!r} -> {new!r}")
+            has_diff = True
+    if not has_diff:
+        console.print("  (no differences)")
+    console.print()
+
+
+@feature_app.command("rollback")
+def feature_rollback(
+    name: str = typer.Argument(help="Feature name"),
+    version: int = typer.Option(..., "--version", "-v", help="Version number to rollback to"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
+) -> None:
+    """Rollback feature metadata to a previous version."""
+    db = _get_db()
+    feature = db.get_feature_by_name(name)
+    if feature is None:
+        console.print(f"[red]Feature not found:[/red] {name}")
+        db.close()
+        raise typer.Exit(1)
+    target = db.get_feature_version(feature.id, version)
+    if target is None:
+        console.print(f"[red]Version {version} not found[/red]")
+        db.close()
+        raise typer.Exit(1)
+    if not yes:
+        console.print(f"\nRollback [cyan]{name}[/cyan] to version {version}?")
+        snapshot = target["snapshot"]
+        for field in ("description", "tags", "owner", "dtype"):
+            old = getattr(feature, field, None)
+            new = snapshot.get(field)
+            if old != new:
+                console.print(f"  [cyan]{field}:[/cyan]  {old!r} -> {new!r}")
+        if not typer.confirm("Confirm?"):
+            db.close()
+            raise typer.Exit(0)
+    db.rollback_feature(feature.id, version)
+    versions = db.list_feature_versions(feature.id)
+    new_ver = versions[0]["version"] if versions else "?"
+    db.close()
+    console.print(f"[green]Rolled back.[/green] New version {new_ver} created.")
 
 
 # =========================================================================
@@ -657,7 +850,7 @@ def discover(
         llm = _get_llm(use_cache=False)
         if llm is None:
             db.close()
-            console.print("[red]LLM unavailable.[/red] Ensure Ollama is running: ollama serve")
+            console.print("[red]LLM unavailable.[/red] Ensure LLM server is running")
             raise typer.Exit(1)
 
         settings = load_settings()
@@ -814,7 +1007,7 @@ def doc_generate(
     llm = _get_llm(use_cache=not no_cache)
     if llm is None:
         db.close()
-        console.print("[red]LLM unavailable.[/red] Ensure Ollama is running: ollama serve")
+        console.print("[red]LLM unavailable.[/red] Ensure LLM server is running")
         raise typer.Exit(1)
 
     from rich.progress import Progress
@@ -1394,6 +1587,649 @@ def serve(
         workers=1 if reload else 1,
         factory=True,
     )
+
+
+# =========================================================================
+# Bulk Inventory
+# =========================================================================
+
+
+@app.command(name="scan-bulk")
+def scan_bulk(
+    path: str = typer.Argument(help="Directory to scan for .parquet files"),
+    recursive: bool = typer.Option(False, "--recursive", "-r", help="Search subdirectories"),
+    owner: str = typer.Option("", "--owner", "-o", help="Owner for all discovered features"),
+    tag: list[str] = typer.Option([], "--tag", "-t", help="Tags to apply to all features"),  # noqa: B008
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would happen without writing to DB"),
+) -> None:
+    """Scan a directory for Parquet files and register them as sources + features."""
+    try:
+        files = discover_parquet_files(path, recursive=recursive)
+    except NotADirectoryError:
+        console.print(f"[red]Not a directory:[/red] {path}")
+        raise typer.Exit(1) from None
+
+    if not files:
+        console.print(f"[dim]No .parquet files found in {path}[/dim]")
+        return
+
+    db = _get_db()
+    registered_sources = 0
+    registered_features = 0
+    skipped = 0
+
+    for f in files:
+        abs_path = str(f.resolve())
+        source_name = f.stem
+
+        # Check if already registered by path
+        existing = db.get_source_by_path(abs_path)
+        if existing:
+            skipped += 1
+            console.print(f"  [dim]Skipped {source_name} (already registered)[/dim]")
+            continue
+
+        if dry_run:
+            try:
+                columns = scan_source(abs_path)
+                console.print(f"  [cyan]Would register[/cyan] {source_name}: {len(columns)} features")
+            except Exception as e:  # noqa: BLE001
+                console.print(f"  [red]Error reading {source_name}:[/red] {e}")
+            continue
+
+        # Handle name collision: if source name already exists, append suffix
+        final_name = source_name
+        suffix = 1
+        while db.get_source_by_name(final_name) is not None:
+            final_name = f"{source_name}_{suffix}"
+            suffix += 1
+
+        try:
+            source = DataSource(name=final_name, path=abs_path)
+            db.add_source(source)
+            registered_sources += 1
+
+            columns = scan_source(abs_path)
+            for col in columns:
+                feature = Feature(
+                    name=f"{final_name}.{col.column_name}",
+                    data_source_id=source.id,
+                    column_name=col.column_name,
+                    dtype=col.dtype,
+                    stats=col.stats,
+                    owner=owner,
+                    tags=list(tag),
+                )
+                db.upsert_feature(feature)
+                registered_features += 1
+
+            console.print(f"  [green]OK[/green] {final_name}: {len(columns)} features")
+        except Exception as e:  # noqa: BLE001
+            console.print(f"  [red]Error processing {source_name}:[/red] {e}")
+
+    db.close()
+
+    console.print()
+    if dry_run:
+        console.print(
+            f"[bold]Dry run:[/bold] Found {len(files)} files, "
+            f"would register {len(files) - skipped} sources, skipped {skipped}"
+        )
+    else:
+        console.print(
+            f"[bold]Done:[/bold] Found {len(files)} files, registered {registered_sources} new sources, "
+            f"{registered_features} new features, skipped {skipped} (already exist)"
+        )
+
+
+# =========================================================================
+# Feature Groups
+# =========================================================================
+
+
+@group_app.command("create")
+def group_create(
+    name: str = typer.Argument(help="Group name"),
+    description: str = typer.Option("", "--description", "-d", help="Group description"),
+    project: str = typer.Option("", "--project", "-p", help="Project name"),
+    owner: str = typer.Option("", "--owner", "-o", help="Group owner"),
+) -> None:
+    """Create a new feature group."""
+    db = _get_db()
+    group = FeatureGroup(name=name, description=description, project=project, owner=owner)
+    try:
+        db.create_group(group)
+        console.print(f"[green]Group created:[/green] {name}")
+    except Exception:  # noqa: BLE001
+        console.print(f"[red]Group already exists:[/red] {name}")
+        raise typer.Exit(1) from None
+    finally:
+        db.close()
+
+
+@group_app.command("list")
+def group_list(
+    project: str = typer.Option("", "--project", "-p", help="Filter by project"),
+) -> None:
+    """List all feature groups."""
+    db = _get_db()
+    groups = db.list_groups(project=project or None)
+
+    if not groups:
+        console.print("[dim]No groups found[/dim]")
+        db.close()
+        return
+
+    table = Table(title="Feature Groups")
+    table.add_column("Name", style="cyan")
+    table.add_column("Project")
+    table.add_column("Owner")
+    table.add_column("Features", justify="right")
+    table.add_column("Description")
+
+    for g in groups:
+        count = db.count_group_members(g.id)
+        table.add_row(g.name, g.project or "-", g.owner or "-", str(count), g.description or "-")
+
+    db.close()
+    console.print(table)
+
+
+@group_app.command("show")
+def group_show(
+    name: str = typer.Argument(help="Group name"),
+) -> None:
+    """Show group details and member features."""
+    db = _get_db()
+    group = db.get_group_by_name(name)
+    if group is None:
+        db.close()
+        console.print(f"[red]Group not found:[/red] {name}")
+        raise typer.Exit(1)
+
+    members = db.list_group_members(group.id)
+    db.close()
+
+    console.print(f"\n[bold cyan]Group: {group.name}[/bold cyan]")
+    if group.project:
+        console.print(f"  Project:     {group.project}")
+    if group.owner:
+        console.print(f"  Owner:       {group.owner}")
+    if group.description:
+        console.print(f"  Description: {group.description}")
+
+    if not members:
+        console.print("\n  [dim]No features in this group[/dim]")
+    else:
+        console.print(f"\n  Features ({len(members)}):")
+        for f in members:
+            desc = f.description[:50] if f.description else ""
+            console.print(f"    {f.name:<40s} {f.dtype:<10s} {desc}")
+    console.print()
+
+
+@group_app.command("add")
+def group_add(
+    group_name: str = typer.Argument(help="Group name"),
+    feature_specs: list[str] = typer.Argument(help="Feature names (e.g. source.column)"),  # noqa: B008
+) -> None:
+    """Add features to a group."""
+    db = _get_db()
+    group = db.get_group_by_name(group_name)
+    if group is None:
+        db.close()
+        console.print(f"[red]Group not found:[/red] {group_name}")
+        raise typer.Exit(1)
+
+    feature_ids = []
+    for spec in feature_specs:
+        feature = db.get_feature_by_name(spec)
+        if feature is None:
+            console.print(f"[red]Feature not found:[/red] {spec}")
+            continue
+        feature_ids.append(feature.id)
+        log_feature_usage(db, feature.id, "group_add", context=group_name)
+
+    if feature_ids:
+        added = db.add_group_members(group.id, feature_ids)
+        console.print(f"[green]Added {added} feature(s)[/green] to group '{group_name}'")
+    db.close()
+
+
+@group_app.command("remove")
+def group_remove(
+    group_name: str = typer.Argument(help="Group name"),
+    feature_specs: list[str] = typer.Argument(help="Feature names to remove"),  # noqa: B008
+) -> None:
+    """Remove features from a group."""
+    db = _get_db()
+    group = db.get_group_by_name(group_name)
+    if group is None:
+        db.close()
+        console.print(f"[red]Group not found:[/red] {group_name}")
+        raise typer.Exit(1)
+
+    for spec in feature_specs:
+        feature = db.get_feature_by_name(spec)
+        if feature is None:
+            console.print(f"[red]Feature not found:[/red] {spec}")
+            continue
+        db.remove_group_member(group.id, feature.id)
+        console.print(f"  Removed {spec}")
+
+    db.close()
+
+
+@group_app.command("delete")
+def group_delete(
+    name: str = typer.Argument(help="Group name"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
+) -> None:
+    """Delete a feature group."""
+    if not yes:
+        confirm = typer.confirm(f"Delete group '{name}'?")
+        if not confirm:
+            raise typer.Exit(0)
+
+    db = _get_db()
+    group = db.get_group_by_name(name)
+    if group is None:
+        db.close()
+        console.print(f"[red]Group not found:[/red] {name}")
+        raise typer.Exit(1)
+
+    db.delete_group(group.id)
+    db.close()
+    console.print(f"[green]Group deleted:[/green] {name}")
+
+
+# =========================================================================
+# Feature Definitions
+# =========================================================================
+
+
+@feature_app.command("set-definition")
+def feature_set_definition(
+    spec: str = typer.Argument(help="Feature name (e.g. source.column)"),
+    sql: str | None = typer.Option(None, "--sql", help="SQL definition"),
+    python: str | None = typer.Option(None, "--python", help="Python expression definition"),
+    manual: str | None = typer.Option(None, "--manual", help="Manual/text definition"),
+) -> None:
+    """Set a feature's definition (SQL, Python, or manual)."""
+    # Validate exactly one type is provided
+    provided = [(sql, "sql"), (python, "python"), (manual, "manual")]
+    active = [(val, typ) for val, typ in provided if val is not None]
+    if len(active) != 1:
+        console.print("[red]Error:[/red] Provide exactly one of --sql, --python, or --manual")
+        raise typer.Exit(1)
+
+    definition, definition_type = active[0]
+
+    db = _get_db()
+    feature = db.get_feature_by_name(spec)
+    if feature is None:
+        db.close()
+        console.print(f"[red]Feature not found:[/red] {spec}")
+        raise typer.Exit(1)
+
+    db.set_feature_definition(feature.id, definition, definition_type)
+    db.close()
+    console.print(f"[green]Definition set:[/green] {spec} ({definition_type})")
+
+
+@feature_app.command("show-definition")
+def feature_show_definition(
+    spec: str = typer.Argument(help="Feature name (e.g. source.column)"),
+) -> None:
+    """Show a feature's definition."""
+    db = _get_db()
+    feature = db.get_feature_by_name(spec)
+    if feature is None:
+        db.close()
+        console.print(f"[red]Feature not found:[/red] {spec}")
+        raise typer.Exit(1)
+
+    defn = db.get_feature_definition(feature.id)
+    db.close()
+
+    if defn is None:
+        console.print(f"[dim]No definition set for {spec}[/dim]")
+        return
+
+    console.print(Panel(
+        defn["definition"],
+        title=f"{spec} ({defn['definition_type']})",
+        border_style="cyan",
+    ))
+
+
+# =========================================================================
+# Generation Hints
+# =========================================================================
+
+
+@feature_app.command("set-hint")
+def feature_set_hint(
+    spec: str = typer.Argument(help="Feature name (e.g. source.column)"),
+    hint: str = typer.Option(..., "--hint", "-h", help="Hint text for doc generation"),
+) -> None:
+    """Set generation hints for a feature (used as ground truth by LLM)."""
+    db = _get_db()
+    feature = db.get_feature_by_name(spec)
+    if feature is None:
+        db.close()
+        console.print(f"[red]Feature not found:[/red] {spec}")
+        raise typer.Exit(1)
+    db.set_feature_hint(feature.id, hint)
+    db.close()
+    console.print(f"[green]Hint set:[/green] {spec}")
+
+
+@feature_app.command("show-hint")
+def feature_show_hint(
+    spec: str = typer.Argument(help="Feature name"),
+) -> None:
+    """Show generation hints for a feature."""
+    db = _get_db()
+    feature = db.get_feature_by_name(spec)
+    if feature is None:
+        db.close()
+        console.print(f"[red]Feature not found:[/red] {spec}")
+        raise typer.Exit(1)
+    hint = db.get_feature_hint(feature.id)
+    db.close()
+    if hint is None:
+        console.print(f"[dim]No hint set for {spec}[/dim]")
+    else:
+        console.print(Panel(hint, title=f"{spec} hint", border_style="cyan"))
+
+
+@feature_app.command("clear-hint")
+def feature_clear_hint(
+    spec: str = typer.Argument(help="Feature name"),
+) -> None:
+    """Remove generation hints for a feature."""
+    db = _get_db()
+    feature = db.get_feature_by_name(spec)
+    if feature is None:
+        db.close()
+        console.print(f"[red]Feature not found:[/red] {spec}")
+        raise typer.Exit(1)
+    db.clear_feature_hint(feature.id)
+    db.close()
+    console.print(f"[green]Hint cleared:[/green] {spec}")
+
+
+# =========================================================================
+# Feature Health
+# =========================================================================
+
+
+def _get_health_inputs(db, feature):
+    """Gather health score inputs for a single feature."""
+    from .catalog.health import compute_health_score
+
+    all_docs = db.get_all_feature_docs()
+    has_doc = feature.id in all_docs
+    has_hints = bool(feature.generation_hints)
+
+    drift_status = None
+    try:
+        row = db.conn.execute(
+            "SELECT severity FROM monitoring_checks WHERE feature_id = ? ORDER BY checked_at DESC LIMIT 1",
+            (feature.id,),
+        ).fetchone()
+        if row:
+            drift_status = row["severity"]
+    except Exception:  # noqa: BLE001
+        pass
+
+    views_30d = 0
+    queries_30d = 0
+    try:
+        usage = db.get_feature_usage(feature.id, days=30)
+        views_30d = usage.get("views", 0)
+        queries_30d = usage.get("queries", 0)
+    except Exception:  # noqa: BLE001
+        pass
+
+    return compute_health_score(
+        has_doc=has_doc,
+        has_hints=has_hints,
+        drift_status=drift_status,
+        views_30d=views_30d,
+        queries_30d=queries_30d,
+    ), drift_status, views_30d, queries_30d
+
+
+def _health_bar(value: int, max_value: int, width: int = 20) -> str:
+    """Render a text progress bar."""
+    filled = round(value / max_value * width) if max_value > 0 else 0
+    return "\u2588" * filled + "\u2591" * (width - filled)
+
+
+@feature_app.command("health")
+def feature_health(
+    name: str = typer.Argument(help="Feature name (e.g. source.column)"),
+) -> None:
+    """Show health score breakdown for a feature."""
+    db = _get_db()
+    feature = db.get_feature_by_name(name)
+    if feature is None:
+        db.close()
+        console.print(f"[red]Feature not found:[/red] {name}")
+        raise typer.Exit(1)
+
+    health, drift_status, views_30d, queries_30d = _get_health_inputs(db, feature)
+    db.close()
+
+    score = health["score"]
+    grade = health["grade"]
+    bd = health["breakdown"]
+
+    grade_color = {"A": "green", "B": "cyan", "C": "yellow", "D": "red"}[grade]
+
+    console.print(f"\nHealth Score: [bold]{score}/100[/bold]  [{grade_color}][{grade}][/{grade_color}]")
+    console.print(f"Documentation  {_health_bar(bd['documentation'], 40)}  {bd['documentation']}/40")
+    console.print(
+        f"Drift          {_health_bar(bd['drift'], 40)}  {bd['drift']}/40  ({drift_status or 'never checked'})"
+    )
+    console.print(
+        f"Usage          {_health_bar(bd['usage'], 20)}  {bd['usage']}/20"
+        f"  ({'no recent usage' if bd['usage'] == 0 else f'{views_30d} views, {queries_30d} queries'})"
+    )
+
+    # Improvement tips
+    tips = []
+    if bd["documentation"] < 25:
+        tips.append("Generate documentation for this feature (+25pts)")
+    if not feature.generation_hints:
+        tips.append("Add a generation hint to improve documentation score (+15pts)")
+    if bd["usage"] == 0:
+        tips.append("Feature has never been queried \u2014 consider sharing with team (+10pts)")
+    if tips:
+        console.print("\n[dim]Improvement tips:[/dim]")
+        for tip in tips:
+            console.print(f"  \u2192 {tip}")
+    console.print()
+
+
+@feature_app.command("health-report")
+def feature_health_report(
+    min_score: int = typer.Option(0, "--min-score", help="Only show features with score >= this value"),
+    sort: str = typer.Option("score", "--sort", help="Sort by: score, name, grade"),
+) -> None:
+    """Show health report for all features."""
+    from rich.table import Table
+
+    from .catalog.health import compute_health_score
+
+    db = _get_db()
+    features = db.list_features()
+    if not features:
+        db.close()
+        console.print("[dim]No features in catalog.[/dim]")
+        raise typer.Exit()
+
+    all_docs = db.get_all_feature_docs()
+
+    rows = []
+    for f in features:
+        has_doc = f.id in all_docs
+        has_hints = bool(f.generation_hints)
+
+        drift_status = None
+        try:
+            row = db.conn.execute(
+                "SELECT severity FROM monitoring_checks WHERE feature_id = ? ORDER BY checked_at DESC LIMIT 1",
+                (f.id,),
+            ).fetchone()
+            if row:
+                drift_status = row["severity"]
+        except Exception:  # noqa: BLE001
+            pass
+
+        views_30d = 0
+        queries_30d = 0
+        try:
+            usage = db.get_feature_usage(f.id, days=30)
+            views_30d = usage.get("views", 0)
+            queries_30d = usage.get("queries", 0)
+        except Exception:  # noqa: BLE001
+            pass
+
+        health = compute_health_score(
+            has_doc=has_doc,
+            has_hints=has_hints,
+            drift_status=drift_status,
+            views_30d=views_30d,
+            queries_30d=queries_30d,
+        )
+        if health["score"] >= min_score:
+            rows.append({"name": f.name, **health})
+
+    db.close()
+
+    if sort == "score":
+        rows.sort(key=lambda r: r["score"])
+    elif sort == "grade":
+        rows.sort(key=lambda r: r["grade"])
+    else:
+        rows.sort(key=lambda r: r["name"])
+
+    grade_color = {"A": "green", "B": "cyan", "C": "yellow", "D": "red"}
+
+    table = Table(title="Feature Health Report")
+    table.add_column("Feature", style="bold")
+    table.add_column("Score", justify="right")
+    table.add_column("Grade", justify="center")
+    table.add_column("Doc", justify="right")
+    table.add_column("Drift", justify="right")
+    table.add_column("Usage", justify="right")
+
+    for r in rows:
+        bd = r["breakdown"]
+        gc = grade_color.get(r["grade"], "white")
+        table.add_row(
+            r["name"],
+            str(r["score"]),
+            f"[{gc}]{r['grade']}[/{gc}]",
+            f"{bd['documentation']}/40",
+            f"{bd['drift']}/40",
+            f"{bd['usage']}/20",
+        )
+
+    console.print(table)
+    console.print(f"\n[dim]{len(rows)} features shown[/dim]")
+
+
+# =========================================================================
+# Usage Analytics
+# =========================================================================
+
+
+@usage_app.command("top")
+def usage_top(
+    limit: int = typer.Option(10, "--limit", "-n", help="Number of features to show"),
+    days: int = typer.Option(30, "--days", "-d", help="Number of days to look back"),
+) -> None:
+    """Show top features by usage count."""
+    db = _get_db()
+    results = db.get_top_features(limit=limit, days=days)
+    db.close()
+
+    if not results:
+        console.print(f"[dim]No usage data in the last {days} days[/dim]")
+        return
+
+    console.print(f"\n[bold]Top {limit} features (last {days} days)[/bold]\n")
+    table = Table()
+    table.add_column("#", justify="right")
+    table.add_column("Feature", style="cyan")
+    table.add_column("Views", justify="right")
+    table.add_column("Queries", justify="right")
+    table.add_column("Total", justify="right")
+
+    for i, r in enumerate(results, 1):
+        table.add_row(str(i), r["name"], str(r["view_count"]), str(r["query_count"]), str(r["total_count"]))
+
+    console.print(table)
+
+
+@usage_app.command("orphaned")
+def usage_orphaned(
+    days: int = typer.Option(30, "--days", "-d", help="Number of days to look back"),
+) -> None:
+    """Show features with zero usage in the given period."""
+    db = _get_db()
+    results = db.get_orphaned_features(days=days)
+    db.close()
+
+    if not results:
+        console.print(f"[green]All features have been used in the last {days} days[/green]")
+        return
+
+    console.print(f"\n[bold]Orphaned features (no usage in {days} days)[/bold]\n")
+    table = Table()
+    table.add_column("Feature", style="cyan")
+    table.add_column("Last Seen")
+
+    for r in results:
+        last = r.get("last_seen") or "never"
+        table.add_row(r["name"], str(last))
+
+    console.print(table)
+    console.print(f"\n[dim]{len(results)} feature(s) with no recent usage[/dim]")
+
+
+@usage_app.command("activity")
+def usage_activity(
+    days: int = typer.Option(7, "--days", "-d", help="Number of days to look back"),
+) -> None:
+    """Show per-day usage activity summary."""
+    db = _get_db()
+    results = db.get_usage_activity(days=days)
+    db.close()
+
+    if not results:
+        console.print(f"[dim]No activity in the last {days} days[/dim]")
+        return
+
+    console.print(f"\n[bold]Activity (last {days} days)[/bold]\n")
+    table = Table()
+    table.add_column("Date")
+    table.add_column("Views", justify="right")
+    table.add_column("Queries", justify="right")
+    table.add_column("Unique Features", justify="right")
+    table.add_column("Total", justify="right")
+
+    for r in results:
+        table.add_row(
+            r["date"], str(r["view_count"]), str(r["query_count"]),
+            str(r["unique_features"]), str(r["total"]),
+        )
+
+    console.print(table)
 
 
 # =========================================================================

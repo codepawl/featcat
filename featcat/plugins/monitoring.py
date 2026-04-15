@@ -114,6 +114,10 @@ class MonitoringPlugin(BasePlugin):
                     warnings += 1
                 else:
                     critical += 1
+
+                # Save result for history tracking
+                with contextlib.suppress(Exception):
+                    db.save_monitoring_result(f.id, f.name, result.get("psi"), severity)
             except Exception as e:
                 details.append(
                     {
@@ -153,6 +157,8 @@ class MonitoringPlugin(BasePlugin):
                 "severity": "healthy",
                 "psi": None,
                 "issues": [],
+                "baseline_stats": baseline,
+                "current_stats": {},
             }
 
         issues: list[dict] = []
@@ -178,6 +184,8 @@ class MonitoringPlugin(BasePlugin):
             "severity": severity,
             "psi": psi,
             "issues": issues,
+            "baseline_stats": baseline,
+            "current_stats": current,
         }
 
         if psi is not None and psi > 0.1:

@@ -55,9 +55,15 @@ featcat.yaml
 .superpowers/
 
 # GGUF models
-deploy/models/*.gguf
+deploy/models/
+test_results.txt
 
 # Web frontend
 web/node_modules/
 web/dist/
+web/.vite/
 featcat/server/static/
+
+# OpenPawl
+.openpawl/
+CLAUDE.local.md

@@ -93,7 +93,14 @@ class RemoteBackend(CatalogBackend):
                 return None
             raise
 
-    def save_feature_doc(self, feature_id: str, doc: dict, model_used: str = "unknown") -> None:
+    def save_feature_doc(
+        self,
+        feature_id: str,
+        doc: dict,
+        model_used: str = "unknown",
+        hints_used: str | None = None,
+        context_features: list[str] | None = None,
+    ) -> None:
         # Doc saving happens via generate endpoint on server
         pass
 
@@ -129,10 +136,154 @@ class RemoteBackend(CatalogBackend):
         # Baseline computation happens via server endpoint
         self._request("POST", "/api/monitor/baseline")
 
+    # --- Feature Versions ---
+
+    def list_feature_versions(self, feature_id: str) -> list[dict]:
+        return []
+
+    def get_feature_version(self, feature_id: str, version: int) -> dict | None:
+        return None
+
+    def rollback_feature(self, feature_id: str, version: int) -> dict:
+        return {}
+
     # --- Stats ---
 
     def get_catalog_stats(self) -> dict:
         return self._request("GET", "/api/stats")
+
+    # --- Source lookup by path ---
+
+    def get_source_by_path(self, path: str) -> Any | None:
+        sources = self.list_sources()
+        for s in sources:
+            if s.path == path:
+                return s
+        return None
+
+    # --- Feature Groups ---
+
+    def create_group(self, group: Any) -> Any:
+        data = group.model_dump(mode="json") if hasattr(group, "model_dump") else group
+        return self._request("POST", "/api/groups", json=data)
+
+    def get_group_by_name(self, name: str) -> Any | None:
+        try:
+            return self._request("GET", f"/api/groups/{name}")
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                return None
+            raise
+
+    def list_groups(self, project: str | None = None) -> list:
+        params = {}
+        if project:
+            params["project"] = project
+        return self._request("GET", "/api/groups", params=params)
+
+    def update_group(self, group_id: str, **kwargs: object) -> None:
+        self._request("PATCH", f"/api/groups/{group_id}", json=kwargs)
+
+    def delete_group(self, group_id: str) -> None:
+        self._request("DELETE", f"/api/groups/{group_id}")
+
+    def add_group_members(self, group_id: str, feature_ids: list[str]) -> int:
+        result = self._request("POST", f"/api/groups/{group_id}/members", json={"feature_ids": feature_ids})
+        return result.get("added", 0)
+
+    def remove_group_member(self, group_id: str, feature_id: str) -> None:
+        self._request("DELETE", f"/api/groups/{group_id}/members", params={"spec": feature_id})
+
+    def list_group_members(self, group_id: str) -> list:
+        result = self._request("GET", f"/api/groups/{group_id}")
+        return [Feature.model_validate(f) for f in result.get("members", [])]
+
+    def count_group_members(self, group_id: str) -> int:
+        result = self._request("GET", f"/api/groups/{group_id}")
+        return result.get("member_count", 0)
+
+    # --- Feature Definitions ---
+
+    def set_feature_definition(self, feature_id: str, definition: str, definition_type: str) -> None:
+        self._request("PUT", "/api/features/by-name/definition", params={"name": feature_id},
+                       json={"definition": definition, "definition_type": definition_type})
+
+    def get_feature_definition(self, feature_id: str) -> dict | None:
+        try:
+            return self._request("GET", "/api/features/by-name/definition", params={"name": feature_id})
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                return None
+            raise
+
+    def clear_feature_definition(self, feature_id: str) -> None:
+        self._request("DELETE", "/api/features/by-name/definition", params={"name": feature_id})
+
+    # --- Usage Tracking ---
+
+    def log_usage(self, feature_id: str, action: str, user: str = "", context: str = "") -> None:
+        pass  # Usage is logged server-side
+
+    def get_top_features(self, limit: int = 10, days: int = 30) -> list[dict]:
+        return self._request("GET", "/api/usage/top", params={"limit": str(limit), "days": str(days)})
+
+    def get_orphaned_features(self, days: int = 30) -> list[dict]:
+        return self._request("GET", "/api/usage/orphaned", params={"days": str(days)})
+
+    def get_usage_activity(self, days: int = 7) -> list[dict]:
+        return self._request("GET", "/api/usage/activity", params={"days": str(days)})
+
+    def get_feature_usage(self, feature_id: str, days: int = 30) -> dict:
+        return self._request("GET", "/api/usage/feature", params={"name": feature_id, "days": str(days)})
+
+    # --- Generation Hints ---
+
+    def set_feature_hint(self, feature_id: str, hint: str) -> None:
+        self._request("PATCH", "/api/features/by-name/hints",
+                       params={"name": feature_id}, json={"hints": hint})
+
+    def get_feature_hint(self, feature_id: str) -> str | None:
+        try:
+            result = self._request("GET", "/api/features/by-name",
+                                    params={"name": feature_id})
+            return result.get("generation_hints")
+        except httpx.HTTPStatusError:
+            return None
+
+    def clear_feature_hint(self, feature_id: str) -> None:
+        self._request("DELETE", "/api/features/by-name/hints",
+                       params={"name": feature_id})
+
+    # --- Visualization Queries ---
+
+    def get_doc_debt(self) -> list[dict]:
+        return self._request("GET", "/api/stats/doc-debt")
+
+    def get_monitoring_history(self, feature_name: str, days: int = 30) -> list[dict]:
+        return self._request("GET", f"/api/monitor/history/{feature_name}", params={"days": days})
+
+    def save_monitoring_result(self, feature_id: str, feature_name: str, psi: float | None, severity: str) -> None:
+        pass  # Server-side only
+
+    def get_baseline_for_feature(self, feature_name: str) -> dict | None:
+        return self._request("GET", f"/api/monitor/baseline/{feature_name}")
+
+    def get_stats_by_source(self) -> list[dict]:
+        return self._request("GET", "/api/stats/by-source")
+
+    # --- Lineage ---
+
+    def add_lineage(self, child_feature_id: str, parent_feature_id: str, transform: str = "") -> None:
+        self._request("POST", "/api/lineage", json={"child": child_feature_id, "parent": parent_feature_id, "transform": transform})
+
+    def remove_lineage(self, child_feature_id: str, parent_feature_id: str) -> None:
+        self._request("DELETE", "/api/lineage", params={"child": child_feature_id, "parent": parent_feature_id})
+
+    def get_lineage_graph(self) -> dict:
+        return self._request("GET", "/api/lineage/graph")
+
+    def get_feature_lineage(self, feature_name: str, direction: str = "both", depth: int = 3) -> dict:
+        return self._request("GET", f"/api/lineage/feature/{feature_name}", params={"direction": direction, "depth": depth})
 
     # --- Server-side AI/plugin operations (used by CLI in remote mode) ---
 
