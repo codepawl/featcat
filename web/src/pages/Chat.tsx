@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { Send, Sparkles, BarChart3, Activity, Loader2, Trash2 } from 'lucide-react'
-import { api } from '../api'
+import { api, invalidateCache } from '../api'
 import { useChatStore } from '../hooks/useChatStore'
 import { ChatMessage } from '../components/ChatMessage'
 import { ThinkingBlock } from '../components/ThinkingBlock'
@@ -99,7 +99,13 @@ export function Chat() {
   const sessionIdRef = useRef<string | null>(null)
 
   useEffect(() => {
-    api.health().then((d: Record<string, unknown>) => setLlmAvailable(!!d.llm)).catch(() => setLlmAvailable(false))
+    const check = () => {
+      invalidateCache('/health')
+      api.health().then((d: Record<string, unknown>) => setLlmAvailable(!!d.llm)).catch(() => setLlmAvailable(false))
+    }
+    check()
+    const id = setInterval(check, 15_000)
+    return () => clearInterval(id)
   }, [])
 
   const scrollToBottom = () => {
