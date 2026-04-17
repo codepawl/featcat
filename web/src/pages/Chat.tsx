@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { Send, Sparkles, BarChart3, Activity, Loader2, Trash2 } from 'lucide-react'
-import { api } from '../api'
+import { api, invalidateCache } from '../api'
 import { useChatStore } from '../hooks/useChatStore'
 import { ChatMessage } from '../components/ChatMessage'
 import { ThinkingBlock } from '../components/ThinkingBlock'
@@ -99,7 +99,13 @@ export function Chat() {
   const sessionIdRef = useRef<string | null>(null)
 
   useEffect(() => {
-    api.health().then((d: Record<string, unknown>) => setLlmAvailable(!!d.llm)).catch(() => setLlmAvailable(false))
+    const check = () => {
+      invalidateCache('/health')
+      api.health().then((d: Record<string, unknown>) => setLlmAvailable(!!d.llm)).catch(() => setLlmAvailable(false))
+    }
+    check()
+    const id = setInterval(check, 15_000)
+    return () => clearInterval(id)
   }, [])
 
   const scrollToBottom = () => {
@@ -153,66 +159,77 @@ export function Chat() {
       const reader = res.body!.getReader()
       const decoder = new TextDecoder()
       let buffer = ''
+      let eventData = ''
+
+      // Returns true when the caller should stop reading (terminal event).
+      const dispatch = (raw: string): boolean => {
+        let data: any
+        try { data = JSON.parse(raw) } catch { return false }
+        switch (data.type) {
+          case 'thinking_start':
+            appendToLastMessage('thinking', '')
+            return false
+          case 'thinking':
+            appendToLastMessage('thinking', data.content)
+            return false
+          case 'thinking_end':
+            updateLastMessage({ isDoneThinking: true })
+            return false
+          case 'tool_call':
+            appendToLastMessage('thinking', `\nUsing tool: ${data.name}...`)
+            return false
+          case 'tool_result':
+            return false
+          case 'token':
+            appendToLastMessage('content', data.content)
+            return false
+          case 'result':
+            updateLastMessage({ result: data.content })
+            return false
+          case 'done': {
+            const current = chatStore.getMessages()
+            const last = current[current.length - 1]
+            const hasContent = last?.content?.trim() || last?.result || last?.html
+            if (!hasContent) {
+              updateLastMessage({
+                content: '\u26a0 LLM returned an empty response. Try again or check /api/health.',
+                isStreaming: false,
+              })
+            } else {
+              updateLastMessage({ isStreaming: false })
+            }
+            setBusy(false)
+            return true
+          }
+          case 'error':
+            updateLastMessage({ content: `Error: ${data.content}`, isStreaming: false })
+            setBusy(false)
+            return true
+        }
+        return false
+      }
 
       while (true) {
         const { done, value } = await reader.read()
-        if (done) break
+        if (done) {
+          // Some proxies (e.g. Vite dev) close the stream without a trailing
+          // blank line after the final event. Flush any residual data.
+          if (eventData && dispatch(eventData)) return
+          break
+        }
         buffer += decoder.decode(value, { stream: true })
 
-        // Parse SSE lines from buffer
-        const lines = buffer.split('\n')
+        // Split on CRLF or LF — proxies may rewrite line endings.
+        const lines = buffer.split(/\r?\n/)
         buffer = lines.pop() || ''
 
-        let eventData = ''
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             eventData = line.slice(6)
           } else if (line === '' && eventData) {
-            try {
-              const data = JSON.parse(eventData)
-              switch (data.type) {
-                case 'thinking_start':
-                  appendToLastMessage('thinking', '')
-                  break
-                case 'thinking':
-                  appendToLastMessage('thinking', data.content)
-                  break
-                case 'thinking_end':
-                  updateLastMessage({ isDoneThinking: true })
-                  break
-                case 'tool_call':
-                  appendToLastMessage('thinking', `\nUsing tool: ${data.name}...`)
-                  break
-                case 'tool_result':
-                  break
-                case 'token':
-                  appendToLastMessage('content', data.content)
-                  break
-                case 'result':
-                  updateLastMessage({ result: data.content })
-                  break
-                case 'done': {
-                  const current = chatStore.getMessages()
-                  const last = current[current.length - 1]
-                  const hasContent = last?.content?.trim() || last?.result || last?.html
-                  if (!hasContent) {
-                    updateLastMessage({
-                      content: '\u26a0 LLM returned an empty response. Try again or check /api/health.',
-                      isStreaming: false,
-                    })
-                  } else {
-                    updateLastMessage({ isStreaming: false })
-                  }
-                  setBusy(false)
-                  return
-                }
-                case 'error':
-                  updateLastMessage({ content: `Error: ${data.content}`, isStreaming: false })
-                  setBusy(false)
-                  return
-              }
-            } catch { /* skip malformed SSE */ }
+            const stop = dispatch(eventData)
             eventData = ''
+            if (stop) return
           }
         }
       }
