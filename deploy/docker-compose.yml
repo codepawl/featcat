@@ -38,6 +38,8 @@ services:
       - FEATCAT_LLAMACPP_URL=http://llm:8080
       - FEATCAT_LLM_MODEL=${FEATCAT_LLM_MODEL:-gemma-4-E2B-it}
       - FEATCAT_SERVER_AUTH_TOKEN=${SERVER_AUTH:-}
+      - NO_PROXY=llm,localhost,127.0.0.1
+      - no_proxy=llm,localhost,127.0.0.1
     depends_on:
       - llm
     restart: unless-stopped
