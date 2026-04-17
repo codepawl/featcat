@@ -49,7 +49,6 @@ export FEATCAT_LLM_MODEL=gemma-4-E2B-it
 |-------|-----|--------|------------|
 | `gemma-4-E2B-it` | 4GB | Nhanh | Tốt (mặc định) |
 | `llama3.1:8b` | 8GB | Trung bình | Tốt |
-| `qwen2.5:14b` | 16GB | Chậm | Rất tốt |
 
 ## Backup và restore
 
