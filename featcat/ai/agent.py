@@ -7,6 +7,8 @@ import logging
 import re
 from typing import TYPE_CHECKING, Any
 
+from starlette.concurrency import run_in_threadpool
+
 from .executor import ToolExecutor
 from .tools import CATALOG_TOOLS
 
@@ -82,7 +84,7 @@ class CatalogAgent:
 
         for _round in range(MAX_TOOL_ROUNDS):
             try:
-                result = self.llm.chat(messages, tools=CATALOG_TOOLS)
+                result = await run_in_threadpool(self.llm.chat, messages, tools=CATALOG_TOOLS)
             except Exception as e:
                 logger.error("LLM chat failed: %s", e)
                 yield {"type": "token", "content": f"LLM error: {e}"}
@@ -142,7 +144,7 @@ class CatalogAgent:
         """Make a final LLM call without tools to summarize results."""
         messages.append({"role": "user", "content": _SUMMARY_PROMPT})
         try:
-            result = self.llm.chat(messages, temperature=0.3)
+            result = await run_in_threadpool(self.llm.chat, messages, temperature=0.3)
             content = _clean_content(result.get("content") or "")
             if content:
                 chunk_size = 20
