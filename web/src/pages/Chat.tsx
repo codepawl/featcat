@@ -159,6 +159,7 @@ export function Chat() {
       const reader = res.body!.getReader()
       const decoder = new TextDecoder()
       let buffer = ''
+      let eventData = ''
 
       while (true) {
         const { done, value } = await reader.read()
@@ -169,7 +170,6 @@ export function Chat() {
         const lines = buffer.split('\n')
         buffer = lines.pop() || ''
 
-        let eventData = ''
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             eventData = line.slice(6)
