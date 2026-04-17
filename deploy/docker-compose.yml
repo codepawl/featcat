@@ -7,7 +7,7 @@ services:
     ports:
       - "8080:8080"
     command: >
-      --model /models/qwen3.5-0.8b-q8_0.gguf
+      --model /models/gemma-4-E2B-it-Q4_K_M.gguf
       --ctx-size 4096
       --port 8080
       --host 0.0.0.0
@@ -32,7 +32,7 @@ services:
       - FEATCAT_CATALOG_DB_PATH=/data/catalog.db
       - FEATCAT_LLM_BACKEND=llamacpp
       - FEATCAT_LLAMACPP_URL=http://llm:8080
-      - FEATCAT_LLM_MODEL=${LLM_MODEL:-qwen3.5-0.8b}
+      - FEATCAT_LLM_MODEL=${LLM_MODEL:-gemma-4-E2B-it}
       - FEATCAT_SERVER_AUTH_TOKEN=${SERVER_AUTH:-}
       - HTTP_PROXY=${HTTP_PROXY:-}
       - HTTPS_PROXY=${HTTPS_PROXY:-}

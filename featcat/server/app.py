@@ -99,6 +99,7 @@ def build_app() -> FastAPI:
     # Register API routes
     from .routes.ai import router as ai_router
     from .routes.docs import router as docs_router
+    from .routes.export import router as export_router
     from .routes.features import router as features_router
     from .routes.groups import router as groups_router
     from .routes.health import router as health_router
@@ -106,7 +107,6 @@ def build_app() -> FastAPI:
     from .routes.monitor import router as monitor_router
     from .routes.scan import router as scan_router
     from .routes.sources import router as sources_router
-    from .routes.export import router as export_router
     from .routes.usage import router as usage_router
     from .routes.versions import router as versions_router
 

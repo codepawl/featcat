@@ -16,7 +16,7 @@ source .env
 
 # 2. Download GGUF model if not present
 mkdir -p models
-MODEL_FILE="models/Qwen3.5-0.8B-Q4_K_M.gguf"
+MODEL_FILE="models/gemma-4-E2B-it-Q4_K_M.gguf"
 if [ ! -f "$MODEL_FILE" ]; then
     echo "Downloading GGUF model (~533 MB)..."
     PROXY_FLAG=""
@@ -24,7 +24,7 @@ if [ ! -f "$MODEL_FILE" ]; then
         PROXY_FLAG="-x $HTTP_PROXY"
     fi
     curl $PROXY_FLAG -L -o "$MODEL_FILE" \
-        "https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q4_K_M.gguf"
+        "https://huggingface.co/google/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q4_K_M.gguf"
     echo "Model downloaded."
 else
     echo "Model already exists: $MODEL_FILE"
