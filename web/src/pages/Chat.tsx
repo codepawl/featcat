@@ -4,6 +4,7 @@ import { api } from '../api'
 import { useChatStore } from '../hooks/useChatStore'
 import { ChatMessage } from '../components/ChatMessage'
 import { ThinkingBlock } from '../components/ThinkingBlock'
+import { chatStore } from '../stores/chatStore'
 import type { ChatMessage as ChatMsg } from '../stores/chatStore'
 
 function ResultTable({ data }: { data: any }) {
@@ -94,7 +95,8 @@ export function Chat() {
   const [busy, setBusy] = useState(false)
   const [llmAvailable, setLlmAvailable] = useState<boolean | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const esRef = useRef<EventSource | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
+  const sessionIdRef = useRef<string | null>(null)
 
   useEffect(() => {
     api.health().then((d: Record<string, unknown>) => setLlmAvailable(!!d.llm)).catch(() => setLlmAvailable(false))
@@ -124,71 +126,107 @@ export function Chat() {
     streamQuery(q)
   }
 
-  const streamQuery = (query: string) => {
-    esRef.current?.close()
-    const es = new EventSource(`/api/ai/ask/stream?query=${encodeURIComponent(query)}`)
-    esRef.current = es
+  const streamQuery = async (query: string) => {
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
 
-    es.onmessage = (event) => {
-      const data = JSON.parse(event.data)
-      switch (data.type) {
-        case 'thinking_start':
-          appendToLastMessage('thinking', '')
-          break
-        case 'thinking':
-          appendToLastMessage('thinking', data.content)
-          break
-        case 'thinking_end':
-          updateLastMessage({ isDoneThinking: true })
-          break
-        case 'token':
-          appendToLastMessage('content', data.content)
-          break
-        case 'result':
-          updateLastMessage({ result: data.content })
-          break
-        case 'done': {
-          const last = messages[messages.length - 1]
-          const hasContent = last?.content?.trim() || last?.result || last?.html
-          if (!hasContent) {
-            updateLastMessage({
-              content: '\u26a0 LLM returned an empty response. Try again or check /api/health.',
-              isStreaming: false,
-            })
-          } else {
-            updateLastMessage({ isStreaming: false })
-          }
-          es.close()
-          setBusy(false)
-          break
-        }
-        case 'error':
-          updateLastMessage({ content: `Error: ${data.content}`, isStreaming: false })
-          es.close()
-          setBusy(false)
-          break
+    try {
+      const res = await fetch('/api/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, session_id: sessionIdRef.current }),
+        signal: controller.signal,
+      })
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }))
+        updateLastMessage({ content: `Error: ${err.detail || res.statusText}`, isStreaming: false })
+        setBusy(false)
+        return
       }
-    }
 
-    es.onerror = () => {
-      es.close()
-      // Fallback to non-streaming
-      api.ai.ask(query)
-        .then((data) => {
-          if (!data || (Array.isArray(data.results) && data.results.length === 0 && !data.interpretation)) {
-            updateLastMessage({
-              content: '\u26a0 No response received. The LLM may be unavailable or still loading.',
-              isStreaming: false,
-            })
-          } else {
-            updateLastMessage({ result: data, isStreaming: false })
+      // Capture session ID from response header
+      const sid = res.headers.get('X-Session-Id')
+      if (sid) sessionIdRef.current = sid
+
+      const reader = res.body!.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+
+        // Parse SSE lines from buffer
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+
+        let eventData = ''
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            eventData = line.slice(6)
+          } else if (line === '' && eventData) {
+            try {
+              const data = JSON.parse(eventData)
+              switch (data.type) {
+                case 'thinking_start':
+                  appendToLastMessage('thinking', '')
+                  break
+                case 'thinking':
+                  appendToLastMessage('thinking', data.content)
+                  break
+                case 'thinking_end':
+                  updateLastMessage({ isDoneThinking: true })
+                  break
+                case 'tool_call':
+                  appendToLastMessage('thinking', `\nUsing tool: ${data.name}...`)
+                  break
+                case 'tool_result':
+                  break
+                case 'token':
+                  appendToLastMessage('content', data.content)
+                  break
+                case 'result':
+                  updateLastMessage({ result: data.content })
+                  break
+                case 'done': {
+                  const current = chatStore.getMessages()
+                  const last = current[current.length - 1]
+                  const hasContent = last?.content?.trim() || last?.result || last?.html
+                  if (!hasContent) {
+                    updateLastMessage({
+                      content: '\u26a0 LLM returned an empty response. Try again or check /api/health.',
+                      isStreaming: false,
+                    })
+                  } else {
+                    updateLastMessage({ isStreaming: false })
+                  }
+                  setBusy(false)
+                  return
+                }
+                case 'error':
+                  updateLastMessage({ content: `Error: ${data.content}`, isStreaming: false })
+                  setBusy(false)
+                  return
+              }
+            } catch { /* skip malformed SSE */ }
+            eventData = ''
           }
-        })
-        .catch(() => updateLastMessage({
-          content: '\u26a0 Connection lost. LLM server may be unavailable.',
-          isStreaming: false,
-        }))
-        .finally(() => setBusy(false))
+        }
+      }
+
+      // Stream ended without done event
+      updateLastMessage({ isStreaming: false })
+      setBusy(false)
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') return
+      updateLastMessage({
+        content: '\u26a0 Connection lost. Server may be unavailable.',
+        isStreaming: false,
+      })
+      setBusy(false)
     }
   }
 
@@ -285,7 +323,7 @@ export function Chat() {
               <s.icon size={12} /> {s.label}
             </button>
           ))}
-          <button onClick={clear} title="Clear chat"
+          <button onClick={() => { clear(); sessionIdRef.current = null }} title="Clear chat"
             className="ml-auto flex items-center gap-1 px-3 py-1 text-[11px] text-[var(--text-tertiary)] border border-[var(--border-default)] rounded-md hover:bg-[var(--bg-secondary)] transition-colors">
             <Trash2 size={12} /> Clear
           </button>

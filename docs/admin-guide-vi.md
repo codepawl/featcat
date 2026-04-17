@@ -32,35 +32,22 @@ featcat source scan minio_data
 
 ## Thay đổi LLM model
 
-### Dùng model khác trên Ollama
-
-```bash
-# Pull model khác
-ollama pull llama3.1:8b
-
-# Cấu hình featcat để dùng model đó
-export FEATCAT_LLM_MODEL=llama3.1:8b
-
-# Kiểm tra
-featcat doctor
-```
-
 ### Dùng llama.cpp server
 
 ```bash
-# Khởi động llama.cpp server
+# Khởi động llama.cpp server với model GGUF
 ./server -m model.gguf --host 0.0.0.0 --port 8080
 
 # Cấu hình featcat
-export FEATCAT_LLM_BACKEND=llamacpp
 export FEATCAT_LLAMACPP_URL=http://localhost:8080
+export FEATCAT_LLM_MODEL=gemma-4-E2B-it
 ```
 
 ### Khuyến nghị model
 
 | Model | RAM | Tốc độ | Chất lượng |
 |-------|-----|--------|------------|
-| `lfm2.5-thinking` | 4GB | Nhanh | Tốt (mặc định) |
+| `gemma-4-E2B-it` | 4GB | Nhanh | Tốt (mặc định) |
 | `llama3.1:8b` | 8GB | Trung bình | Tốt |
 | `qwen2.5:14b` | 16GB | Chậm | Rất tốt |
 
@@ -97,24 +84,21 @@ featcat monitor report --output backup/monitoring.md
 
 ## Troubleshooting
 
-### Ollama không kết nối được
+### LLM không kết nối được
 
 ```
-[red]LLM unavailable.[/red] Ensure Ollama is running: ollama serve
+[red]LLM unavailable.[/red] Ensure llama.cpp server is running.
 ```
 
-**Nguyên nhân**: Ollama chưa khởi động hoặc đang chạy trên port khác.
+**Nguyên nhân**: llama.cpp server chưa khởi động hoặc đang chạy trên port khác.
 
 **Cách xử lý**:
 ```bash
-# Kiểm tra Ollama đang chạy?
-curl http://localhost:11434/api/tags
-
-# Nếu không, khởi động
-ollama serve
+# Kiểm tra llama.cpp đang chạy?
+curl http://localhost:8080/health
 
 # Nếu port khác
-export FEATCAT_OLLAMA_URL=http://localhost:12345
+export FEATCAT_LLAMACPP_URL=http://localhost:12345
 
 # Kiểm tra toàn bộ
 featcat doctor
@@ -125,7 +109,7 @@ featcat doctor
 **Nguyên nhân**: Model quá lớn, hoặc máy không đủ RAM.
 
 **Cách xử lý**:
-- Thử model khác: `export FEATCAT_LLM_MODEL=lfm2.5-thinking`
+- Thử model nhỏ hơn: `export FEATCAT_LLM_MODEL=gemma-4-E2B-it`
 - Tăng timeout: `export FEATCAT_LLM_TIMEOUT=300`
 - Giảm số features gửi cho LLM: `export FEATCAT_MAX_CONTEXT_FEATURES=50`
 - Sử dụng cache (mặc định bật, chỉ cần chạy lại cùng query)

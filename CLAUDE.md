@@ -56,7 +56,7 @@ Plugins are called identically from CLI, TUI, server routes, and the scheduler.
 
 `featcat/llm/base.py` defines `BaseLLM` with `generate()`, `stream()`, `generate_json()`, `health_check()`. Only implementation: `LlamaCppLLM` (`llm/llamacpp.py`). `CachedLLM` wraps any BaseLLM with SQLite response caching. Factory: `create_llm(backend="llamacpp", **kwargs)` — accepts `"ollama"` as alias for backward compatibility but always returns `LlamaCppLLM`.
 
-**Thinking model support**: The default model (`Qwen3.5-0.8B-Q4_K_M.gguf` served via llama.cpp at `:8080`) returns `<think>...</think>` blocks before the answer. `strip_thinking_tags()` in `llm/base.py` removes these. Applied automatically in `generate()` and `generate_json()`. The SSE streaming endpoint in `routes/ai.py` detects think tags in-flight and emits separate `thinking_start`/`thinking`/`thinking_end` events.
+**Thinking model support**: The default model (`gemma-4-E2B-it-Q4_K_M.gguf` served via llama.cpp at `:8080`) returns `<think>...</think>` blocks before the answer. `strip_thinking_tags()` in `llm/base.py` removes these. Applied automatically in `generate()` and `generate_json()`. The SSE streaming endpoint in `routes/ai.py` detects think tags in-flight and emits separate `thinking_start`/`thinking`/`thinking_end` events.
 
 `generate_json()` uses `json_mode=True` with retry on parse failure. `_extract_json()` handles fenced code blocks, bare objects, and arrays.
 

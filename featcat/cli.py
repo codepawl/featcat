@@ -493,7 +493,7 @@ def _export_data(
         f"Rows: {result.row_count:,}  |  "
         f"Size: {size_mb:.1f} MB"
     )
-    console.print(f"\n[dim]Python snippet:[/dim]")
+    console.print("\n[dim]Python snippet:[/dim]")
     console.print(f"[cyan]{result.code_snippet}[/cyan]")
 
 
