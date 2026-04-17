@@ -22,6 +22,10 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
+      args:
+        - HTTP_PROXY=${HTTP_PROXY:-}
+        - HTTPS_PROXY=${HTTPS_PROXY:-}
+        - NO_PROXY=localhost,127.0.0.1
     container_name: featcat-server
     volumes:
       - featcat_data:/data
@@ -32,12 +36,8 @@ services:
       - FEATCAT_CATALOG_DB_PATH=/data/catalog.db
       - FEATCAT_LLM_BACKEND=llamacpp
       - FEATCAT_LLAMACPP_URL=http://llm:8080
-      - FEATCAT_LLM_MODEL=${LLM_MODEL:-gemma-4-E2B-it}
+      - FEATCAT_LLM_MODEL=${FEATCAT_LLM_MODEL:-gemma-4-E2B-it}
       - FEATCAT_SERVER_AUTH_TOKEN=${SERVER_AUTH:-}
-      - HTTP_PROXY=${HTTP_PROXY:-}
-      - HTTPS_PROXY=${HTTPS_PROXY:-}
-      - NO_PROXY=localhost,127.0.0.1,llm,featcat-llm
-      - no_proxy=localhost,127.0.0.1,llm,featcat-llm
     depends_on:
       - llm
     restart: unless-stopped
