@@ -32,35 +32,22 @@ featcat source scan minio_data
 
 ## Changing the LLM Model
 
-### Using a Different Model on Ollama
-
-```bash
-# Pull a different model
-ollama pull llama3.1:8b
-
-# Configure featcat to use it
-export FEATCAT_LLM_MODEL=llama3.1:8b
-
-# Verify
-featcat doctor
-```
-
 ### Using llama.cpp Server
 
 ```bash
-# Start llama.cpp server
+# Start llama.cpp server with a GGUF model
 ./server -m model.gguf --host 0.0.0.0 --port 8080
 
 # Configure featcat
-export FEATCAT_LLM_BACKEND=llamacpp
 export FEATCAT_LLAMACPP_URL=http://localhost:8080
+export FEATCAT_LLM_MODEL=gemma-4-E2B-it
 ```
 
 ### Recommended Models
 
 | Model | RAM | Speed | Quality |
 |-------|-----|-------|---------|
-| `lfm2.5-thinking` | 4GB | Fast | Good (default) |
+| `gemma-4-E2B-it` | 4GB | Fast | Good (default) |
 | `llama3.1:8b` | 8GB | Medium | Good |
 | `qwen2.5:14b` | 16GB | Slow | Excellent |
 
@@ -97,24 +84,21 @@ featcat monitor report --output backup/monitoring.md
 
 ## Troubleshooting
 
-### Ollama Connection Failed
+### LLM Connection Failed
 
 ```
-[red]LLM unavailable.[/red] Ensure Ollama is running: ollama serve
+[red]LLM unavailable.[/red] Ensure llama.cpp server is running.
 ```
 
-**Cause**: Ollama is not running or is on a different port.
+**Cause**: llama.cpp server is not running or is on a different port.
 
 **Fix**:
 ```bash
-# Check if Ollama is running
-curl http://localhost:11434/api/tags
-
-# If not, start it
-ollama serve
+# Check if llama.cpp is running
+curl http://localhost:8080/health
 
 # If on a different port
-export FEATCAT_OLLAMA_URL=http://localhost:12345
+export FEATCAT_LLAMACPP_URL=http://localhost:12345
 
 # Verify everything
 featcat doctor
@@ -125,7 +109,7 @@ featcat doctor
 **Cause**: Model too large, or insufficient RAM.
 
 **Fix**:
-- Try a different model: `export FEATCAT_LLM_MODEL=lfm2.5-thinking`
+- Try a smaller model: `export FEATCAT_LLM_MODEL=gemma-4-E2B-it`
 - Increase timeout: `export FEATCAT_LLM_TIMEOUT=300`
 - Reduce features sent to LLM: `export FEATCAT_MAX_CONTEXT_FEATURES=50`
 - Use cache (enabled by default — just re-run the same query)

@@ -47,7 +47,7 @@ class Settings(BaseSettings):
 
     # LLM
     llm_backend: str = "llamacpp"
-    llm_model: str = "qwen3.5-0.8b"
+    llm_model: str = "gemma-4-E2B-it"
     llamacpp_url: str = "http://localhost:8080"
     llm_timeout: int = 300  # seconds
     llm_max_retries: int = 3

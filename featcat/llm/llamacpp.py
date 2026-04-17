@@ -19,7 +19,7 @@ class LlamaCppLLM(BaseLLM):
     def __init__(
         self,
         base_url: str = "http://localhost:8080",
-        model: str = "qwen3.5-0.8b",
+        model: str = "gemma-4-E2B-it",
         timeout: int = 300,
         **kwargs,
     ) -> None:

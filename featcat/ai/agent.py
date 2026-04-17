@@ -125,7 +125,7 @@ class CatalogAgent:
                 continue  # Next round
 
             # No tool calls → final text response
-            content = _clean_content((result.get("content") or ""))
+            content = _clean_content(result.get("content") or "")
             if content:
                 chunk_size = 20
                 for i in range(0, len(content), chunk_size):
@@ -143,7 +143,7 @@ class CatalogAgent:
         messages.append({"role": "user", "content": _SUMMARY_PROMPT})
         try:
             result = self.llm.chat(messages, temperature=0.3)
-            content = _clean_content((result.get("content") or ""))
+            content = _clean_content(result.get("content") or "")
             if content:
                 chunk_size = 20
                 for i in range(0, len(content), chunk_size):
