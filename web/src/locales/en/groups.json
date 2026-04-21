@@ -18,7 +18,9 @@
     "select_hint": "Select a group to view details",
     "owner_label": "Owner",
     "members_heading": "Members ({{count}})",
-    "members_empty": "No features in this group yet"
+    "members_empty": "No features in this group yet",
+    "project_label": "Project",
+    "members_label": "features"
   },
   "member_table": {
     "feature": "Feature",

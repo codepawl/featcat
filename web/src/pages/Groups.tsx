@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Plus, Trash2, UserPlus, X, Download } from 'lucide-react'
 import { api, invalidateCache } from '../api'
 import { Badge } from '../components/Badge'
@@ -9,6 +10,7 @@ import { Modal } from '../components/Modal'
 import { Skeleton } from '../components/Skeleton'
 
 export function Groups() {
+  const { t } = useTranslation('groups')
   const [groups, setGroups] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<any>(null)
@@ -38,7 +40,7 @@ export function Groups() {
   }
 
   const deleteGroup = async (name: string) => {
-    if (!window.confirm(`Delete group "${name}"?`)) return
+    if (!window.confirm(t('confirm_delete', { name }))) return
     await api.groups.delete(name)
     invalidateCache('/groups')
     setSelected(null)
@@ -54,9 +56,9 @@ export function Groups() {
   }
 
   const memberColumns = [
-    { key: 'name', label: 'Feature', render: (r: any) => <span className="font-medium text-accent">{r.name}</span> },
-    { key: 'dtype', label: 'Dtype', render: (r: any) => <span className="font-mono text-xs">{r.dtype}</span> },
-    { key: 'has_doc', label: 'Docs', sortable: false, render: (r: any) => r.has_doc ? <Badge variant="success">yes</Badge> : <span className="text-[var(--text-tertiary)]">-</span> },
+    { key: 'name', label: t('member_table.feature'), render: (r: any) => <span className="font-medium text-accent">{r.name}</span> },
+    { key: 'dtype', label: t('member_table.dtype'), render: (r: any) => <span className="font-mono text-xs">{r.dtype}</span> },
+    { key: 'has_doc', label: t('member_table.docs'), sortable: false, render: (r: any) => r.has_doc ? <Badge variant="success">{t('member_table.has_docs_yes')}</Badge> : <span className="text-[var(--text-tertiary)]">-</span> },
     { key: '_remove', label: '', sortable: false, render: (r: any) => (
       <button onClick={(e) => { e.stopPropagation(); removeMember(r.name) }} className="text-[var(--text-tertiary)] hover:text-[var(--danger)] transition-colors p-1">
         <Trash2 size={13} />
@@ -67,9 +69,9 @@ export function Groups() {
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-xl font-semibold">Feature Groups</h1>
+        <h1 className="text-2xl font-semibold">{t('page.title')}</h1>
         <button onClick={() => setCreateOpen(true)} className="flex items-center gap-1.5 px-4 py-2 bg-accent text-white rounded-lg text-[13px] font-medium hover:bg-accent-emphasis transition-colors">
-          <Plus size={16} /> New Group
+          <Plus size={16} /> {t('actions.new_group')}
         </button>
       </div>
 
@@ -80,7 +82,7 @@ export function Groups() {
             {loading ? (
               <Skeleton className="h-32" />
             ) : groups.length === 0 ? (
-              <p className="text-[var(--text-tertiary)] text-sm py-4 text-center">No groups yet</p>
+              <p className="text-[var(--text-tertiary)] text-sm py-4 text-center">{t('list.empty')}</p>
             ) : (
               groups.map((g) => (
                 <div
@@ -95,7 +97,7 @@ export function Groups() {
                   <div className="font-medium text-sm mb-1">{g.name}</div>
                   <div className="flex items-center gap-2 text-xs text-[var(--text-tertiary)]">
                     {g.project && <Badge variant="info">{g.project}</Badge>}
-                    <span>{g.member_count ?? 0} features</span>
+                    <span>{t('list.members_count', { count: g.member_count ?? 0 })}</span>
                     {g.owner && <span className="ml-auto">{g.owner}</span>}
                   </div>
                   {g.description && <p className="text-xs text-[var(--text-secondary)] mt-1 line-clamp-2">{g.description}</p>}
@@ -109,7 +111,7 @@ export function Groups() {
         <div className="flex-1 flex flex-col">
           {!selected ? (
             <div className="bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-xl p-8 text-center text-[var(--text-tertiary)] text-sm flex-1 flex items-center justify-center">
-              Select a group to view details
+              {t('detail.select_hint')}
             </div>
           ) : detailLoading ? (
             <Skeleton className="h-48 flex-1" />
@@ -120,32 +122,32 @@ export function Groups() {
                   <h2 className="text-lg font-semibold">{detail.name}</h2>
                   <div className="flex items-center gap-2 mt-1 text-xs text-[var(--text-secondary)]">
                     {detail.project && <Badge variant="info">{detail.project}</Badge>}
-                    {detail.owner && <span>Owner: {detail.owner}</span>}
+                    {detail.owner && <span>{t('detail.owner_label')}: {detail.owner}</span>}
                   </div>
                   {detail.description && <p className="text-sm text-[var(--text-secondary)] mt-2">{detail.description}</p>}
                 </div>
                 <div className="flex gap-2">
                   <button onClick={() => setAddOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium border border-[var(--border-default)] rounded-lg hover:bg-[var(--bg-secondary)]">
-                    <UserPlus size={14} /> Add Features
+                    <UserPlus size={14} /> {t('actions.add_features')}
                   </button>
                   {detail.members?.length > 0 && (
                     <button onClick={() => setExportOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium border border-[var(--border-default)] rounded-lg hover:bg-[var(--bg-secondary)]">
-                      <Download size={14} /> Export
+                      <Download size={14} /> {t('actions.export')}
                     </button>
                   )}
                   <button onClick={() => deleteGroup(detail.name)} className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium border border-[var(--danger-subtle-bg)] text-[var(--danger)] rounded-lg hover:bg-[var(--danger-subtle-bg)]">
-                    <Trash2 size={14} /> Delete
+                    <Trash2 size={14} /> {t('actions.delete')}
                   </button>
                 </div>
               </div>
 
               <h3 className="text-xs font-semibold uppercase text-[var(--text-tertiary)] tracking-wide mb-2">
-                Members ({detail.members?.length || 0})
+                {t('detail.members_heading', { count: detail.members?.length || 0 })}
               </h3>
               {detail.members?.length > 0 ? (
                 <DataTable columns={memberColumns} data={detail.members} pageSize={20} />
               ) : (
-                <p className="text-sm text-[var(--text-tertiary)] py-4 text-center">No features in this group yet</p>
+                <p className="text-sm text-[var(--text-tertiary)] py-4 text-center">{t('detail.members_empty')}</p>
               )}
             </div>
           ) : null}
@@ -158,7 +160,7 @@ export function Groups() {
         <ExportModal
           open={exportOpen}
           onClose={() => setExportOpen(false)}
-          title={`${detail.name} (${detail.members?.length || 0} features)`}
+          title={t('export_title', { name: detail.name, count: detail.members?.length || 0 })}
           featureSpecs={(detail.members || []).map((m: Record<string, unknown>) => m.name as string)}
           groupName={detail.name}
         />
@@ -169,6 +171,7 @@ export function Groups() {
 
 
 function CreateGroupModal({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: () => void }) {
+  const { t } = useTranslation('groups')
   const [form, setForm] = useState({ name: '', description: '', project: '', owner: '' })
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }))
 
@@ -180,18 +183,18 @@ function CreateGroupModal({ open, onClose, onCreated }: { open: boolean; onClose
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="New Group" actions={
+    <Modal open={open} onClose={onClose} title={t('create_modal.title')} actions={
       <>
-        <button onClick={onClose} className="px-4 py-2 text-sm border border-[var(--border-default)] rounded-lg">Cancel</button>
-        <button onClick={submit} disabled={!form.name} className="px-4 py-2 text-sm bg-accent text-white rounded-lg disabled:opacity-50">Create</button>
+        <button onClick={onClose} className="px-4 py-2 text-sm border border-[var(--border-default)] rounded-lg">{t('actions.cancel', { ns: 'common' })}</button>
+        <button onClick={submit} disabled={!form.name} className="px-4 py-2 text-sm bg-accent text-white rounded-lg disabled:opacity-50">{t('actions.create')}</button>
       </>
     }>
       <div className="space-y-3">
         {[
-          { k: 'name', label: 'Name', placeholder: 'Group name', required: true },
-          { k: 'description', label: 'Description', placeholder: 'Optional description' },
-          { k: 'project', label: 'Project', placeholder: 'Project name' },
-          { k: 'owner', label: 'Owner', placeholder: 'Owner name' },
+          { k: 'name', label: t('create_modal.fields.name'), placeholder: t('create_modal.fields.name_placeholder'), required: true },
+          { k: 'description', label: t('create_modal.fields.description'), placeholder: t('create_modal.fields.description_placeholder') },
+          { k: 'project', label: t('create_modal.fields.project'), placeholder: t('create_modal.fields.project_placeholder') },
+          { k: 'owner', label: t('create_modal.fields.owner'), placeholder: t('create_modal.fields.owner_placeholder') },
         ].map(({ k, label, placeholder, required }) => (
           <div key={k}>
             <label className="block text-xs font-medium mb-1">{label} {required && <span className="text-[var(--danger)]">*</span>}</label>
@@ -210,6 +213,7 @@ function CreateGroupModal({ open, onClose, onCreated }: { open: boolean; onClose
 
 
 function AddFeaturesModal({ open, onClose, groupName, onAdded }: { open: boolean; onClose: () => void; groupName: string; onAdded: () => void }) {
+  const { t } = useTranslation('groups')
   const [features, setFeatures] = useState<ReturnType<typeof toFeatureItems>>([])
   const [selectedSpecs, setSelectedSpecs] = useState<Set<string>>(new Set())
   const [adding, setAdding] = useState(false)
@@ -234,11 +238,11 @@ function AddFeaturesModal({ open, onClose, groupName, onAdded }: { open: boolean
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={`Add features to ${groupName}`} maxWidth="max-w-xl" actions={
+    <Modal open={open} onClose={onClose} title={t('add_modal.title', { group: groupName })} maxWidth="max-w-xl" actions={
       <>
-        <button onClick={onClose} className="px-4 py-2 text-sm border border-[var(--border-default)] rounded-lg">Cancel</button>
+        <button onClick={onClose} className="px-4 py-2 text-sm border border-[var(--border-default)] rounded-lg">{t('actions.cancel', { ns: 'common' })}</button>
         <button onClick={submit} disabled={selectedSpecs.size === 0 || adding} className="px-4 py-2 text-sm bg-accent text-white rounded-lg disabled:opacity-50">
-          Add {selectedSpecs.size > 0 ? `(${selectedSpecs.size})` : ''}
+          {t('actions.add')} {selectedSpecs.size > 0 ? `(${selectedSpecs.size})` : ''}
         </button>
       </>
     }>

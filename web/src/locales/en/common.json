@@ -21,7 +21,14 @@
     "copied": "Copied",
     "download": "Download",
     "open_menu": "Open menu",
-    "toggle_theme": "Toggle theme"
+    "toggle_theme": "Toggle theme",
+    "retry": "Retry",
+    "generate": "Generate",
+    "generating": "Generating...",
+    "edit": "Edit",
+    "create": "Create",
+    "done": "Done",
+    "add": "Add"
   },
   "state": {
     "empty": "No data",
@@ -48,5 +55,8 @@
   },
   "placeholders": {
     "search": "Search..."
+  },
+  "time": {
+    "never": "never"
   }
 }

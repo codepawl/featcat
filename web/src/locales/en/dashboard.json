@@ -1,1 +1,112 @@
-{}
+{
+  "page": {
+    "title": "Dashboard"
+  },
+  "stats": {
+    "features": "Features",
+    "doc_coverage": "Doc Coverage",
+    "drift_alerts": "Drift Alerts",
+    "sources": "Sources"
+  },
+  "sections": {
+    "quality_debt": "Quality & Debt",
+    "quality_debt_subtitle": "Documentation coverage and drift alerts across your catalog",
+    "activity_usage": "Activity & Usage",
+    "activity_usage_subtitle": "Recent catalog activity and feature adoption",
+    "system": "System",
+    "system_subtitle": "Scheduled background jobs"
+  },
+  "health_card": {
+    "title": "Catalog Health",
+    "of_100": "/100"
+  },
+  "drift_panel": {
+    "title": "Recent Drift Alerts",
+    "empty_no_baseline": "No baselines computed yet. Run baseline first.",
+    "empty_all_healthy": "All features healthy",
+    "columns": {
+      "severity": "Severity",
+      "feature": "Feature",
+      "psi": "PSI"
+    }
+  },
+  "top_features": {
+    "title": "Top Features",
+    "empty": "No usage data yet",
+    "columns": {
+      "index": "#",
+      "feature": "Feature",
+      "views": "Views",
+      "queries": "Queries"
+    }
+  },
+  "orphaned": {
+    "title": "Orphaned Features",
+    "empty_all_active": "All features active in the last 30 days",
+    "with_count_one": "{{count}} feature with no recent usage",
+    "with_count_other": "{{count}} features with no recent usage",
+    "view_all": "View all features →"
+  },
+  "activity": {
+    "title": "Recent Activity",
+    "empty": "No recent activity"
+  },
+  "jobs_panel": {
+    "title": "Scheduled Jobs",
+    "empty": "No jobs configured",
+    "columns": {
+      "job": "Job",
+      "schedule": "Schedule",
+      "status": "Status",
+      "last_run": "Last Run"
+    },
+    "enabled": "Enabled",
+    "disabled": "Disabled"
+  },
+  "donut": {
+    "title": "Documentation Coverage",
+    "documented": "documented",
+    "empty": "No features in catalog",
+    "segments": {
+      "documented": "Documented",
+      "hints_only": "Hints only",
+      "no_doc": "No doc"
+    }
+  },
+  "sources": {
+    "title": "Data Sources",
+    "subtitle": "Click a source to explore its features",
+    "empty": "No data sources registered yet.",
+    "empty_hint": "Use \"Add Source\" or run featcat scan-bulk to get started.",
+    "feature_one": "{{count}} feature",
+    "feature_other": "{{count}} features",
+    "docs_percent": "{{pct}}% docs",
+    "scanned_prefix": "Scanned {{time}}",
+    "badge_critical": "{{count}} critical",
+    "badge_alert_one": "{{count}} alert",
+    "badge_alert_other": "{{count}} alerts",
+    "all_clear": "All clear"
+  },
+  "debt": {
+    "title": "Documentation debt by owner and source",
+    "subtitle": "Click a cell to view those features",
+    "empty": "No features in catalog",
+    "owner": "Owner",
+    "total": "Total"
+  },
+  "usage_chart": {
+    "title": "Feature usage landscape (last 30 days)",
+    "subtitle": "Bubble size = query count. Red outline = orphaned.",
+    "empty": "No usage data yet",
+    "empty_long": "No usage data yet. Features will appear here after team members start querying the catalog.",
+    "orphaned_label": "Orphaned",
+    "axis_days": "Days ago",
+    "axis_usage": "Usage",
+    "tooltip": {
+      "usage": "Usage: {{views}} views, {{queries}} queries",
+      "created": "Created: {{days}} days ago",
+      "source": "Source: {{source}}",
+      "orphaned": "Orphaned"
+    }
+  }
+}

@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { Skeleton } from '../Skeleton'
 
 interface DocCoverageDonutProps {
@@ -17,12 +18,13 @@ const COLORS = {
 const CARD = 'bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5'
 
 export function DocCoverageDonut({ totalFeatures, documentedFeatures, featuresWithHints, loading }: DocCoverageDonutProps) {
+  const { t } = useTranslation('dashboard')
   const navigate = useNavigate()
 
   if (loading) {
     return (
       <div className={CARD}>
-        <h3 className="text-sm font-semibold mb-4">Documentation Coverage</h3>
+        <h3 className="text-sm font-semibold mb-4">{t('donut.title')}</h3>
         <Skeleton className="h-24" />
       </div>
     )
@@ -31,8 +33,8 @@ export function DocCoverageDonut({ totalFeatures, documentedFeatures, featuresWi
   if (totalFeatures === 0) {
     return (
       <div className={CARD}>
-        <h3 className="text-sm font-semibold mb-4">Documentation Coverage</h3>
-        <div className="text-sm text-[var(--text-tertiary)]">No features in catalog</div>
+        <h3 className="text-sm font-semibold mb-4">{t('donut.title')}</h3>
+        <div className="text-sm text-[var(--text-tertiary)]">{t('donut.empty')}</div>
       </div>
     )
   }
@@ -42,9 +44,9 @@ export function DocCoverageDonut({ totalFeatures, documentedFeatures, featuresWi
   const docPct = Math.round((documentedFeatures / totalFeatures) * 100)
 
   const segments = [
-    { name: 'Documented', value: documentedFeatures, color: COLORS.documented },
-    { name: 'Hints only', value: hintsOnly, color: COLORS.hintsOnly },
-    { name: 'No doc', value: noDoc, color: COLORS.noDoc },
+    { name: t('donut.segments.documented'), value: documentedFeatures, color: COLORS.documented },
+    { name: t('donut.segments.hints_only'), value: hintsOnly, color: COLORS.hintsOnly },
+    { name: t('donut.segments.no_doc'), value: noDoc, color: COLORS.noDoc },
   ].filter(s => s.value > 0)
 
   return (
@@ -52,11 +54,11 @@ export function DocCoverageDonut({ totalFeatures, documentedFeatures, featuresWi
       className={`${CARD} cursor-pointer transition-colors hover:border-[var(--border-muted)]`}
       onClick={() => navigate('/features?filter=undocumented')}
     >
-      <h3 className="text-sm font-semibold mb-4">Documentation Coverage</h3>
+      <h3 className="text-sm font-semibold mb-4">{t('donut.title')}</h3>
 
       <div className="flex items-baseline gap-2 mb-3">
         <span className="text-2xl font-semibold text-[var(--text-primary)] leading-none">{docPct}%</span>
-        <span className="text-xs text-[var(--text-secondary)]">documented</span>
+        <span className="text-xs text-[var(--text-secondary)]">{t('donut.documented')}</span>
       </div>
 
       <div className="flex h-2 w-full rounded-full overflow-hidden bg-[var(--bg-tertiary)] mb-3">

@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { Plus, RefreshCw, Check, AlertTriangle, Shield, FileText, FolderSearch, X, ChevronDown, ChevronRight, Pencil, Download } from 'lucide-react'
 import { api, invalidateCache, timeAgo } from '../api'
 import { DataTable } from '../components/DataTable'
@@ -43,6 +44,7 @@ const GRADE_COLORS: Record<string, string> = {
 }
 
 export function Features() {
+  const { t } = useTranslation('features')
   const { name: paramName } = useParams()
   const navigate = useNavigate()
   const [features, setFeatures] = useState<FeatureRow[]>([])
@@ -223,26 +225,26 @@ export function Features() {
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-xl font-semibold">Features</h1>
+        <h1 className="text-2xl font-semibold">{t('page.title')}</h1>
         <div className="flex items-center gap-3">
-          <span className="text-xs text-[var(--text-tertiary)]">{filtered.length} features</span>
+          <span className="text-xs text-[var(--text-tertiary)]">{t('count_label', { count: filtered.length })}</span>
           <button onClick={load} disabled={loading} className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium border border-[var(--border-default)] rounded-lg bg-[var(--bg-primary)] hover:bg-[var(--bg-secondary)] disabled:opacity-50">
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-            Refresh
+            {t('actions.refresh', { ns: 'common' })}
           </button>
         </div>
       </div>
 
       <div className="flex gap-3 items-center mb-4 flex-wrap">
-        <SearchInput placeholder="Search features..." onSearch={setSearchQuery} className="w-full sm:max-w-xs" />
+        <SearchInput placeholder={t('search_placeholder')} onSearch={setSearchQuery} className="w-full sm:max-w-xs" />
         <select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)}
           className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px]">
-          <option value="">All Sources</option>
+          <option value="">{t('filters.all_sources')}</option>
           {sources.map((s) => <option key={s.name} value={s.name}>{s.name}</option>)}
         </select>
         <select value={dtypeFilter} onChange={(e) => setDtypeFilter(e.target.value)}
           className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px]">
-          <option value="">All Types</option>
+          <option value="">{t('filters.all_types')}</option>
           <option value="int64">int64</option>
           <option value="float64">float64</option>
           <option value="string">string</option>
@@ -250,19 +252,19 @@ export function Features() {
         </select>
         <select value={healthFilter} onChange={(e) => setHealthFilter(e.target.value)}
           className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px]">
-          <option value="">All Grades</option>
-          <option value="attention">Needs Attention (C or D)</option>
-          <option value="A">Grade A Only</option>
+          <option value="">{t('filters.all_grades')}</option>
+          <option value="attention">{t('filters.needs_attention')}</option>
+          <option value="A">{t('filters.grade_only', { grade: 'A' })}</option>
         </select>
         <button
           onClick={() => setDocFilter(!docFilter)}
           className={`px-3 py-2 text-[13px] rounded-lg border transition-colors ${docFilter ? 'bg-accent text-white border-accent' : 'bg-[var(--bg-primary)] border-[var(--border-default)] hover:bg-[var(--bg-secondary)]'}`}
         >
-          Undocumented only
+          {t('actions.undocumented_only')}
         </button>
         {hasActiveFilters && (
           <button onClick={clearAllFilters} className="text-xs text-accent hover:underline">
-            Clear all filters
+            {t('actions.clear_all_filters')}
           </button>
         )}
         {(undocCount > 0 || genProgress) && (
@@ -271,19 +273,19 @@ export function Features() {
             disabled={!!genProgress}
             className="flex items-center gap-1.5 px-4 py-2 border border-[var(--border-default)] rounded-lg text-[13px] font-medium hover:bg-[var(--bg-secondary)] disabled:opacity-50 transition-colors"
           >
-            {genProgress ? <><RefreshCw size={14} className="animate-spin" /> {genProgress}</> : <><FileText size={14} /> Generate Docs ({undocCount} remaining)</>}
+            {genProgress ? <><RefreshCw size={14} className="animate-spin" /> {genProgress}</> : <><FileText size={14} /> {t('actions.generate_docs_remaining', { count: undocCount })}</>}
           </button>
         )}
         <button onClick={() => setScanModalOpen(true)} className="flex items-center gap-1.5 px-4 py-2 border border-[var(--border-default)] rounded-lg text-[13px] font-medium hover:bg-[var(--bg-secondary)] transition-colors">
-          <FolderSearch size={16} /> Bulk Scan
+          <FolderSearch size={16} /> {t('actions.bulk_scan')}
         </button>
         {selectedForExport.size > 0 && (
           <button onClick={() => setExportOpen(true)} className="flex items-center gap-1.5 px-4 py-2 bg-accent text-white rounded-lg text-[13px] font-medium hover:bg-accent-emphasis transition-colors">
-            <Download size={16} /> Export Selected ({selectedForExport.size})
+            <Download size={16} /> {t('actions.export_selected', { count: selectedForExport.size })}
           </button>
         )}
         <button onClick={() => setAddModalOpen(true)} className="flex items-center gap-1.5 px-4 py-2 bg-accent text-white rounded-lg text-[13px] font-medium hover:bg-accent-emphasis transition-colors">
-          <Plus size={16} /> Add Source
+          <Plus size={16} /> {t('actions.add_source')}
         </button>
       </div>
 
@@ -313,7 +315,7 @@ export function Features() {
       <ExportModal
         open={exportOpen}
         onClose={() => setExportOpen(false)}
-        title={`${selectedForExport.size} features`}
+        title={t('count_label', { count: selectedForExport.size })}
         featureSpecs={[...selectedForExport]}
       />
     </div>
@@ -322,6 +324,7 @@ export function Features() {
 
 
 function FeatureDetailModal({ feature, onClose, onDocGenerated }: { feature: FeatureRow; onClose: () => void; onDocGenerated: () => void }) {
+  const { t } = useTranslation('features')
   const [doc, setDoc] = useState<Record<string, unknown> | null>(null)
   const [docLoading, setDocLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
@@ -392,11 +395,11 @@ function FeatureDetailModal({ feature, onClose, onDocGenerated }: { feature: Fea
         <button
           onClick={() => setActiveTab('overview')}
           className={`pb-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'overview' ? 'border-accent text-accent' : 'border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'}`}
-        >Overview</button>
+        >{t('tabs.overview')}</button>
         <button
           onClick={() => setActiveTab('history')}
           className={`pb-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'history' ? 'border-accent text-accent' : 'border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'}`}
-        >History ({versions.length})</button>
+        >{t('actions.history_tab', { count: versions.length })}</button>
       </div>
 
       {activeTab === 'history' ? (
@@ -411,34 +414,34 @@ function FeatureDetailModal({ feature, onClose, onDocGenerated }: { feature: Fea
 
       {/* Health Score */}
       {feature.health_score != null && (
-        <Section title="Health Score">
+        <Section title={t('sections.health_score')}>
           <HealthBreakdown feature={feature} />
         </Section>
       )}
 
       {/* Metadata */}
-      <Section title="Metadata">
+      <Section title={t('sections.metadata')}>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-4">
-          <MetaItem label="Data Type" value={feature.dtype} mono />
-          <MetaItem label="Column" value={feature.column_name} mono />
-          <MetaItem label="Owner" value={feature.owner || '-'} />
-          {feature.created_at && <MetaItem label="Created" value={timeAgo(feature.created_at)} />}
-          {feature.updated_at && <MetaItem label="Updated" value={timeAgo(feature.updated_at)} />}
+          <MetaItem label={t('meta.data_type')} value={feature.dtype} mono />
+          <MetaItem label={t('meta.column')} value={feature.column_name} mono />
+          <MetaItem label={t('meta.owner')} value={feature.owner || '-'} />
+          {feature.created_at && <MetaItem label={t('meta.created')} value={timeAgo(feature.created_at)} />}
+          {feature.updated_at && <MetaItem label={t('meta.updated')} value={timeAgo(feature.updated_at)} />}
         </div>
       </Section>
 
       {/* Statistics */}
       {hasStats && (
-        <Section title="Statistics">
+        <Section title={t('sections.statistics')}>
           <div className="grid grid-cols-3 gap-x-6 gap-y-4">
             {([
-              { label: 'Mean',         value: stats.mean,         format: 'decimal' as const },
-              { label: 'Std',          value: stats.std,          format: 'decimal' as const },
-              { label: 'Min',          value: stats.min,          format: 'decimal' as const },
-              { label: 'Max',          value: stats.max,          format: 'decimal' as const },
-              { label: 'Null Ratio',   value: stats.null_ratio,   format: 'decimal' as const },
-              { label: 'Unique Count', value: stats.unique_count, format: 'integer' as const },
-            ] as const)
+              { label: t('stats.mean'),         value: stats.mean,         format: 'decimal' as const },
+              { label: t('stats.std'),          value: stats.std,          format: 'decimal' as const },
+              { label: t('stats.min'),          value: stats.min,          format: 'decimal' as const },
+              { label: t('stats.max'),          value: stats.max,          format: 'decimal' as const },
+              { label: t('stats.null_ratio'),   value: stats.null_ratio,   format: 'decimal' as const },
+              { label: t('stats.unique_count'), value: stats.unique_count, format: 'integer' as const },
+            ])
               .filter(s => s.value !== null && s.value !== undefined)
               .map(s => (
                 <div key={s.label}>
@@ -457,7 +460,7 @@ function FeatureDetailModal({ feature, onClose, onDocGenerated }: { feature: Fea
       )}
 
       {/* Documentation */}
-      <Section title="Documentation">
+      <Section title={t('sections.documentation')}>
         {docLoading ? (
           <Skeleton className="h-12" />
         ) : doc ? (
@@ -466,40 +469,40 @@ function FeatureDetailModal({ feature, onClose, onDocGenerated }: { feature: Fea
             {doc.long_description ? <p className="text-[var(--text-secondary)]">{String(doc.long_description)}</p> : null}
             {doc.expected_range ? (
               <p className="text-xs text-[var(--text-tertiary)]">
-                <span className="font-medium">Expected range:</span> {String(doc.expected_range)}
+                <span className="font-medium">{t('documentation.expected_range')}</span> {String(doc.expected_range)}
               </p>
             ) : null}
             {doc.potential_issues ? (
               <p className="text-xs text-[var(--text-tertiary)]">
-                <span className="font-medium">Potential issues:</span> {String(doc.potential_issues)}
+                <span className="font-medium">{t('documentation.potential_issues')}</span> {String(doc.potential_issues)}
               </p>
             ) : null}
             {(doc.context_features || doc.hints_used) ? (
               <div className="mt-2 pt-2 border-t border-[var(--border-subtle)] flex items-center gap-2 flex-wrap text-[11px] text-[var(--text-tertiary)]">
-                {doc.hints_used ? <Badge variant="info">hints used</Badge> : null}
+                {doc.hints_used ? <Badge variant="info">{t('documentation.hints_used')}</Badge> : null}
                 {doc.context_features ? (
-                  <span>Context: {JSON.parse(String(doc.context_features)).length} related features</span>
+                  <span>{t('documentation.context', { count: JSON.parse(String(doc.context_features)).length })}</span>
                 ) : null}
               </div>
             ) : null}
           </div>
         ) : (
           <div className="flex items-center gap-3">
-            <span className="text-sm text-[var(--text-tertiary)]">No documentation yet</span>
+            <span className="text-sm text-[var(--text-tertiary)]">{t('documentation.empty')}</span>
             <button onClick={generateDoc} disabled={generating} className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-accent text-white rounded-lg disabled:opacity-50">
               <RefreshCw size={12} className={generating ? 'animate-spin' : ''} />
-              {generating ? 'Generating...' : 'Generate'}
+              {generating ? t('actions.generating', { ns: 'common' }) : t('actions.generate', { ns: 'common' })}
             </button>
           </div>
         )}
       </Section>
 
       {/* Generation Hints */}
-      <Section title="Generation Hints">
+      <Section title={t('sections.generation_hints')}>
         {hintEditing ? (
           <div className="space-y-2">
             <textarea value={hintDraft} onChange={(e) => setHintDraft(e.target.value)} rows={2}
-              placeholder="e.g. Computed from last 30 days. 1=churned, 0=active."
+              placeholder=""
               className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-xs focus:border-accent outline-none" />
             <div className="flex gap-2">
               <button onClick={async () => {
@@ -507,28 +510,28 @@ function FeatureDetailModal({ feature, onClose, onDocGenerated }: { feature: Fea
                 invalidateCache('/features')
                 setHintData({ hints: hintDraft })
                 setHintEditing(false)
-              }} className="px-3 py-1.5 text-xs bg-accent text-white rounded-lg">Save</button>
-              <button onClick={() => setHintEditing(false)} className="px-3 py-1.5 text-xs border border-[var(--border-default)] rounded-lg">Cancel</button>
+              }} className="px-3 py-1.5 text-xs bg-accent text-white rounded-lg">{t('actions.save', { ns: 'common' })}</button>
+              <button onClick={() => setHintEditing(false)} className="px-3 py-1.5 text-xs border border-[var(--border-default)] rounded-lg">{t('actions.cancel', { ns: 'common' })}</button>
             </div>
           </div>
         ) : hintData?.hints ? (
           <div>
             <p className="text-sm text-[var(--text-secondary)] mb-1">{hintData.hints}</p>
             <button onClick={() => { setHintDraft(hintData.hints || ''); setHintEditing(true) }}
-              className="text-xs text-accent hover:underline">Edit</button>
+              className="text-xs text-accent hover:underline">{t('actions.edit', { ns: 'common' })}</button>
           </div>
         ) : (
           <div className="flex items-center gap-3">
-            <span className="text-sm text-[var(--text-tertiary)]">No hint set</span>
+            <span className="text-sm text-[var(--text-tertiary)]">{t('hints.empty')}</span>
             <button onClick={() => { setHintDraft(''); setHintEditing(true) }}
-              className="text-xs text-accent hover:underline">Add hint</button>
-            <span className="text-[10px] text-[var(--text-tertiary)]" title="Hints are treated as ground truth by the AI generator">ℹ</span>
+              className="text-xs text-accent hover:underline">{t('hints.add')}</button>
+            <span className="text-[10px] text-[var(--text-tertiary)]" title={t('hints.info_tooltip')}>ℹ</span>
           </div>
         )}
       </Section>
 
       {/* Definition */}
-      <Section title="Definition">
+      <Section title={t('sections.definition')}>
         {defLoading ? (
           <Skeleton className="h-10" />
         ) : defEditing ? (
@@ -536,8 +539,8 @@ function FeatureDetailModal({ feature, onClose, onDocGenerated }: { feature: Fea
             <select value={defForm.definition_type} onChange={(e) => setDefForm((f) => ({ ...f, definition_type: e.target.value }))}
               className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-2 py-1 text-xs">
               <option value="sql">SQL</option>
-              <option value="python">Python</option>
-              <option value="manual">Manual</option>
+              <option value="python">{t('definition.types.python')}</option>
+              <option value="manual">{t('definition.types.manual')}</option>
             </select>
             <textarea value={defForm.definition} onChange={(e) => setDefForm((f) => ({ ...f, definition: e.target.value }))}
               rows={4} className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-xs font-mono focus:border-accent outline-none" />
@@ -548,8 +551,8 @@ function FeatureDetailModal({ feature, onClose, onDocGenerated }: { feature: Fea
                 const d = await api.definitions.get(feature.name)
                 setDefinition(d)
                 setDefEditing(false)
-              }} className="px-3 py-1.5 text-xs bg-accent text-white rounded-lg">Save</button>
-              <button onClick={() => setDefEditing(false)} className="px-3 py-1.5 text-xs border border-[var(--border-default)] rounded-lg">Cancel</button>
+              }} className="px-3 py-1.5 text-xs bg-accent text-white rounded-lg">{t('actions.save', { ns: 'common' })}</button>
+              <button onClick={() => setDefEditing(false)} className="px-3 py-1.5 text-xs border border-[var(--border-default)] rounded-lg">{t('actions.cancel', { ns: 'common' })}</button>
             </div>
           </div>
         ) : definition?.definition ? (
@@ -557,43 +560,43 @@ function FeatureDetailModal({ feature, onClose, onDocGenerated }: { feature: Fea
             <div className="flex items-center gap-2 mb-2">
               <Badge variant="info">{String(definition.definition_type)}</Badge>
               <button onClick={() => { setDefForm({ definition: String(definition.definition), definition_type: String(definition.definition_type) }); setDefEditing(true) }}
-                className="text-xs text-accent hover:underline">Edit</button>
+                className="text-xs text-accent hover:underline">{t('actions.edit', { ns: 'common' })}</button>
             </div>
             <pre className="bg-[var(--bg-secondary)] rounded-lg p-3 text-xs font-mono overflow-x-auto whitespace-pre-wrap">{String(definition.definition)}</pre>
           </div>
         ) : (
           <div className="flex items-center gap-3">
-            <span className="text-sm text-[var(--text-tertiary)]">No definition set</span>
+            <span className="text-sm text-[var(--text-tertiary)]">{t('definition.empty')}</span>
             <button onClick={() => { setDefForm({ definition: '', definition_type: 'sql' }); setDefEditing(true) }}
-              className="text-xs text-accent hover:underline">Add definition</button>
+              className="text-xs text-accent hover:underline">{t('definition.add')}</button>
           </div>
         )}
       </Section>
 
       {/* Usage */}
-      <Section title="Usage">
+      <Section title={t('sections.usage')}>
         {usageLoading ? (
           <Skeleton className="h-10" />
         ) : usageData ? (
           <div>
             <p className="text-sm">
-              <span className="font-medium">{Number(usageData.views || 0)}</span> views
+              <span className="font-medium">{Number(usageData.views || 0)}</span> {t('usage.views_label')}
               {' \u00b7 '}
-              <span className="font-medium">{Number(usageData.queries || 0)}</span> queries
-              <span className="text-[var(--text-tertiary)]"> (last 30 days)</span>
+              <span className="font-medium">{Number(usageData.queries || 0)}</span> {t('usage.queries_label')}
+              <span className="text-[var(--text-tertiary)]"> {t('usage.last_30_days')}</span>
             </p>
             {(usageData.daily as { date: string; count: number }[] | undefined)?.length ? <MiniBarChart data={usageData.daily as { date: string; count: number }[]} /> : null}
             {usageData.last_seen ? (
-              <p className="text-xs text-[var(--text-tertiary)] mt-1">Last seen: {timeAgo(String(usageData.last_seen))}</p>
+              <p className="text-xs text-[var(--text-tertiary)] mt-1">{t('usage.last_seen', { time: timeAgo(String(usageData.last_seen)) })}</p>
             ) : null}
           </div>
         ) : (
-          <p className="text-sm text-[var(--text-tertiary)]">No usage data</p>
+          <p className="text-sm text-[var(--text-tertiary)]">{t('usage.empty')}</p>
         )}
       </Section>
 
       {/* Monitoring */}
-      <Section title="Monitoring" last>
+      <Section title={t('sections.monitoring')} last>
         {monLoading ? (
           <Skeleton className="h-10" />
         ) : (() => { const details = (monitoring?.details || []) as { severity: string; psi: number | null; checked_at?: string }[]; return details.length > 0 })() ? (
@@ -609,16 +612,16 @@ function FeatureDetailModal({ feature, onClose, onDocGenerated }: { feature: Fea
                     {status}
                   </Badge>
                   {r.psi != null && <span className="text-xs text-[var(--text-secondary)]">PSI: {r.psi.toFixed(4)}</span>}
-                  {r.checked_at && <span className="text-xs text-[var(--text-tertiary)]">Checked {timeAgo(r.checked_at)}</span>}
+                  {r.checked_at && <span className="text-xs text-[var(--text-tertiary)]">{t('monitoring.checked', { time: timeAgo(r.checked_at) })}</span>}
                 </>
               )
             })()}
           </div>
         ) : (
           <div className="flex items-center gap-3">
-            <span className="text-sm text-[var(--text-tertiary)]">No baseline</span>
+            <span className="text-sm text-[var(--text-tertiary)]">{t('monitoring.empty')}</span>
             <button onClick={computeBaseline} disabled={blLoading} className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-accent text-white rounded-lg disabled:opacity-50">
-              {blLoading ? 'Computing...' : 'Compute Baseline'}
+              {blLoading ? t('actions.computing') : t('actions.compute_baseline')}
             </button>
           </div>
         )}
@@ -656,6 +659,7 @@ function GenerateDocsModal({ open, onClose, features, selectedSpecs, onStarted }
   selectedSpecs?: Set<string>
   onStarted: (jobId: string, total: number) => void
 }) {
+  const { t } = useTranslation('features')
   const [scope, setScope] = useState<'undocumented' | 'all' | 'group' | 'selected'>('undocumented')
   const [globalHint, setGlobalHint] = useState('')
   const [showPreview, setShowPreview] = useState(false)
@@ -740,9 +744,9 @@ function GenerateDocsModal({ open, onClose, features, selectedSpecs, onStarted }
   }, [scope, selectedGroup])
 
   return (
-    <Modal open={open} onClose={onClose} title="Generate Documentation" maxWidth="max-w-2xl" actions={
+    <Modal open={open} onClose={onClose} title={t('generate_modal.title')} maxWidth="max-w-2xl" actions={
       <>
-        <button onClick={onClose} className="px-4 py-2 text-sm border border-[var(--border-default)] rounded-lg">Cancel</button>
+        <button onClick={onClose} className="px-4 py-2 text-sm border border-[var(--border-default)] rounded-lg">{t('actions.cancel', { ns: 'common' })}</button>
         <button onClick={handleGenerate} disabled={submitting || !canGenerate}
           className="px-4 py-2 text-sm bg-accent text-white rounded-lg disabled:opacity-50">
           {submitting ? 'Starting...' : `Generate ${targetCount} Docs`}
@@ -752,7 +756,7 @@ function GenerateDocsModal({ open, onClose, features, selectedSpecs, onStarted }
       <div className="space-y-5">
         {/* Scope selector */}
         <div>
-          <label className="block text-xs font-semibold uppercase text-[var(--text-tertiary)] tracking-wide mb-2">Scope</label>
+          <label className="block text-xs font-semibold uppercase text-[var(--text-tertiary)] tracking-wide mb-2">{t('generate_modal.scope_label')}</label>
           <div className="space-y-2">
             <label className="flex items-center gap-2 text-[13px] cursor-pointer">
               <input type="radio" name="scope" checked={scope === 'undocumented'} onChange={() => setScope('undocumented')} className="accent-accent" />
@@ -781,7 +785,7 @@ function GenerateDocsModal({ open, onClose, features, selectedSpecs, onStarted }
                   ))}
                 </select>
                 {!selectedGroup && (
-                  <p className="text-[11px] text-[var(--text-tertiary)] mt-1">Select a group to continue</p>
+                  <p className="text-[11px] text-[var(--text-tertiary)] mt-1">{t('generate_modal.select_group_hint')}</p>
                 )}
                 {selectedGroup && groupMembers.length > 0 && (
                   <p className="text-[11px] text-accent mt-1">
@@ -816,7 +820,7 @@ function GenerateDocsModal({ open, onClose, features, selectedSpecs, onStarted }
 
         {/* Global hint */}
         <div>
-          <label className="block text-xs font-semibold uppercase text-[var(--text-tertiary)] tracking-wide mb-2">Context hint for this batch</label>
+          <label className="block text-xs font-semibold uppercase text-[var(--text-tertiary)] tracking-wide mb-2">{t('generate_modal.batch_hint_label')}</label>
           <textarea
             value={globalHint}
             onChange={(e) => setGlobalHint(e.target.value)}
@@ -842,9 +846,9 @@ function GenerateDocsModal({ open, onClose, features, selectedSpecs, onStarted }
               <table className="w-full text-[12px]">
                 <thead>
                   <tr className="text-[var(--text-tertiary)] border-b border-[var(--border-default)] bg-[var(--bg-secondary)] sticky top-0">
-                    <th className="text-left py-1.5 px-2 font-medium">Feature</th>
-                    <th className="text-left py-1.5 px-2 font-medium">Individual hint</th>
-                    <th className="text-center py-1.5 px-2 font-medium">Status</th>
+                    <th className="text-left py-1.5 px-2 font-medium">{t('generate_modal.table.feature')}</th>
+                    <th className="text-left py-1.5 px-2 font-medium">{t('generate_modal.table.individual_hint')}</th>
+                    <th className="text-center py-1.5 px-2 font-medium">{t('generate_modal.table.status')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -865,8 +869,8 @@ function GenerateDocsModal({ open, onClose, features, selectedSpecs, onStarted }
                                 placeholder="Add a hint..."
                               />
                               <div className="flex gap-1">
-                                <button onClick={() => saveHint(f.name)} className="px-2 py-0.5 text-[10px] bg-accent text-white rounded">Save</button>
-                                <button onClick={() => setEditingHint(null)} className="px-2 py-0.5 text-[10px] border border-[var(--border-default)] rounded">Cancel</button>
+                                <button onClick={() => saveHint(f.name)} className="px-2 py-0.5 text-[10px] bg-accent text-white rounded">{t('actions.save', { ns: 'common' })}</button>
+                                <button onClick={() => setEditingHint(null)} className="px-2 py-0.5 text-[10px] border border-[var(--border-default)] rounded">{t('actions.cancel', { ns: 'common' })}</button>
                               </div>
                             </div>
                           ) : (
@@ -879,7 +883,7 @@ function GenerateDocsModal({ open, onClose, features, selectedSpecs, onStarted }
                               <button
                                 onClick={() => { setHintDrafts(prev => ({ ...prev, [f.name]: hint ?? '' })); setEditingHint(f.name) }}
                                 className="text-[var(--text-tertiary)] hover:text-accent shrink-0 p-0.5"
-                                title="Edit hint"
+                                title={t('generate_modal.edit_hint_title')}
                               >
                                 <Pencil size={10} />
                               </button>
@@ -913,13 +917,14 @@ function GenerateDocsModal({ open, onClose, features, selectedSpecs, onStarted }
 
 
 function AddSourceModal({ open, onClose, onSubmit }: { open: boolean; onClose: () => void; onSubmit: (form: Record<string, string>) => void }) {
+  const { t } = useTranslation('features')
   const [form, setForm] = useState({ path: '', name: '', description: '', owner: '', tags: '' })
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }))
 
   return (
-    <Modal open={open} onClose={onClose} title="Add Source" actions={
+    <Modal open={open} onClose={onClose} title={t('add_source_modal.title')} actions={
       <>
-        <button onClick={onClose} className="px-4 py-2 text-sm border border-[var(--border-default)] rounded-lg">Cancel</button>
+        <button onClick={onClose} className="px-4 py-2 text-sm border border-[var(--border-default)] rounded-lg">{t('actions.cancel', { ns: 'common' })}</button>
         <button onClick={() => onSubmit(form)} disabled={!form.path} className="px-4 py-2 text-sm bg-accent text-white rounded-lg disabled:opacity-50">Add</button>
       </>
     }>
@@ -948,6 +953,7 @@ function AddSourceModal({ open, onClose, onSubmit }: { open: boolean; onClose: (
 
 
 function BulkScanModal({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: () => void }) {
+  const { t } = useTranslation('features')
   const [form, setForm] = useState({ path: '', recursive: true, owner: localStorage.getItem('featcat_user') || '', dry_run: false })
   const [tags, setTags] = useState<string[]>([])
   const [tagInput, setTagInput] = useState('')
@@ -980,12 +986,12 @@ function BulkScanModal({ open, onClose, onDone }: { open: boolean; onClose: () =
   }
 
   return (
-    <Modal open={open} onClose={() => { reset(); onClose() }} title="Bulk Scan" maxWidth="max-w-lg" actions={
+    <Modal open={open} onClose={() => { reset(); onClose() }} title={t('bulk_scan_modal.title')} maxWidth="max-w-lg" actions={
       result ? (
-        <button onClick={() => { reset(); onDone() }} className="px-4 py-2 text-sm bg-accent text-white rounded-lg">Done</button>
+        <button onClick={() => { reset(); onDone() }} className="px-4 py-2 text-sm bg-accent text-white rounded-lg">{t('actions.done', { ns: 'common' })}</button>
       ) : (
         <>
-          <button onClick={onClose} className="px-4 py-2 text-sm border border-[var(--border-default)] rounded-lg">Cancel</button>
+          <button onClick={onClose} className="px-4 py-2 text-sm border border-[var(--border-default)] rounded-lg">{t('actions.cancel', { ns: 'common' })}</button>
           <button onClick={submit} disabled={!form.path || scanning} className="px-4 py-2 text-sm bg-accent text-white rounded-lg disabled:opacity-50">
             {scanning ? 'Scanning...' : 'Scan'}
           </button>
@@ -1006,9 +1012,9 @@ function BulkScanModal({ open, onClose, onDone }: { open: boolean; onClose: () =
             <div className="max-h-48 overflow-y-auto overscroll-contain">
               <table className="w-full text-[13px]">
                 <thead><tr className="text-xs text-[var(--text-tertiary)] border-b border-[var(--border-default)]">
-                  <th className="text-left py-1">File</th>
-                  <th className="text-left py-1">Status</th>
-                  <th className="text-right py-1">Features</th>
+                  <th className="text-left py-1">{t('bulk_scan_modal.table.file')}</th>
+                  <th className="text-left py-1">{t('bulk_scan_modal.table.status')}</th>
+                  <th className="text-right py-1">{t('bulk_scan_modal.table.features')}</th>
                 </tr></thead>
                 <tbody>
                   {((result.details || []) as { file: string; status: string; feature_count: number }[]).map((d, i) => (
@@ -1026,27 +1032,27 @@ function BulkScanModal({ open, onClose, onDone }: { open: boolean; onClose: () =
       ) : (
         <div className="space-y-3">
           <div>
-            <label className="block text-xs font-medium mb-1">Directory Path <span className="text-[var(--danger)]">*</span></label>
+            <label className="block text-xs font-medium mb-1">{t('bulk_scan_modal.directory_path')} <span className="text-[var(--danger)]">*</span></label>
             <input value={form.path} onChange={(e) => setForm((f) => ({ ...f, path: e.target.value }))} placeholder="/path/to/data"
               className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px] focus:border-accent outline-none" />
           </div>
           <div className="flex gap-4">
             <label className="flex items-center gap-2 text-[13px] cursor-pointer">
               <input type="checkbox" checked={form.recursive} onChange={(e) => setForm((f) => ({ ...f, recursive: e.target.checked }))} className="accent-accent" />
-              Recursive
+              {t('bulk_scan_modal.recursive')}
             </label>
             <label className="flex items-center gap-2 text-[13px] cursor-pointer">
               <input type="checkbox" checked={form.dry_run} onChange={(e) => setForm((f) => ({ ...f, dry_run: e.target.checked }))} className="accent-accent" />
-              Dry run
+              {t('bulk_scan_modal.dry_run')}
             </label>
           </div>
           <div>
-            <label className="block text-xs font-medium mb-1">Owner</label>
-            <input value={form.owner} onChange={(e) => setForm((f) => ({ ...f, owner: e.target.value }))} placeholder="Owner name"
+            <label className="block text-xs font-medium mb-1">{t('bulk_scan_modal.owner')}</label>
+            <input value={form.owner} onChange={(e) => setForm((f) => ({ ...f, owner: e.target.value }))} placeholder={t('bulk_scan_modal.owner_placeholder')}
               className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px] focus:border-accent outline-none" />
           </div>
           <div>
-            <label className="block text-xs font-medium mb-1">Tags</label>
+            <label className="block text-xs font-medium mb-1">{t('bulk_scan_modal.tags')}</label>
             <div className="flex gap-1 flex-wrap mb-1">
               {tags.map((t) => (
                 <span key={t} className="inline-flex items-center gap-1 px-2 py-0.5 bg-[var(--bg-tertiary)] rounded text-xs font-mono">
@@ -1056,7 +1062,7 @@ function BulkScanModal({ open, onClose, onDone }: { open: boolean; onClose: () =
             </div>
             <input value={tagInput} onChange={(e) => setTagInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTag() } }}
-              placeholder="Type and press Enter"
+              placeholder={t('bulk_scan_modal.tag_placeholder')}
               className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px] focus:border-accent outline-none" />
           </div>
         </div>
@@ -1082,19 +1088,20 @@ function MiniBarChart({ data }: { data: { date: string; count: number }[] }) {
 
 
 function HealthBreakdown({ feature }: { feature: FeatureRow }) {
+  const { t } = useTranslation('features')
   const score = feature.health_score ?? 0
   const grade = feature.health_grade ?? '-'
   const bd = feature.health_breakdown || { documentation: 0, drift: 0, usage: 0 }
   const cls = GRADE_COLORS[grade] || ''
 
   const tips: string[] = []
-  if (bd.documentation < 25) tips.push('Generate documentation for this feature (+25pts)')
-  if (bd.documentation < 40 && bd.documentation >= 25) tips.push('Add a generation hint to improve doc score (+15pts)')
-  if (bd.drift === 0) tips.push('Feature has critical drift — investigate data quality')
-  if (bd.usage === 0) tips.push('Feature not queried recently (+10pts if used)')
+  if (bd.documentation < 25) tips.push(t('health_breakdown.tips.doc_under_25'))
+  if (bd.documentation < 40 && bd.documentation >= 25) tips.push(t('health_breakdown.tips.doc_under_40'))
+  if (bd.drift === 0) tips.push(t('health_breakdown.tips.drift_critical'))
+  if (bd.usage === 0) tips.push(t('health_breakdown.tips.usage_zero'))
 
-  const driftNote = bd.drift === 40 ? 'healthy' : bd.drift === 0 ? 'critical' : bd.drift === 20 ? 'warning' : 'unknown'
-  const usageNote = bd.usage === 0 ? 'no recent usage' : undefined
+  const driftNote = bd.drift === 40 ? t('health_breakdown.notes.healthy') : bd.drift === 0 ? t('health_breakdown.notes.critical') : bd.drift === 20 ? t('health_breakdown.notes.warning') : t('health_breakdown.notes.unknown')
+  const usageNote = bd.usage === 0 ? t('health_breakdown.notes.no_recent_usage') : undefined
 
   const docPct = (bd.documentation / 40) * 100
   const driftPct = (bd.drift / 40) * 100
@@ -1108,21 +1115,21 @@ function HealthBreakdown({ feature }: { feature: FeatureRow }) {
         <span className={`px-2 py-0.5 rounded text-xs font-bold ${cls}`}>{grade}</span>
       </div>
       <div className="grid grid-cols-[112px_1fr_auto_auto] gap-x-3 gap-y-3 items-center">
-        <span className="text-sm text-[var(--text-secondary)]">Documentation</span>
+        <span className="text-sm text-[var(--text-secondary)]">{t('health_breakdown.documentation')}</span>
         <div className="h-1.5 bg-[var(--bg-tertiary)] rounded-full overflow-hidden">
           <div className="h-full bg-[var(--accent)] transition-all" style={{ width: `${docPct}%` }} />
         </div>
         <span className="font-mono tabular-nums text-xs text-[var(--text-secondary)] whitespace-nowrap text-right">{bd.documentation}/40</span>
         <span />
 
-        <span className="text-sm text-[var(--text-secondary)]">Drift</span>
+        <span className="text-sm text-[var(--text-secondary)]">{t('health_breakdown.drift')}</span>
         <div className="h-1.5 bg-[var(--bg-tertiary)] rounded-full overflow-hidden">
           <div className="h-full bg-[var(--accent)] transition-all" style={{ width: `${driftPct}%` }} />
         </div>
         <span className="font-mono tabular-nums text-xs text-[var(--text-secondary)] whitespace-nowrap text-right">{bd.drift}/40</span>
         <span className="text-xs text-[var(--text-tertiary)] whitespace-nowrap">{driftNote}</span>
 
-        <span className="text-sm text-[var(--text-secondary)]">Usage</span>
+        <span className="text-sm text-[var(--text-secondary)]">{t('health_breakdown.usage')}</span>
         <div className="h-1.5 bg-[var(--bg-tertiary)] rounded-full overflow-hidden">
           <div className="h-full bg-[var(--accent)] transition-all" style={{ width: `${usagePct}%` }} />
         </div>
@@ -1155,6 +1162,7 @@ const TYPE_DOT_COLORS: Record<string, string> = {
 
 
 function VersionTimeline({ versions, loading }: { versions: Record<string, unknown>[]; loading: boolean }) {
+  const { t } = useTranslation('features')
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
 
   if (loading) return <Skeleton className="h-32" />
@@ -1162,7 +1170,7 @@ function VersionTimeline({ versions, loading }: { versions: Record<string, unkno
   if (versions.length === 0) {
     return (
       <p className="text-sm text-[var(--text-tertiary)] py-8 text-center">
-        No changes recorded yet. History is tracked from this point forward.
+        {t('versions.empty')}
       </p>
     )
   }

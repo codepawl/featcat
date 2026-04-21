@@ -1,1 +1,138 @@
-{}
+{
+  "page": {
+    "title": "Features"
+  },
+  "filters": {
+    "all_sources": "All Sources",
+    "all_types": "All Types",
+    "all_grades": "All Grades",
+    "grade_only": "Grade {{grade}} Only",
+    "needs_attention": "Needs Attention (C or D)"
+  },
+  "tabs": {
+    "overview": "Overview",
+    "history": "History"
+  },
+  "sections": {
+    "health_score": "Health Score",
+    "metadata": "Metadata",
+    "statistics": "Statistics",
+    "documentation": "Documentation",
+    "generation_hints": "Generation Hints",
+    "definition": "Definition",
+    "usage": "Usage",
+    "monitoring": "Monitoring"
+  },
+  "meta": {
+    "data_type": "Data Type",
+    "column": "Column",
+    "owner": "Owner",
+    "created": "Created",
+    "updated": "Updated"
+  },
+  "stats": {
+    "mean": "Mean",
+    "std": "Std",
+    "min": "Min",
+    "max": "Max",
+    "null_ratio": "Null Ratio",
+    "unique_count": "Unique Count"
+  },
+  "documentation": {
+    "empty": "No documentation yet",
+    "expected_range": "Expected range:",
+    "potential_issues": "Potential issues:",
+    "hints_used": "hints used",
+    "context": "Context: {{count}} related features"
+  },
+  "hints": {
+    "empty": "No hint set",
+    "add": "Add hint",
+    "info_tooltip": "Hints are treated as ground truth by the AI generator"
+  },
+  "definition": {
+    "empty": "No definition set",
+    "add": "Add definition",
+    "types": {
+      "python": "Python",
+      "manual": "Manual"
+    }
+  },
+  "usage": {
+    "empty": "No usage data",
+    "views_label": "views",
+    "queries_label": "queries",
+    "last_30_days": "(last 30 days)",
+    "last_seen": "Last seen: {{time}}"
+  },
+  "monitoring": {
+    "empty": "No baseline",
+    "checked": "Checked {{time}}"
+  },
+  "versions": {
+    "empty": "No changes recorded yet. History is tracked from this point forward."
+  },
+  "health_breakdown": {
+    "documentation": "Documentation",
+    "drift": "Drift",
+    "usage": "Usage",
+    "notes": {
+      "healthy": "healthy",
+      "critical": "critical",
+      "warning": "warning",
+      "unknown": "unknown",
+      "no_recent_usage": "no recent usage"
+    },
+    "tips": {
+      "doc_under_25": "Generate documentation for this feature (+25pts)",
+      "doc_under_40": "Add a generation hint to improve doc score (+15pts)",
+      "drift_critical": "Feature has critical drift — investigate data quality",
+      "usage_zero": "Feature not queried recently (+10pts if used)"
+    }
+  },
+  "generate_modal": {
+    "title": "Generate Documentation",
+    "scope_label": "Scope",
+    "select_group_hint": "Select a group to continue",
+    "batch_hint_label": "Context hint for this batch",
+    "table": {
+      "feature": "Feature",
+      "individual_hint": "Individual hint",
+      "status": "Status"
+    },
+    "edit_hint_title": "Edit hint"
+  },
+  "add_source_modal": {
+    "title": "Add Source"
+  },
+  "bulk_scan_modal": {
+    "title": "Bulk Scan",
+    "directory_path": "Directory Path",
+    "owner": "Owner",
+    "owner_placeholder": "Owner name",
+    "tags": "Tags",
+    "tag_placeholder": "Type and press Enter",
+    "recursive": "Recursive",
+    "dry_run": "Dry run",
+    "table": {
+      "file": "File",
+      "status": "Status",
+      "features": "Features"
+    }
+  },
+  "count_label_one": "{{count}} feature",
+  "count_label_other": "{{count}} features",
+  "search_placeholder": "Search features...",
+  "actions": {
+    "clear_all_filters": "Clear all filters",
+    "undocumented_only": "Undocumented only",
+    "generate_docs_remaining": "Generate Docs ({{count}} remaining)",
+    "generate_docs_running": "Generating... ({{done}}/{{total}})",
+    "bulk_scan": "Bulk Scan",
+    "export_selected": "Export Selected ({{count}})",
+    "add_source": "Add Source",
+    "history_tab": "History ({{count}})",
+    "compute_baseline": "Compute Baseline",
+    "computing": "Computing..."
+  }
+}

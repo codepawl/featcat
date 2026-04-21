@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { Skeleton } from '../Skeleton'
 
 interface DocDebtEntry {
@@ -23,6 +24,7 @@ function debtColor(pct: number): string {
 }
 
 export function DocDebtHeatmap({ data, loading }: DocDebtHeatmapProps) {
+  const { t } = useTranslation('dashboard')
   const navigate = useNavigate()
 
   if (loading) return <Skeleton className="h-48" />
@@ -30,8 +32,8 @@ export function DocDebtHeatmap({ data, loading }: DocDebtHeatmapProps) {
   if (data.length === 0) {
     return (
       <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5">
-        <h3 className="text-sm font-semibold mb-1">Documentation debt by owner and source</h3>
-        <p className="text-[var(--text-tertiary)] text-sm">No features in catalog</p>
+        <h3 className="text-sm font-semibold mb-1">{t('debt.title')}</h3>
+        <p className="text-[var(--text-tertiary)] text-sm">{t('debt.empty')}</p>
       </div>
     )
   }
@@ -69,17 +71,17 @@ export function DocDebtHeatmap({ data, loading }: DocDebtHeatmapProps) {
 
   return (
     <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5">
-      <h3 className="text-sm font-semibold mb-1">Documentation debt by owner and source</h3>
-      <p className="text-xs text-[var(--text-tertiary)] mb-3">Click a cell to view those features</p>
+      <h3 className="text-sm font-semibold mb-1">{t('debt.title')}</h3>
+      <p className="text-xs text-[var(--text-tertiary)] mb-3">{t('debt.subtitle')}</p>
       <div className="overflow-x-auto">
         <table className="w-full text-[12px] border-collapse">
           <thead>
             <tr>
-              <th className="text-left py-1.5 px-2 font-medium text-[var(--text-tertiary)] border-b border-[var(--border-default)]">Owner</th>
+              <th className="text-left py-1.5 px-2 font-medium text-[var(--text-tertiary)] border-b border-[var(--border-default)]">{t('debt.owner')}</th>
               {sources.map(src => (
                 <th key={src} className="text-center py-1.5 px-2 font-medium text-[var(--text-tertiary)] border-b border-[var(--border-default)] max-w-[100px] truncate" title={src}>{src}</th>
               ))}
-              <th className="text-center py-1.5 px-2 font-semibold text-[var(--text-secondary)] border-b border-[var(--border-default)]">Total</th>
+              <th className="text-center py-1.5 px-2 font-semibold text-[var(--text-secondary)] border-b border-[var(--border-default)]">{t('debt.total')}</th>
             </tr>
           </thead>
           <tbody>
@@ -108,7 +110,7 @@ export function DocDebtHeatmap({ data, loading }: DocDebtHeatmapProps) {
               </tr>
             ))}
             <tr className="border-t-2 border-[var(--border-default)]">
-              <td className="py-1.5 px-2 font-semibold text-[var(--text-secondary)]">Total</td>
+              <td className="py-1.5 px-2 font-semibold text-[var(--text-secondary)]">{t('debt.total')}</td>
               {sources.map(src => {
                 const ct = colTotals.get(src)
                 return (

@@ -177,11 +177,18 @@ export const api = {
   },
 }
 
+import i18n from './i18n/config'
+
 export function timeAgo(dateStr: string | null | undefined): string {
-  if (!dateStr) return 'never'
+  if (!dateStr) return i18n.t('time.never', { ns: 'common' })
+  const lang = i18n.resolvedLanguage === 'vi' ? 'vi' : 'en'
+  const rtf = new Intl.RelativeTimeFormat(lang, { numeric: 'auto' })
   const diff = (Date.now() - new Date(dateStr).getTime()) / 1000
-  if (diff < 60) return `${Math.floor(diff)}s ago`
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
-  return `${Math.floor(diff / 86400)}d ago`
+  if (diff < 60) return rtf.format(-Math.round(diff), 'second')
+  if (diff < 3600) return rtf.format(-Math.round(diff / 60), 'minute')
+  if (diff < 86400) return rtf.format(-Math.round(diff / 3600), 'hour')
+  if (diff < 604800) return rtf.format(-Math.round(diff / 86400), 'day')
+  if (diff < 2592000) return rtf.format(-Math.round(diff / 604800), 'week')
+  if (diff < 31536000) return rtf.format(-Math.round(diff / 2592000), 'month')
+  return rtf.format(-Math.round(diff / 31536000), 'year')
 }

@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { ScatterChart, Scatter, XAxis, YAxis, ZAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import { Skeleton } from '../Skeleton'
 
@@ -48,13 +49,14 @@ interface ScatterPoint {
 }
 
 export function UsageBubbleChart({ data, orphaned, loading }: UsageBubbleChartProps) {
+  const { t } = useTranslation('dashboard')
   if (loading) return <Skeleton className="h-64" />
 
   if (data.length === 0 && orphaned.length === 0) {
     return (
       <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5">
-        <h3 className="text-sm font-semibold mb-1">Feature usage landscape (last 30 days)</h3>
-        <p className="text-[var(--text-tertiary)] text-sm">No usage data yet</p>
+        <h3 className="text-sm font-semibold mb-1">{t('usage_chart.title')}</h3>
+        <p className="text-[var(--text-tertiary)] text-sm">{t('usage_chart.empty')}</p>
       </div>
     )
   }
@@ -64,9 +66,9 @@ export function UsageBubbleChart({ data, orphaned, loading }: UsageBubbleChartPr
   if (allZero && data.length > 0) {
     return (
       <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5">
-        <h3 className="text-sm font-semibold mb-1">Feature usage landscape (last 30 days)</h3>
+        <h3 className="text-sm font-semibold mb-1">{t('usage_chart.title')}</h3>
         <div className="flex items-center justify-center h-48 text-[var(--text-tertiary)] text-sm">
-          No usage data yet. Features will appear here after team members start querying the catalog.
+          {t('usage_chart.empty_long')}
         </div>
       </div>
     )
@@ -124,37 +126,37 @@ export function UsageBubbleChart({ data, orphaned, loading }: UsageBubbleChartPr
     return (
       <div className="bg-[var(--bg-secondary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[12px] shadow-lg">
         <p className="font-semibold text-[var(--text-primary)] mb-1">{d.name}</p>
-        <p className="text-[var(--text-secondary)]">Usage: {d.views} views, {d.queries} queries</p>
-        {d.created && <p className="text-[var(--text-secondary)]">Created: {daysAgo(d.created)} days ago</p>}
-        <p className="text-[var(--text-secondary)]">Source: {d.source}</p>
-        {d.isOrphaned && <p className="text-[var(--warning)] font-medium mt-0.5">Orphaned</p>}
+        <p className="text-[var(--text-secondary)]">{t('usage_chart.tooltip.usage', { views: d.views, queries: d.queries })}</p>
+        {d.created && <p className="text-[var(--text-secondary)]">{t('usage_chart.tooltip.created', { days: daysAgo(d.created) })}</p>}
+        <p className="text-[var(--text-secondary)]">{t('usage_chart.tooltip.source', { source: d.source })}</p>
+        {d.isOrphaned && <p className="text-[var(--warning)] font-medium mt-0.5">{t('usage_chart.tooltip.orphaned')}</p>}
       </div>
     )
   }
 
   return (
     <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5">
-      <h3 className="text-sm font-semibold mb-1">Feature usage landscape (last 30 days)</h3>
-      <p className="text-xs text-[var(--text-tertiary)] mb-3">Bubble size = query count. Red outline = orphaned.</p>
+      <h3 className="text-sm font-semibold mb-1">{t('usage_chart.title')}</h3>
+      <p className="text-xs text-[var(--text-tertiary)] mb-3">{t('usage_chart.subtitle')}</p>
       <ResponsiveContainer width="100%" height={300}>
         <ScatterChart margin={{ top: 10, right: 20, bottom: 10, left: 10 }}>
           <XAxis
             type="number"
             dataKey="x"
-            name="Days ago"
+            name={t('usage_chart.axis_days')}
             domain={[0, maxDays]}
             reversed
             tick={{ fontSize: 11, fill: 'var(--text-tertiary)' }}
-            label={{ value: 'Days ago', position: 'insideBottom', offset: -5, fontSize: 11, fill: 'var(--text-tertiary)' }}
+            label={{ value: t('usage_chart.axis_days'), position: 'insideBottom', offset: -5, fontSize: 11, fill: 'var(--text-tertiary)' }}
           />
           <YAxis
             type="number"
             dataKey="y"
-            name="Total usage"
+            name={t('usage_chart.axis_usage')}
             domain={[0, maxUsage + 1]}
             tick={{ fontSize: 11, fill: 'var(--text-tertiary)' }}
             tickFormatter={(v: number) => String(Math.max(0, Math.round(v - 0.5)))}
-            label={{ value: 'Usage', angle: -90, position: 'insideLeft', fontSize: 11, fill: 'var(--text-tertiary)' }}
+            label={{ value: t('usage_chart.axis_usage'), angle: -90, position: 'insideLeft', fontSize: 11, fill: 'var(--text-tertiary)' }}
           />
           <ZAxis type="number" dataKey="z" range={[36, 576]} />
           <Tooltip content={<CustomTooltip />} />
@@ -176,7 +178,7 @@ export function UsageBubbleChart({ data, orphaned, loading }: UsageBubbleChartPr
           ))}
           {orphanedPoints.length > 0 && (
             <Scatter
-              name="orphaned"
+              name={t('usage_chart.orphaned_label')}
               data={orphanedPoints}
               fill="transparent"
               stroke="#EF4444"

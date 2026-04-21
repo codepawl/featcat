@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { timeAgo } from '../../api'
 import { Skeleton } from '../Skeleton'
 import { Badge } from '../Badge'
@@ -26,13 +27,14 @@ function truncatePath(path: string): string {
 }
 
 export function DataSourceNodes({ data, loading }: DataSourceNodesProps) {
+  const { t } = useTranslation('dashboard')
   const navigate = useNavigate()
 
   if (loading) {
     return (
       <div>
-        <h3 className="text-sm font-semibold mb-1">Data Sources</h3>
-        <p className="text-xs text-[var(--text-tertiary)] mb-3">Click a source to explore its features</p>
+        <h3 className="text-sm font-semibold mb-1">{t('sources.title')}</h3>
+        <p className="text-xs text-[var(--text-tertiary)] mb-3">{t('sources.subtitle')}</p>
         <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
           {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-36" />)}
         </div>
@@ -43,10 +45,10 @@ export function DataSourceNodes({ data, loading }: DataSourceNodesProps) {
   if (data.length === 0) {
     return (
       <div>
-        <h3 className="text-sm font-semibold mb-3">Data Sources</h3>
+        <h3 className="text-sm font-semibold mb-3">{t('sources.title')}</h3>
         <div className="border border-dashed border-[var(--border-default)] rounded-lg p-8 text-center">
-          <p className="text-[var(--text-tertiary)]">No data sources registered yet.</p>
-          <p className="text-[var(--text-tertiary)] text-sm mt-1">Use "Add Source" or run featcat scan-bulk to get started.</p>
+          <p className="text-[var(--text-tertiary)]">{t('sources.empty')}</p>
+          <p className="text-[var(--text-tertiary)] text-sm mt-1">{t('sources.empty_hint')}</p>
         </div>
       </div>
     )
@@ -54,8 +56,8 @@ export function DataSourceNodes({ data, loading }: DataSourceNodesProps) {
 
   return (
     <div>
-      <h3 className="text-sm font-semibold mb-1">Data Sources</h3>
-      <p className="text-xs text-[var(--text-tertiary)] mb-3">Click a source to explore its features</p>
+      <h3 className="text-sm font-semibold mb-1">{t('sources.title')}</h3>
+      <p className="text-xs text-[var(--text-tertiary)] mb-3">{t('sources.subtitle')}</p>
       <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
         {data.map(s => {
           const docPct = s.feature_count > 0 ? Math.round((s.documented_count / s.feature_count) * 100) : 0
@@ -76,9 +78,9 @@ export function DataSourceNodes({ data, loading }: DataSourceNodesProps) {
                   </p>
                 </div>
                 {s.critical_alerts > 0 ? (
-                  <Badge variant="danger">{s.critical_alerts} critical</Badge>
+                  <Badge variant="danger">{t('sources.badge_critical', { count: s.critical_alerts })}</Badge>
                 ) : s.drift_alerts > 0 ? (
-                  <Badge variant="warning">{s.drift_alerts} alert{s.drift_alerts !== 1 ? 's' : ''}</Badge>
+                  <Badge variant="warning">{t('sources.badge_alert', { count: s.drift_alerts })}</Badge>
                 ) : null}
               </div>
 
@@ -86,7 +88,7 @@ export function DataSourceNodes({ data, loading }: DataSourceNodesProps) {
               <div className="border-t border-[var(--border-subtle)] px-3 py-2.5 space-y-1.5">
                 <div className="text-[13px]">
                   <span className="font-medium">{s.feature_count}</span>
-                  <span className="text-[var(--text-secondary)]"> feature{s.feature_count !== 1 ? 's' : ''}</span>
+                  <span className="text-[var(--text-secondary)]"> {t('sources.feature', { count: s.feature_count })}</span>
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -96,16 +98,16 @@ export function DataSourceNodes({ data, loading }: DataSourceNodesProps) {
                       style={{ width: `${docPct}%` }}
                     />
                   </div>
-                  <span className="text-[11px] text-[var(--text-secondary)] w-12 text-right">{docPct}% docs</span>
+                  <span className="text-[11px] text-[var(--text-secondary)] w-12 text-right">{t('sources.docs_percent', { pct: docPct })}</span>
                 </div>
 
-                {isClean && <Badge variant="success">All clear</Badge>}
+                {isClean && <Badge variant="success">{t('sources.all_clear')}</Badge>}
               </div>
 
               {/* Footer */}
               <div className="border-t border-[var(--border-subtle)] px-3 py-2">
                 <span className="text-[11px] text-[var(--text-tertiary)]">
-                  Scanned {s.last_scanned ? timeAgo(s.last_scanned) : 'never'}
+                  {t('sources.scanned_prefix', { time: timeAgo(s.last_scanned) })}
                 </span>
               </div>
             </div>

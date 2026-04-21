@@ -53,5 +53,33 @@
     "min": "Nhỏ nhất",
     "max": "Lớn nhất",
     "null_ratio": "Tỷ lệ null"
+  },
+  "psi_timeline": {
+    "title": "Dòng thời gian PSI",
+    "empty": "Chưa đủ lịch sử",
+    "tooltip": {
+      "severity": "Mức độ: {{severity}}"
+    },
+    "labels": {
+      "warning": "Cảnh báo",
+      "critical": "Nghiêm trọng"
+    }
+  },
+  "distribution": {
+    "title": "So sánh phân phối",
+    "empty": "Chưa có số liệu baseline hoặc hiện tại",
+    "columns": {
+      "metric": "Chỉ số",
+      "baseline": "Baseline",
+      "current": "Hiện tại",
+      "delta": "Thay đổi"
+    },
+    "stats": {
+      "mean": "Mean",
+      "std": "Std",
+      "min": "Min",
+      "max": "Max",
+      "null_ratio": "Tỷ lệ null"
+    }
   }
 }

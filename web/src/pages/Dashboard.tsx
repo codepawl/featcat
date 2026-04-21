@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { Layers, FileText, AlertTriangle, HardDrive, RefreshCw, HeartPulse } from 'lucide-react'
 import { api, invalidateCache, timeAgo } from '../api'
 import { MetricCard } from '../components/MetricCard'
@@ -9,6 +10,7 @@ import { DocDebtHeatmap } from '../components/charts/DocDebtHeatmap'
 import { DataSourceNodes } from '../components/charts/DataSourceNodes'
 
 export function Dashboard() {
+  const { t } = useTranslation('dashboard')
   const navigate = useNavigate()
   const [stats, setStats] = useState<Record<string, number> | null>(null)
   const [healthSummary, setHealthSummary] = useState<{ grade_distribution: Record<string, number>; average_score: number; lowest_scored: { spec: string; score: number; grade: string }[] } | null>(null)
@@ -59,8 +61,8 @@ export function Dashboard() {
   if (error) {
     return (
       <div className="text-center py-20">
-        <p className="text-[var(--danger)] mb-4">Cannot connect to server</p>
-        <button onClick={load} className="px-4 py-2 bg-accent text-white rounded-lg text-sm">Retry</button>
+        <p className="text-[var(--danger)] mb-4">{t('fetch_failed', { ns: 'errors' })}</p>
+        <button onClick={load} className="px-4 py-2 bg-accent text-white rounded-lg text-sm">{t('actions.retry', { ns: 'common' })}</button>
       </div>
     )
   }
@@ -79,10 +81,10 @@ export function Dashboard() {
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-semibold">Dashboard</h1>
+        <h1 className="text-2xl font-semibold">{t('page.title')}</h1>
         <button onClick={load} disabled={loading} className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium border border-[var(--border-default)] rounded-lg bg-[var(--bg-primary)] hover:bg-[var(--bg-secondary)] disabled:opacity-50">
           <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          Refresh
+          {t('actions.refresh', { ns: 'common' })}
         </button>
       </div>
 
@@ -92,10 +94,10 @@ export function Dashboard() {
           Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20" />)
         ) : (
           <>
-            <MetricCard label="Features" value={featureCount} icon={Layers} />
-            <MetricCard label="Doc Coverage" value={`${Math.round(coverage)}%`} progress={coverage} icon={FileText} />
-            <MetricCard label="Drift Alerts" value={noBaselines ? '-' : alertCount} color={noBaselines ? 'default' : alertCount > 0 ? ((monitor?.critical as number) > 0 ? 'danger' : 'warning') : 'success'} icon={AlertTriangle} />
-            <MetricCard label="Sources" value={sourceCount} icon={HardDrive} />
+            <MetricCard label={t('stats.features')} value={featureCount} icon={Layers} />
+            <MetricCard label={t('stats.doc_coverage')} value={`${Math.round(coverage)}%`} progress={coverage} icon={FileText} />
+            <MetricCard label={t('stats.drift_alerts')} value={noBaselines ? '-' : alertCount} color={noBaselines ? 'default' : alertCount > 0 ? ((monitor?.critical as number) > 0 ? 'danger' : 'warning') : 'success'} icon={AlertTriangle} />
+            <MetricCard label={t('stats.sources')} value={sourceCount} icon={HardDrive} />
           </>
         )}
       </div>
@@ -109,8 +111,8 @@ export function Dashboard() {
       {/* Section 3: Quality & Debt */}
       <hr className="border-[var(--border-subtle)] mt-8" />
       <div className="mt-8 mb-4">
-        <h2 className="text-lg font-semibold">Quality & Debt</h2>
-        <p className="text-sm text-[var(--text-tertiary)] mt-0.5">Documentation coverage and drift alerts across your catalog</p>
+        <h2 className="text-lg font-semibold">{t('sections.quality_debt')}</h2>
+        <p className="text-sm text-[var(--text-tertiary)] mt-0.5">{t('sections.quality_debt_subtitle')}</p>
       </div>
 
       {/* Health Summary Card */}
@@ -121,8 +123,8 @@ export function Dashboard() {
         >
           <div className="flex items-center gap-2 mb-3">
             <HeartPulse size={16} className="text-accent" />
-            <h3 className="text-sm font-semibold">Catalog Health</h3>
-            <span className="ml-auto text-2xl font-semibold">{healthSummary.average_score}<span className="text-sm font-normal text-[var(--text-tertiary)]">/100</span></span>
+            <h3 className="text-sm font-semibold">{t('health_card.title')}</h3>
+            <span className="ml-auto text-2xl font-semibold">{healthSummary.average_score}<span className="text-sm font-normal text-[var(--text-tertiary)]">{t('health_card.of_100')}</span></span>
           </div>
           <div className="flex items-center gap-1 h-4 rounded-full overflow-hidden mb-2">
             {(['A', 'B', 'C', 'D'] as const).map(g => {
@@ -147,17 +149,17 @@ export function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-[3fr_2fr] gap-4 mb-6">
         <DocDebtHeatmap data={docDebt} loading={loading} />
         <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5">
-          <h3 className="text-sm font-semibold mb-3">Recent Drift Alerts</h3>
+          <h3 className="text-sm font-semibold mb-3">{t('drift_panel.title')}</h3>
           {loading ? <Skeleton className="h-24" /> : noBaselines ? (
-            <p className="text-[var(--text-tertiary)] text-sm">No baselines computed yet. Run baseline first.</p>
+            <p className="text-[var(--text-tertiary)] text-sm">{t('drift_panel.empty_no_baseline')}</p>
           ) : alerts.length === 0 ? (
-            <p className="text-[var(--text-tertiary)] text-sm">All features healthy</p>
+            <p className="text-[var(--text-tertiary)] text-sm">{t('drift_panel.empty_all_healthy')}</p>
           ) : (
             <table className="w-full text-[13px]">
               <thead><tr className="text-xs text-[var(--text-tertiary)] border-b border-[var(--border-default)]">
-                <th className="text-left py-1 font-medium">Severity</th>
-                <th className="text-left py-1 font-medium">Feature</th>
-                <th className="text-right py-1 font-medium">PSI</th>
+                <th className="text-left py-1 font-medium">{t('drift_panel.columns.severity')}</th>
+                <th className="text-left py-1 font-medium">{t('drift_panel.columns.feature')}</th>
+                <th className="text-right py-1 font-medium">{t('drift_panel.columns.psi')}</th>
               </tr></thead>
               <tbody>
                 {alerts.slice(0, 5).map((a, i) => (
@@ -176,21 +178,21 @@ export function Dashboard() {
       {/* Section 4: Activity & Usage */}
       <hr className="border-[var(--border-subtle)] mt-8" />
       <div className="mt-8 mb-4">
-        <h2 className="text-lg font-semibold">Activity & Usage</h2>
-        <p className="text-sm text-[var(--text-tertiary)] mt-0.5">Recent catalog activity and feature adoption</p>
+        <h2 className="text-lg font-semibold">{t('sections.activity_usage')}</h2>
+        <p className="text-sm text-[var(--text-tertiary)] mt-0.5">{t('sections.activity_usage_subtitle')}</p>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5">
-          <h3 className="text-sm font-semibold mb-3">Top Features</h3>
+          <h3 className="text-sm font-semibold mb-3">{t('top_features.title')}</h3>
           {loading ? <Skeleton className="h-24" /> : topFeatures.length === 0 ? (
-            <p className="text-[var(--text-tertiary)] text-sm">No usage data yet</p>
+            <p className="text-[var(--text-tertiary)] text-sm">{t('top_features.empty')}</p>
           ) : (
             <table className="w-full text-[13px]">
               <thead><tr className="text-xs text-[var(--text-tertiary)] border-b border-[var(--border-default)]">
-                <th className="text-left py-1 font-medium">#</th>
-                <th className="text-left py-1 font-medium">Feature</th>
-                <th className="text-right py-1 font-medium">Views</th>
-                <th className="text-right py-1 font-medium">Queries</th>
+                <th className="text-left py-1 font-medium">{t('top_features.columns.index')}</th>
+                <th className="text-left py-1 font-medium">{t('top_features.columns.feature')}</th>
+                <th className="text-right py-1 font-medium">{t('top_features.columns.views')}</th>
+                <th className="text-right py-1 font-medium">{t('top_features.columns.queries')}</th>
               </tr></thead>
               <tbody>
                 {topFeatures.slice(0, 5).map((f, i) => (
@@ -207,23 +209,23 @@ export function Dashboard() {
         </div>
 
         <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5">
-          <h3 className="text-sm font-semibold mb-3">Orphaned Features</h3>
+          <h3 className="text-sm font-semibold mb-3">{t('orphaned.title')}</h3>
           {loading ? <Skeleton className="h-24" /> : orphaned.length === 0 ? (
             <div className="flex items-center gap-2 text-sm text-[var(--success)]">
-              All features active in the last 30 days
+              {t('orphaned.empty_all_active')}
             </div>
           ) : (
             <div>
               <div className="flex items-center gap-2 mb-3">
                 <AlertTriangle size={16} className="text-[var(--warning)]" />
-                <span className="text-sm font-medium">{orphaned.length} feature{orphaned.length !== 1 ? 's' : ''} with no recent usage</span>
+                <span className="text-sm font-medium">{t('orphaned.with_count', { count: orphaned.length })}</span>
               </div>
               <div className="space-y-1">
                 {orphaned.slice(0, 5).map((f, i) => (
                   <div key={i} className="text-[13px] text-[var(--text-secondary)]">{f.name}</div>
                 ))}
                 {orphaned.length > 5 && (
-                  <a href="/features" className="text-xs text-accent hover:underline">View all features →</a>
+                  <a href="/features" className="text-xs text-accent hover:underline">{t('orphaned.view_all')}</a>
                 )}
               </div>
             </div>
@@ -231,9 +233,9 @@ export function Dashboard() {
         </div>
 
         <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5">
-          <h3 className="text-sm font-semibold mb-3">Recent Activity</h3>
+          <h3 className="text-sm font-semibold mb-3">{t('activity.title')}</h3>
           {loading ? <Skeleton className="h-24" /> : logs.length === 0 ? (
-            <p className="text-[var(--text-tertiary)] text-sm">No recent activity</p>
+            <p className="text-[var(--text-tertiary)] text-sm">{t('activity.empty')}</p>
           ) : (
             <div className="space-y-2">
               {logs.slice(0, 5).map((l, i) => (
@@ -251,27 +253,27 @@ export function Dashboard() {
       {/* Section 5: System */}
       <hr className="border-[var(--border-subtle)] mt-8" />
       <div className="mt-8 mb-4">
-        <h2 className="text-lg font-semibold">System</h2>
-        <p className="text-sm text-[var(--text-tertiary)] mt-0.5">Scheduled background jobs</p>
+        <h2 className="text-lg font-semibold">{t('sections.system')}</h2>
+        <p className="text-sm text-[var(--text-tertiary)] mt-0.5">{t('sections.system_subtitle')}</p>
       </div>
       <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5">
-        <h3 className="text-sm font-semibold mb-3">Scheduled Jobs</h3>
+        <h3 className="text-sm font-semibold mb-3">{t('jobs_panel.title')}</h3>
         {loading ? <Skeleton className="h-24" /> : jobs.length === 0 ? (
-          <p className="text-[var(--text-tertiary)] text-sm">No jobs configured</p>
+          <p className="text-[var(--text-tertiary)] text-sm">{t('jobs_panel.empty')}</p>
         ) : (
           <table className="w-full text-[13px]">
             <thead><tr className="text-xs text-[var(--text-tertiary)] border-b border-[var(--border-default)]">
-              <th className="text-left py-1 font-medium">Job</th>
-              <th className="text-left py-1 font-medium">Schedule</th>
-              <th className="text-left py-1 font-medium">Status</th>
-              <th className="text-left py-1 font-medium">Last Run</th>
+              <th className="text-left py-1 font-medium">{t('jobs_panel.columns.job')}</th>
+              <th className="text-left py-1 font-medium">{t('jobs_panel.columns.schedule')}</th>
+              <th className="text-left py-1 font-medium">{t('jobs_panel.columns.status')}</th>
+              <th className="text-left py-1 font-medium">{t('jobs_panel.columns.last_run')}</th>
             </tr></thead>
             <tbody>
               {jobs.map((j, i) => (
                 <tr key={i} className="border-b border-[var(--border-subtle)]">
                   <td className="py-2 font-medium">{j.job_name as string}</td>
                   <td className="py-2 font-mono text-xs text-[var(--text-secondary)]">{j.cron_expression as string}</td>
-                  <td className="py-2"><Badge variant={j.enabled ? 'success' : 'warning'}>{j.enabled ? 'Enabled' : 'Disabled'}</Badge></td>
+                  <td className="py-2"><Badge variant={j.enabled ? 'success' : 'warning'}>{j.enabled ? t('jobs_panel.enabled') : t('jobs_panel.disabled')}</Badge></td>
                   <td className="py-2 text-[var(--text-secondary)]">{timeAgo(j.last_run_at as string)}</td>
                 </tr>
               ))}

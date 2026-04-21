@@ -53,5 +53,33 @@
     "min": "Min",
     "max": "Max",
     "null_ratio": "Null %"
+  },
+  "psi_timeline": {
+    "title": "PSI Timeline",
+    "empty": "Not enough history yet",
+    "tooltip": {
+      "severity": "Severity: {{severity}}"
+    },
+    "labels": {
+      "warning": "Warning",
+      "critical": "Critical"
+    }
+  },
+  "distribution": {
+    "title": "Distribution Comparison",
+    "empty": "No baseline or current stats available",
+    "columns": {
+      "metric": "Metric",
+      "baseline": "Baseline",
+      "current": "Current",
+      "delta": "Delta"
+    },
+    "stats": {
+      "mean": "Mean",
+      "std": "Std",
+      "min": "Min",
+      "max": "Max",
+      "null_ratio": "Null ratio"
+    }
   }
 }

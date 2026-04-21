@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import * as d3 from 'd3'
 import { api, invalidateCache } from '../api'
 import { Skeleton } from '../components/Skeleton'
@@ -58,6 +59,7 @@ interface GraphData {
 }
 
 export function Similarity() {
+  const { t } = useTranslation('similarity')
   const navigate = useNavigate()
   const svgRef = useRef<SVGSVGElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -254,14 +256,14 @@ export function Similarity() {
         return src === d.id || tgt === d.id
       }).length
 
-      const tagsStr = d.tags.length > 0 ? d.tags.join(', ') : 'none'
+      const tagsStr = d.tags.length > 0 ? d.tags.join(', ') : t('tooltip.tags_none')
       tooltip
         .html(`
           <div style="font-weight:600;margin-bottom:4px">${d.spec}</div>
-          <div style="color:var(--text-secondary)">Type: ${d.dtype} &nbsp;|&nbsp; Source: ${d.source}</div>
-          <div style="color:var(--text-secondary)">Tags: ${tagsStr}</div>
-          <div style="color:var(--text-secondary)">Doc: ${d.has_doc ? '\u2713' : '\u2717'} &nbsp;|&nbsp; Drift: ${d.drift_status}</div>
-          <div style="color:var(--text-tertiary);margin-top:4px;border-top:1px solid var(--border-subtle);padding-top:4px">\u2500\u2500 Connected to ${connectedCount} feature${connectedCount !== 1 ? 's' : ''}</div>
+          <div style="color:var(--text-secondary)">${t('tooltip.type')}: ${d.dtype} &nbsp;|&nbsp; ${t('tooltip.source')}: ${d.source}</div>
+          <div style="color:var(--text-secondary)">${t('tooltip.tags')}: ${tagsStr}</div>
+          <div style="color:var(--text-secondary)">${t('tooltip.doc')}: ${d.has_doc ? '\u2713' : '\u2717'} &nbsp;|&nbsp; ${t('tooltip.drift')}: ${d.drift_status}</div>
+          <div style="color:var(--text-tertiary);margin-top:4px;border-top:1px solid var(--border-subtle);padding-top:4px">${t('tooltip.connected_to', { count: connectedCount })}</div>
         `)
         .style('opacity', '1')
 
@@ -420,10 +422,9 @@ export function Similarity() {
     <div className="flex flex-col" style={{ height: 'calc(100vh - 64px)' }}>
       <div className="flex justify-between items-center mb-4 shrink-0">
         <div>
-          <h1 className="text-xl font-semibold">Feature Similarity</h1>
+          <h1 className="text-2xl font-semibold">{t('page.title')}</h1>
           <p className="text-sm text-[var(--text-tertiary)] mt-0.5">
-            Features are connected by semantic similarity &mdash; thicker edges mean stronger relationship.
-            Use this to discover related features and potential duplicates.
+            {t('page.subtitle')}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -431,11 +432,11 @@ export function Similarity() {
             type="text"
             value={graphSearch}
             onChange={e => setGraphSearch(e.target.value)}
-            placeholder="Filter nodes..."
+            placeholder={t('filter_placeholder')}
             className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-1.5 text-[12px] w-36 focus:border-accent outline-none"
           />
           <label className="flex items-center gap-2 text-[12px] text-[var(--text-secondary)]">
-            <span className="whitespace-nowrap">Similarity threshold:</span>
+            <span className="whitespace-nowrap">{t('threshold_label')}</span>
             <input
               type="range"
               min={0.1}
@@ -454,9 +455,9 @@ export function Similarity() {
         <Skeleton className="flex-1 min-h-[500px]" />
       ) : isEmpty ? (
         <div className="flex flex-col items-center justify-center flex-1 min-h-[400px] text-center gap-3">
-          <p className="text-[var(--text-primary)] font-medium">Not enough features to compute similarity</p>
+          <p className="text-[var(--text-primary)] font-medium">{t('empty.title')}</p>
           <p className="text-[var(--text-tertiary)] text-sm max-w-sm">
-            Add at least 2 features to the catalog to see similarity relationships.
+            {t('empty.subtitle')}
           </p>
         </div>
       ) : (
@@ -465,15 +466,15 @@ export function Similarity() {
 
           {/* Controls overlay */}
           <div className="absolute top-3 right-3 flex flex-col gap-2 z-10">
-            <button onClick={handleFit} className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg shadow-sm hover:bg-[var(--bg-secondary)]" title="Fit to screen">
-              <Maximize2 size={13} /> Fit
+            <button onClick={handleFit} className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg shadow-sm hover:bg-[var(--bg-secondary)]" title={t('actions.fit_title')}>
+              <Maximize2 size={13} /> {t('actions.fit')}
             </button>
-            <button onClick={handleResetLayout} className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg shadow-sm hover:bg-[var(--bg-secondary)]" title="Reset layout">
-              <RotateCcw size={13} /> Reset
+            <button onClick={handleResetLayout} className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg shadow-sm hover:bg-[var(--bg-secondary)]" title={t('actions.reset_title')}>
+              <RotateCcw size={13} /> {t('actions.reset_layout')}
             </button>
             {sources.length > 1 && (
               <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg shadow-sm p-2">
-                <p className="text-[10px] font-medium text-[var(--text-tertiary)] uppercase tracking-wide mb-1">Sources</p>
+                <p className="text-[10px] font-medium text-[var(--text-tertiary)] uppercase tracking-wide mb-1">{t('sources_label')}</p>
                 {sources.map(src => (
                   <label key={src} className="flex items-center gap-1.5 text-[11px] cursor-pointer py-0.5">
                     <input
@@ -495,15 +496,15 @@ export function Similarity() {
             <div className="flex flex-col gap-1.5 text-[10px] text-[var(--text-tertiary)]">
               <div className="flex items-center gap-2">
                 <span className="w-6 h-[3px] rounded" style={{ background: '#1D9E75' }} />
-                <span>Strong similarity (&gt;0.7)</span>
+                <span>{t('legend.strong')}</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="w-6 h-[2px] rounded" style={{ background: '#64748B' }} />
-                <span>Moderate (0.4&ndash;0.7)</span>
+                <span>{t('legend.moderate')}</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="w-6 h-[1px] rounded" style={{ background: '#334155' }} />
-                <span>Weak (&lt;0.4)</span>
+                <span>{t('legend.weak')}</span>
               </div>
               {sources.length > 0 && (
                 <div className="flex items-center gap-2 mt-1 pt-1 border-t border-[var(--border-subtle)] flex-wrap">

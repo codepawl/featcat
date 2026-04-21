@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { motion, AnimatePresence } from 'motion/react'
 import { RefreshCw } from 'lucide-react'
 import { api, invalidateCache } from '../api'
@@ -11,6 +13,7 @@ import { PsiTimeline } from '../components/charts/PsiTimeline'
 import { DistributionShift } from '../components/charts/DistributionShift'
 
 export function Monitoring() {
+  const { t } = useTranslation('monitoring')
   const navigate = useNavigate()
   const [data, setData] = useState<Record<string, unknown> | null>(null)
   const [loading, setLoading] = useState(true)
@@ -39,11 +42,11 @@ export function Monitoring() {
       const d = await api.monitor.check()
       const details = (d as Record<string, unknown>)?.details as unknown[] | undefined
       if (!details || details.length === 0) {
-        setError("No drift data returned. Run 'Refresh Baseline' first to establish reference distributions.")
+        setError(t('errors.no_drift_data'))
       }
       setData(d)
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to run check. Ensure baselines are computed first.")
+      setError(e instanceof Error ? e.message : t('errors.check_failed'))
     }
     setChecking(false)
   }
@@ -56,7 +59,7 @@ export function Monitoring() {
       setBaselineModal(false)
       load()
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to compute baseline.")
+      setError(e instanceof Error ? e.message : t('errors.baseline_failed'))
       setBaselineModal(false)
     }
   }
@@ -89,12 +92,12 @@ export function Monitoring() {
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-xl font-semibold">Monitoring</h1>
+        <h1 className="text-2xl font-semibold">{t('page.title')}</h1>
         <div className="flex items-center gap-3">
           <span className="text-xs text-[var(--text-tertiary)]">{data?.timestamp ? new Date(data.timestamp as string).toLocaleString() : ''}</span>
           <button onClick={load} disabled={loading} className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium border border-[var(--border-default)] rounded-lg bg-[var(--bg-primary)] hover:bg-[var(--bg-secondary)] disabled:opacity-50">
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-            Refresh
+            {t('actions.refresh', { ns: 'common' })}
           </button>
         </div>
       </div>
@@ -104,15 +107,15 @@ export function Monitoring() {
           Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20" />)
         ) : (
           <>
-            <MetricCard label="Healthy" value={(data?.healthy as number) ?? 0} color="success" />
-            <MetricCard label="Warnings" value={(data?.warnings as number) ?? 0} color={(data?.warnings as number) > 0 ? 'warning' : 'default'} />
-            <MetricCard label="Critical" value={(data?.critical as number) ?? 0} color={(data?.critical as number) > 0 ? 'danger' : 'default'} />
+            <MetricCard label={t('stats.healthy')} value={(data?.healthy as number) ?? 0} color="success" />
+            <MetricCard label={t('stats.warnings')} value={(data?.warnings as number) ?? 0} color={(data?.warnings as number) > 0 ? 'warning' : 'default'} />
+            <MetricCard label={t('stats.critical')} value={(data?.critical as number) ?? 0} color={(data?.critical as number) > 0 ? 'danger' : 'default'} />
             <div className="bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-lg p-4 flex flex-col items-center justify-center gap-1.5">
               <button onClick={runCheck} disabled={checking} className="px-4 py-2 bg-accent text-white rounded-lg text-[13px] font-medium disabled:opacity-50">
-                {checking ? 'Checking...' : 'Run Check Now'}
+                {checking ? t('actions.checking') : t('actions.run_check_now')}
               </button>
               {sorted.length === 0 && !loading && (
-                <p className="text-[10px] text-[var(--text-tertiary)] text-center">Run &apos;Refresh Baseline&apos; first</p>
+                <p className="text-[10px] text-[var(--text-tertiary)] text-center">{t('hints.run_baseline_first')}</p>
               )}
             </div>
           </>
@@ -128,18 +131,18 @@ export function Monitoring() {
 
       {/* Feature Drift Table */}
       <div className="bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-xl p-5 mb-6">
-        <h3 className="text-sm font-semibold mb-3">Feature Drift Status</h3>
+        <h3 className="text-sm font-semibold mb-3">{t('drift_table.title')}</h3>
         {loading ? <Skeleton className="h-32" /> : sorted.length === 0 ? (
-          <p className="text-[var(--text-tertiary)] text-sm py-4 text-center">No drift data. Run baseline first, then check.</p>
+          <p className="text-[var(--text-tertiary)] text-sm py-4 text-center">{t('drift_table.empty')}</p>
         ) : (
           <div className="flex gap-4">
             <div className={`min-w-0 ${selectedIdx !== null ? 'flex-1' : 'w-full'}`}>
               <table className="w-full text-[13px]">
                 <thead><tr className="text-xs text-[var(--text-tertiary)] border-b border-[var(--border-default)]">
-                  <th className="text-left py-2 font-medium">Feature</th>
-                  <th className="text-left py-2 font-medium">Severity</th>
-                  <th className="text-left py-2 font-medium">Issue</th>
-                  <th className="text-right py-2 font-medium">PSI</th>
+                  <th className="text-left py-2 font-medium">{t('drift_table.columns.feature')}</th>
+                  <th className="text-left py-2 font-medium">{t('drift_table.columns.severity')}</th>
+                  <th className="text-left py-2 font-medium">{t('drift_table.columns.issue')}</th>
+                  <th className="text-right py-2 font-medium">{t('drift_table.columns.psi')}</th>
                 </tr></thead>
                 <tbody>
                   {sorted.map((d, i: number) => (
@@ -166,7 +169,7 @@ export function Monitoring() {
                   transition={{ type: 'spring', stiffness: 300, damping: 30 }}
                   className="shrink-0 overflow-hidden"
                 >
-                  <FeatureDetail item={sorted[selectedIdx]} onNavigate={() => navigate(`/features/${encodeURIComponent(sorted[selectedIdx].feature)}`)} onClose={() => setSelectedIdx(null)} />
+                  <FeatureDetail item={sorted[selectedIdx]} onNavigate={() => navigate(`/features/${encodeURIComponent(sorted[selectedIdx].feature)}`)} onClose={() => setSelectedIdx(null)} t={t} />
                 </motion.div>
               )}
             </AnimatePresence>
@@ -176,32 +179,32 @@ export function Monitoring() {
 
       <div className="flex gap-3">
         <button onClick={() => setBaselineModal(true)} className="px-4 py-2 text-[13px] border border-[var(--border-default)] rounded-lg bg-[var(--bg-primary)] hover:bg-[var(--bg-secondary)]">
-          Refresh Baseline
+          {t('actions.refresh_baseline')}
         </button>
         <button onClick={exportReport} className="px-4 py-2 text-[13px] border border-[var(--border-default)] rounded-lg bg-[var(--bg-primary)] hover:bg-[var(--bg-secondary)]">
-          Export Report
+          {t('actions.export_report')}
         </button>
       </div>
 
-      <Modal open={baselineModal} onClose={() => setBaselineModal(false)} title="Refresh Baseline" actions={
+      <Modal open={baselineModal} onClose={() => setBaselineModal(false)} title={t('baseline_modal.title')} actions={
         <>
-          <button onClick={() => setBaselineModal(false)} className="px-4 py-2 text-sm border border-[var(--border-default)] rounded-lg">Cancel</button>
-          <button onClick={confirmBaseline} className="px-4 py-2 text-sm bg-accent text-white rounded-lg">Confirm</button>
+          <button onClick={() => setBaselineModal(false)} className="px-4 py-2 text-sm border border-[var(--border-default)] rounded-lg">{t('actions.cancel', { ns: 'common' })}</button>
+          <button onClick={confirmBaseline} className="px-4 py-2 text-sm bg-accent text-white rounded-lg">{t('actions.confirm', { ns: 'common' })}</button>
         </>
       }>
         <p className="text-sm text-[var(--text-secondary)]">
-          This will recompute baseline statistics for all features. Current drift alerts will be cleared until the next check.
+          {t('baseline_modal.body')}
         </p>
       </Modal>
     </div>
   )
 }
 
-function psiLabel(psi: number | null | undefined): string {
-  if (psi == null) return 'No data'
-  if (psi < 0.1) return 'No significant change'
-  if (psi < 0.25) return 'Moderate change'
-  return 'Significant change'
+function psiLabel(psi: number | null | undefined, t: TFunction<'monitoring'>): string {
+  if (psi == null) return t('psi_labels.no_data')
+  if (psi < 0.1) return t('psi_labels.no_change')
+  if (psi < 0.25) return t('psi_labels.moderate')
+  return t('psi_labels.significant')
 }
 
 const STAT_ROWS: { key: string; label: string; fmt: (v: any) => string }[] = [
@@ -222,7 +225,7 @@ interface MonitoringDetailItem {
   llm_analysis?: { likely_cause: string; recommended_actions?: string[] }
 }
 
-function FeatureDetail({ item, onNavigate, onClose }: { item: MonitoringDetailItem; onNavigate: () => void; onClose: () => void }) {
+function FeatureDetail({ item, onNavigate, onClose, t }: { item: MonitoringDetailItem; onNavigate: () => void; onClose: () => void; t: TFunction<'monitoring'> }) {
   const [history, setHistory] = useState<{ checked_at: string; psi: number | null; severity: string }[]>([])
   const [historyLoading, setHistoryLoading] = useState(true)
   const [baselineData, setBaselineData] = useState<Record<string, number> | null>(null)
@@ -252,7 +255,7 @@ function FeatureDetail({ item, onNavigate, onClose }: { item: MonitoringDetailIt
         {item.psi != null && (
           <span className="font-mono">PSI: {item.psi.toFixed(4)}</span>
         )}
-        <span className="text-[var(--text-tertiary)]">{psiLabel(item.psi)}</span>
+        <span className="text-[var(--text-tertiary)]">{psiLabel(item.psi, t)}</span>
       </div>
 
       {/* PSI Timeline Chart */}
@@ -267,7 +270,7 @@ function FeatureDetail({ item, onNavigate, onClose }: { item: MonitoringDetailIt
 
       {(item.issues?.length > 0) && (
         <div className="mb-2">
-          <p className="font-medium mb-1">Issues</p>
+          <p className="font-medium mb-1">{t('detail.issues')}</p>
           {item.issues.map((iss, j: number) => (
             <p key={j} className="text-[var(--text-secondary)]">&bull; {iss.message}</p>
           ))}
@@ -276,8 +279,8 @@ function FeatureDetail({ item, onNavigate, onClose }: { item: MonitoringDetailIt
 
       {item.llm_analysis && (
         <div className="border-t border-[var(--border-subtle)] pt-2 mt-2 mb-2">
-          <p className="font-medium">AI Analysis</p>
-          <p className="text-[var(--text-secondary)]">Likely cause: {item.llm_analysis.likely_cause}</p>
+          <p className="font-medium">{t('detail.ai_analysis')}</p>
+          <p className="text-[var(--text-secondary)]">{t('detail.likely_cause')}: {item.llm_analysis.likely_cause}</p>
           {item.llm_analysis.recommended_actions && item.llm_analysis.recommended_actions.length > 0 && (
             <ul className="list-disc list-inside text-[var(--text-secondary)] mt-1">
               {item.llm_analysis.recommended_actions.map((a: string, i: number) => <li key={i}>{a}</li>)}
@@ -286,7 +289,7 @@ function FeatureDetail({ item, onNavigate, onClose }: { item: MonitoringDetailIt
         </div>
       )}
 
-      <button onClick={onNavigate} className="text-accent hover:underline text-xs font-medium mt-1">View feature →</button>
+      <button onClick={onNavigate} className="text-accent hover:underline text-xs font-medium mt-1">{t('detail.view_feature')}</button>
     </div>
   )
 }

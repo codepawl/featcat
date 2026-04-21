@@ -18,7 +18,9 @@
     "select_hint": "Chọn một nhóm để xem chi tiết",
     "owner_label": "Chủ sở hữu",
     "members_heading": "Thành viên ({{count}})",
-    "members_empty": "Chưa có Feature nào trong nhóm này"
+    "members_empty": "Chưa có Feature nào trong nhóm này",
+    "project_label": "Dự án",
+    "members_label": "features"
   },
   "member_table": {
     "feature": "Feature",

@@ -21,7 +21,14 @@
     "copied": "Đã sao chép",
     "download": "Tải xuống",
     "open_menu": "Mở menu",
-    "toggle_theme": "Đổi giao diện"
+    "toggle_theme": "Đổi giao diện",
+    "retry": "Thử lại",
+    "generate": "Tạo",
+    "generating": "Đang tạo...",
+    "edit": "Sửa",
+    "create": "Tạo",
+    "done": "Hoàn tất",
+    "add": "Thêm"
   },
   "state": {
     "empty": "Không có dữ liệu",
@@ -48,5 +55,8 @@
   },
   "placeholders": {
     "search": "Tìm kiếm..."
+  },
+  "time": {
+    "never": "chưa bao giờ"
   }
 }

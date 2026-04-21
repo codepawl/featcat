@@ -1,1 +1,112 @@
-{}
+{
+  "page": {
+    "title": "Tổng quan"
+  },
+  "stats": {
+    "features": "Features",
+    "doc_coverage": "Độ bao phủ tài liệu",
+    "drift_alerts": "Cảnh báo Drift",
+    "sources": "Nguồn"
+  },
+  "sections": {
+    "quality_debt": "Chất lượng & Nợ",
+    "quality_debt_subtitle": "Độ bao phủ tài liệu và cảnh báo drift trên toàn catalog",
+    "activity_usage": "Hoạt động & Sử dụng",
+    "activity_usage_subtitle": "Hoạt động catalog và mức độ sử dụng features gần đây",
+    "system": "Hệ thống",
+    "system_subtitle": "Các tác vụ nền theo lịch"
+  },
+  "health_card": {
+    "title": "Sức khỏe Catalog",
+    "of_100": "/100"
+  },
+  "drift_panel": {
+    "title": "Cảnh báo Drift gần đây",
+    "empty_no_baseline": "Chưa tính baseline. Hãy chạy baseline trước.",
+    "empty_all_healthy": "Tất cả features đều ổn định",
+    "columns": {
+      "severity": "Mức độ",
+      "feature": "Feature",
+      "psi": "PSI"
+    }
+  },
+  "top_features": {
+    "title": "Features dùng nhiều",
+    "empty": "Chưa có dữ liệu sử dụng",
+    "columns": {
+      "index": "#",
+      "feature": "Feature",
+      "views": "Lượt xem",
+      "queries": "Truy vấn"
+    }
+  },
+  "orphaned": {
+    "title": "Features bị bỏ quên",
+    "empty_all_active": "Tất cả features đều hoạt động trong 30 ngày qua",
+    "with_count_one": "{{count}} feature không có hoạt động gần đây",
+    "with_count_other": "{{count}} features không có hoạt động gần đây",
+    "view_all": "Xem tất cả features →"
+  },
+  "activity": {
+    "title": "Hoạt động gần đây",
+    "empty": "Chưa có hoạt động nào"
+  },
+  "jobs_panel": {
+    "title": "Tác vụ theo lịch",
+    "empty": "Chưa cấu hình tác vụ",
+    "columns": {
+      "job": "Job",
+      "schedule": "Lịch",
+      "status": "Trạng thái",
+      "last_run": "Chạy lần cuối"
+    },
+    "enabled": "Đã bật",
+    "disabled": "Đã tắt"
+  },
+  "donut": {
+    "title": "Độ bao phủ tài liệu",
+    "documented": "có tài liệu",
+    "empty": "Không có features nào trong catalog",
+    "segments": {
+      "documented": "Có tài liệu",
+      "hints_only": "Chỉ có gợi ý",
+      "no_doc": "Không có tài liệu"
+    }
+  },
+  "sources": {
+    "title": "Nguồn dữ liệu",
+    "subtitle": "Nhấn vào một nguồn để khám phá features",
+    "empty": "Chưa đăng ký nguồn dữ liệu nào.",
+    "empty_hint": "Dùng \"Thêm nguồn\" hoặc chạy featcat scan-bulk để bắt đầu.",
+    "feature_one": "{{count}} feature",
+    "feature_other": "{{count}} features",
+    "docs_percent": "{{pct}}% tài liệu",
+    "scanned_prefix": "Quét {{time}}",
+    "badge_critical": "{{count}} nghiêm trọng",
+    "badge_alert_one": "{{count}} cảnh báo",
+    "badge_alert_other": "{{count}} cảnh báo",
+    "all_clear": "Tất cả ổn định"
+  },
+  "debt": {
+    "title": "Nợ tài liệu theo chủ sở hữu và nguồn",
+    "subtitle": "Nhấn một ô để xem features tương ứng",
+    "empty": "Không có features nào trong catalog",
+    "owner": "Chủ sở hữu",
+    "total": "Tổng"
+  },
+  "usage_chart": {
+    "title": "Bức tranh sử dụng Feature (30 ngày qua)",
+    "subtitle": "Kích thước bong bóng = số lượt truy vấn. Viền đỏ = bỏ quên.",
+    "empty": "Chưa có dữ liệu sử dụng",
+    "empty_long": "Chưa có dữ liệu sử dụng. Features sẽ xuất hiện sau khi nhóm bắt đầu truy vấn catalog.",
+    "orphaned_label": "Bị bỏ quên",
+    "axis_days": "Ngày trước",
+    "axis_usage": "Sử dụng",
+    "tooltip": {
+      "usage": "Sử dụng: {{views}} xem, {{queries}} truy vấn",
+      "created": "Tạo: {{days}} ngày trước",
+      "source": "Nguồn: {{source}}",
+      "orphaned": "Bị bỏ quên"
+    }
+  }
+}

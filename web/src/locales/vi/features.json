@@ -1,1 +1,138 @@
-{}
+{
+  "page": {
+    "title": "Features"
+  },
+  "filters": {
+    "all_sources": "Tất cả nguồn",
+    "all_types": "Tất cả loại",
+    "all_grades": "Tất cả điểm",
+    "grade_only": "Chỉ điểm {{grade}}",
+    "needs_attention": "Cần lưu ý (C hoặc D)"
+  },
+  "tabs": {
+    "overview": "Tổng quan",
+    "history": "Lịch sử"
+  },
+  "sections": {
+    "health_score": "Điểm sức khỏe",
+    "metadata": "Thông tin",
+    "statistics": "Thống kê",
+    "documentation": "Tài liệu",
+    "generation_hints": "Gợi ý sinh tài liệu",
+    "definition": "Định nghĩa",
+    "usage": "Sử dụng",
+    "monitoring": "Giám sát"
+  },
+  "meta": {
+    "data_type": "Kiểu dữ liệu",
+    "column": "Cột",
+    "owner": "Chủ sở hữu",
+    "created": "Tạo",
+    "updated": "Cập nhật"
+  },
+  "stats": {
+    "mean": "Mean",
+    "std": "Std",
+    "min": "Min",
+    "max": "Max",
+    "null_ratio": "Null Ratio",
+    "unique_count": "Unique Count"
+  },
+  "documentation": {
+    "empty": "Chưa có tài liệu",
+    "expected_range": "Khoảng giá trị mong muốn:",
+    "potential_issues": "Vấn đề tiềm ẩn:",
+    "hints_used": "đã dùng gợi ý",
+    "context": "Bối cảnh: {{count}} features liên quan"
+  },
+  "hints": {
+    "empty": "Chưa đặt gợi ý",
+    "add": "Thêm gợi ý",
+    "info_tooltip": "Gợi ý được coi là sự thật tuyệt đối bởi AI"
+  },
+  "definition": {
+    "empty": "Chưa đặt định nghĩa",
+    "add": "Thêm định nghĩa",
+    "types": {
+      "python": "Python",
+      "manual": "Manual"
+    }
+  },
+  "usage": {
+    "empty": "Chưa có dữ liệu sử dụng",
+    "views_label": "xem",
+    "queries_label": "truy vấn",
+    "last_30_days": "(30 ngày qua)",
+    "last_seen": "Lần cuối: {{time}}"
+  },
+  "monitoring": {
+    "empty": "Chưa có baseline",
+    "checked": "Kiểm tra {{time}}"
+  },
+  "versions": {
+    "empty": "Chưa có thay đổi nào. Lịch sử được ghi từ thời điểm này trở đi."
+  },
+  "health_breakdown": {
+    "documentation": "Tài liệu",
+    "drift": "Drift",
+    "usage": "Sử dụng",
+    "notes": {
+      "healthy": "ổn định",
+      "critical": "nghiêm trọng",
+      "warning": "cảnh báo",
+      "unknown": "không rõ",
+      "no_recent_usage": "chưa có lượt dùng gần đây"
+    },
+    "tips": {
+      "doc_under_25": "Sinh tài liệu cho feature này (+25pts)",
+      "doc_under_40": "Thêm gợi ý sinh để tăng điểm (+15pts)",
+      "drift_critical": "Feature có drift nghiêm trọng — cần kiểm tra chất lượng dữ liệu",
+      "usage_zero": "Feature chưa được truy vấn gần đây (+10pts nếu được dùng)"
+    }
+  },
+  "generate_modal": {
+    "title": "Sinh tài liệu",
+    "scope_label": "Phạm vi",
+    "select_group_hint": "Chọn một nhóm để tiếp tục",
+    "batch_hint_label": "Gợi ý bối cảnh cho mẻ này",
+    "table": {
+      "feature": "Feature",
+      "individual_hint": "Gợi ý riêng",
+      "status": "Trạng thái"
+    },
+    "edit_hint_title": "Sửa gợi ý"
+  },
+  "add_source_modal": {
+    "title": "Thêm nguồn"
+  },
+  "bulk_scan_modal": {
+    "title": "Quét hàng loạt",
+    "directory_path": "Đường dẫn thư mục",
+    "owner": "Chủ sở hữu",
+    "owner_placeholder": "Tên chủ sở hữu",
+    "tags": "Tag",
+    "tag_placeholder": "Nhập và nhấn Enter",
+    "recursive": "Đệ quy",
+    "dry_run": "Thử chạy",
+    "table": {
+      "file": "Tệp",
+      "status": "Trạng thái",
+      "features": "Features"
+    }
+  },
+  "count_label_one": "{{count}} Feature",
+  "count_label_other": "{{count}} Features",
+  "search_placeholder": "Tìm Feature...",
+  "actions": {
+    "clear_all_filters": "Xóa toàn bộ bộ lọc",
+    "undocumented_only": "Chỉ chưa có tài liệu",
+    "generate_docs_remaining": "Sinh tài liệu ({{count}} còn lại)",
+    "generate_docs_running": "Đang tạo... ({{done}}/{{total}})",
+    "bulk_scan": "Quét hàng loạt",
+    "export_selected": "Xuất đã chọn ({{count}})",
+    "add_source": "Thêm nguồn",
+    "history_tab": "Lịch sử ({{count}})",
+    "compute_baseline": "Tính Baseline",
+    "computing": "Đang tính..."
+  }
+}
