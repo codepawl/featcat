@@ -18,7 +18,7 @@
     "metadata": "Thông tin",
     "statistics": "Thống kê",
     "documentation": "Tài liệu",
-    "generation_hints": "Gợi ý sinh tài liệu",
+    "generation_hints": "Gợi ý generate tài liệu",
     "definition": "Định nghĩa",
     "usage": "Sử dụng",
     "monitoring": "Giám sát"
@@ -84,14 +84,14 @@
       "no_recent_usage": "chưa có lượt dùng gần đây"
     },
     "tips": {
-      "doc_under_25": "Sinh tài liệu cho feature này (+25pts)",
-      "doc_under_40": "Thêm gợi ý sinh để tăng điểm (+15pts)",
+      "doc_under_25": "Generate tài liệu cho feature này (+25đ)",
+      "doc_under_40": "Thêm gợi ý generate để tăng điểm (+15đ)",
       "drift_critical": "Feature có drift nghiêm trọng — cần kiểm tra chất lượng dữ liệu",
-      "usage_zero": "Feature chưa được truy vấn gần đây (+10pts nếu được dùng)"
+      "usage_zero": "Feature chưa được truy vấn gần đây (+10đ nếu được dùng)"
     }
   },
   "generate_modal": {
-    "title": "Sinh tài liệu",
+    "title": "Generate tài liệu",
     "scope_label": "Phạm vi",
     "select_group_hint": "Chọn một nhóm để tiếp tục",
     "batch_hint_label": "Gợi ý bối cảnh cho mẻ này",
@@ -125,8 +125,8 @@
   "search_placeholder": "Tìm Feature...",
   "actions": {
     "clear_all_filters": "Xóa toàn bộ bộ lọc",
-    "undocumented_only": "Chỉ chưa có tài liệu",
-    "generate_docs_remaining": "Sinh tài liệu ({{count}} còn lại)",
+    "undocumented_only": "Chưa có tài liệu",
+    "generate_docs_remaining": "Generate tài liệu ({{count}} còn lại)",
     "generate_docs_running": "Đang tạo... ({{done}}/{{total}})",
     "bulk_scan": "Quét hàng loạt",
     "export_selected": "Xuất đã chọn ({{count}})",

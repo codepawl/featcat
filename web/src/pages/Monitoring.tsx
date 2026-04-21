@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { motion, AnimatePresence } from 'motion/react'
-import { RefreshCw } from 'lucide-react'
+import { RefreshCw, FileDown } from 'lucide-react'
 import { api, invalidateCache } from '../api'
 import { MetricCard } from '../components/MetricCard'
 import { Badge } from '../components/Badge'
@@ -129,6 +129,23 @@ export function Monitoring() {
         </div>
       )}
 
+      <div className="flex gap-3 mb-6">
+        <button
+          onClick={() => setBaselineModal(true)}
+          className="inline-flex items-center gap-1.5 px-4 py-2 text-[13px] border border-[var(--border-default)] rounded-lg bg-[var(--bg-primary)] hover:bg-[var(--bg-secondary)]"
+        >
+          <RefreshCw size={14} />
+          {t('actions.refresh_baseline')}
+        </button>
+        <button
+          onClick={exportReport}
+          className="inline-flex items-center gap-1.5 px-4 py-2 text-[13px] border border-[var(--border-default)] rounded-lg bg-[var(--bg-primary)] hover:bg-[var(--bg-secondary)]"
+        >
+          <FileDown size={14} />
+          {t('actions.export_report')}
+        </button>
+      </div>
+
       {/* Feature Drift Table */}
       <div className="bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-xl p-5 mb-6">
         <h3 className="text-sm font-semibold mb-3">{t('drift_table.title')}</h3>
@@ -175,15 +192,6 @@ export function Monitoring() {
             </AnimatePresence>
           </div>
         )}
-      </div>
-
-      <div className="flex gap-3">
-        <button onClick={() => setBaselineModal(true)} className="px-4 py-2 text-[13px] border border-[var(--border-default)] rounded-lg bg-[var(--bg-primary)] hover:bg-[var(--bg-secondary)]">
-          {t('actions.refresh_baseline')}
-        </button>
-        <button onClick={exportReport} className="px-4 py-2 text-[13px] border border-[var(--border-default)] rounded-lg bg-[var(--bg-primary)] hover:bg-[var(--bg-secondary)]">
-          {t('actions.export_report')}
-        </button>
       </div>
 
       <Modal open={baselineModal} onClose={() => setBaselineModal(false)} title={t('baseline_modal.title')} actions={

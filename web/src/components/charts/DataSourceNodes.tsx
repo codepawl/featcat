@@ -86,9 +86,9 @@ export function DataSourceNodes({ data, loading }: DataSourceNodesProps) {
 
               {/* Stats */}
               <div className="border-t border-[var(--border-subtle)] px-3 py-2.5 space-y-1.5">
-                <div className="text-[13px]">
-                  <span className="font-medium">{s.feature_count}</span>
-                  <span className="text-[var(--text-secondary)]"> {t('sources.feature', { count: s.feature_count })}</span>
+                <div className="text-[13px] text-[var(--text-secondary)]">
+                  <span className="font-medium text-[var(--text-primary)]">{s.feature_count}</span>{' '}
+                  {t('sources.features_label')}
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -98,7 +98,9 @@ export function DataSourceNodes({ data, loading }: DataSourceNodesProps) {
                       style={{ width: `${docPct}%` }}
                     />
                   </div>
-                  <span className="text-[11px] text-[var(--text-secondary)] w-12 text-right">{t('sources.docs_percent', { pct: docPct })}</span>
+                  <span className="text-[11px] text-[var(--text-secondary)] whitespace-nowrap">
+                    {docPct}% {t('sources.docs_label')}
+                  </span>
                 </div>
 
                 {isClean && <Badge variant="success">{t('sources.all_clear')}</Badge>}

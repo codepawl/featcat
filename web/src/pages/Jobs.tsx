@@ -90,6 +90,16 @@ export function Jobs() {
   const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
 
+  const getJobLabel = (jobName: string) => {
+    return t(`job_names.${jobName}`, { defaultValue: jobName })
+  }
+
+  const getJobDescription = (jobName: string, fallbackDescription?: string) => {
+    return t(`job_descriptions.${jobName}`, {
+      defaultValue: fallbackDescription || t('job_card.no_description'),
+    })
+  }
+
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
@@ -102,10 +112,10 @@ export function Jobs() {
           jobs.map((j) => (
             <div key={j.job_name} className="bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-xl p-4 hover:shadow-md transition-all">
               <div className="flex justify-between items-start mb-2">
-                <span className="font-medium text-sm">{j.job_name}</span>
+                <span className="font-medium text-sm">{getJobLabel(j.job_name)}</span>
                 <Badge variant={j.enabled ? 'success' : 'warning'}>{j.enabled ? t('job_card.actions.enable') : t('job_card.actions.disable')}</Badge>
               </div>
-              <p className="text-xs text-[var(--text-secondary)] mb-2">{j.description || t('job_card.no_description')}</p>
+              <p className="text-xs text-[var(--text-secondary)] mb-2">{getJobDescription(j.job_name, j.description)}</p>
               <p className="flex items-center gap-1 text-xs text-[var(--text-tertiary)] font-mono mb-3">
                 <Timer size={12} /> {cronToHuman(j.cron_expression, t)}
               </p>
@@ -142,7 +152,7 @@ export function Jobs() {
             <select value={filterJob} onChange={(e) => { setFilterJob(e.target.value); setPage(0); }}
               className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-2.5 py-1.5 text-xs">
               <option value="">{t('history.filters.all_jobs')}</option>
-              {jobs.map((j) => <option key={j.job_name} value={j.job_name}>{j.job_name}</option>)}
+              {jobs.map((j) => <option key={j.job_name} value={j.job_name}>{getJobLabel(j.job_name)}</option>)}
             </select>
             <select value={filterStatus} onChange={(e) => { setFilterStatus(e.target.value); setPage(0); }}
               className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-2.5 py-1.5 text-xs">
@@ -169,7 +179,7 @@ export function Jobs() {
                     className="border-b border-[var(--border-subtle)] cursor-pointer hover:bg-[var(--bg-secondary)] transition-colors"
                     onClick={() => setExpanded(expanded === i ? null : i)}
                   >
-                    <td className="py-2 font-medium">{l.job_name}</td>
+                    <td className="py-2 font-medium">{getJobLabel(l.job_name)}</td>
                     <td className="py-2"><Badge variant={l.status}>{l.status}</Badge></td>
                     <td className="py-2 text-[var(--text-secondary)]">{l.started_at ? new Date(l.started_at).toLocaleString() : '-'}</td>
                     <td className="py-2 font-mono text-xs">{l.duration_seconds != null ? `${l.duration_seconds.toFixed(1)}s` : '-'}</td>
@@ -210,7 +220,7 @@ export function Jobs() {
           </button>
         </>
       }>
-        <p className="text-xs text-[var(--text-secondary)] mb-3">{scheduleModal?.job_name}</p>
+        <p className="text-xs text-[var(--text-secondary)] mb-3">{scheduleModal ? getJobLabel(scheduleModal.job_name) : ''}</p>
         <label className="block text-xs font-medium mb-1">{t('schedule_modal.cron_expression')}</label>
         <input value={cronInput} onChange={(e) => setCronInput(e.target.value)} placeholder="0 * * * *"
           className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px] font-mono focus:border-accent outline-none mb-2" />

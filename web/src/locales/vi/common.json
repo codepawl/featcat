@@ -51,7 +51,7 @@
     "sources": "Nguồn",
     "health_score": "Điểm sức khỏe",
     "total": "Tổng",
-    "undocumented_only": "Chỉ chưa có tài liệu"
+    "undocumented_only": "Chưa có tài liệu"
   },
   "placeholders": {
     "search": "Tìm kiếm..."
