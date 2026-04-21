@@ -1107,32 +1107,31 @@ function HealthBreakdown({ feature }: { feature: FeatureRow }) {
         <span className="text-[var(--text-tertiary)] text-sm">/ 100</span>
         <span className={`px-2 py-0.5 rounded text-xs font-bold ${cls}`}>{grade}</span>
       </div>
-      <div className="grid grid-cols-[112px_1fr_auto] gap-x-3 gap-y-3 items-center">
+      <div className="grid grid-cols-[112px_1fr_auto_auto] gap-x-3 gap-y-3 items-center">
         <span className="text-sm text-[var(--text-secondary)]">Documentation</span>
         <div className="h-1.5 bg-[var(--bg-tertiary)] rounded-full overflow-hidden">
           <div className="h-full bg-[var(--accent)] transition-all" style={{ width: `${docPct}%` }} />
         </div>
-        <div className="flex items-center gap-2 whitespace-nowrap text-xs">
-          <span className="font-mono text-[var(--text-secondary)] tabular-nums">{bd.documentation}/40</span>
-        </div>
+        <span className="font-mono tabular-nums text-xs text-[var(--text-secondary)] whitespace-nowrap text-right">{bd.documentation}/40</span>
+        <span />
 
         <span className="text-sm text-[var(--text-secondary)]">Drift</span>
         <div className="h-1.5 bg-[var(--bg-tertiary)] rounded-full overflow-hidden">
           <div className="h-full bg-[var(--accent)] transition-all" style={{ width: `${driftPct}%` }} />
         </div>
-        <div className="flex items-center gap-2 whitespace-nowrap text-xs">
-          <span className="font-mono text-[var(--text-secondary)] tabular-nums">{bd.drift}/40</span>
-          <span className="text-[var(--text-tertiary)]">{driftNote}</span>
-        </div>
+        <span className="font-mono tabular-nums text-xs text-[var(--text-secondary)] whitespace-nowrap text-right">{bd.drift}/40</span>
+        <span className="text-xs text-[var(--text-tertiary)] whitespace-nowrap">{driftNote}</span>
 
         <span className="text-sm text-[var(--text-secondary)]">Usage</span>
         <div className="h-1.5 bg-[var(--bg-tertiary)] rounded-full overflow-hidden">
           <div className="h-full bg-[var(--accent)] transition-all" style={{ width: `${usagePct}%` }} />
         </div>
-        <div className="flex items-center gap-2 whitespace-nowrap text-xs">
-          <span className="font-mono text-[var(--text-secondary)] tabular-nums">{bd.usage}/20</span>
-          {usageNote && <span className="text-[var(--text-tertiary)]">{usageNote}</span>}
-        </div>
+        <span className="font-mono tabular-nums text-xs text-[var(--text-secondary)] whitespace-nowrap text-right">{bd.usage}/20</span>
+        {usageNote ? (
+          <span className="text-xs text-[var(--text-tertiary)] whitespace-nowrap">{usageNote}</span>
+        ) : (
+          <span />
+        )}
       </div>
       {tips.length > 0 && (
         <div className="mt-3 pt-3 border-t border-[var(--border-subtle)] space-y-1">
