@@ -51,5 +51,8 @@
   },
   "errors": {
     "prefix": "Lỗi: {{message}}"
+  },
+  "thinking_stream": {
+    "using_tool": "\nĐang dùng công cụ: {{tool}}..."
   }
 }

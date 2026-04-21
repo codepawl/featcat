@@ -198,7 +198,7 @@ export function Chat() {
             updateLastMessage({ isDoneThinking: true })
             return false
           case 'tool_call':
-            appendToLastMessage('thinking', `\nUsing tool: ${data.name}...`)
+            appendToLastMessage('thinking', t('thinking_stream.using_tool', { tool: data.name }))
             return false
           case 'tool_result':
             return false

@@ -51,5 +51,8 @@
   },
   "errors": {
     "prefix": "Error: {{message}}"
+  },
+  "thinking_stream": {
+    "using_tool": "\nUsing tool: {{tool}}..."
   }
 }
