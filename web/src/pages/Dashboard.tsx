@@ -5,7 +5,6 @@ import { api, invalidateCache, timeAgo } from '../api'
 import { MetricCard } from '../components/MetricCard'
 import { Badge } from '../components/Badge'
 import { Skeleton } from '../components/Skeleton'
-import { DocCoverageDonut } from '../components/charts/DocCoverageDonut'
 import { DocDebtHeatmap } from '../components/charts/DocDebtHeatmap'
 import { DataSourceNodes } from '../components/charts/DataSourceNodes'
 
@@ -80,7 +79,7 @@ export function Dashboard() {
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-xl font-semibold">Dashboard</h1>
+        <h1 className="text-2xl font-semibold">Dashboard</h1>
         <button onClick={load} disabled={loading} className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium border border-[var(--border-default)] rounded-lg bg-[var(--bg-primary)] hover:bg-[var(--bg-secondary)] disabled:opacity-50">
           <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
           Refresh
@@ -88,27 +87,17 @@ export function Dashboard() {
       </div>
 
       {/* Section 1: Catalog Overview */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-4 mb-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4">
-          {loading ? (
-            Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20" />)
-          ) : (
-            <>
-              <MetricCard label="Features" value={featureCount} icon={Layers} />
-              <MetricCard label="Doc Coverage" value={`${Math.round(coverage)}%`} progress={coverage} icon={FileText} />
-              <MetricCard label="Drift Alerts" value={noBaselines ? '-' : alertCount} color={noBaselines ? 'default' : alertCount > 0 ? ((monitor?.critical as number) > 0 ? 'danger' : 'warning') : 'success'} icon={AlertTriangle} />
-              <MetricCard label="Sources" value={sourceCount} icon={HardDrive} />
-            </>
-          )}
-        </div>
-        <div className="w-full lg:w-64">
-          <DocCoverageDonut
-            totalFeatures={stats?.total_features ?? 0}
-            documentedFeatures={stats?.documented_features ?? 0}
-            featuresWithHints={stats?.features_with_hints ?? 0}
-            loading={loading}
-          />
-        </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        {loading ? (
+          Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20" />)
+        ) : (
+          <>
+            <MetricCard label="Features" value={featureCount} icon={Layers} />
+            <MetricCard label="Doc Coverage" value={`${Math.round(coverage)}%`} progress={coverage} icon={FileText} />
+            <MetricCard label="Drift Alerts" value={noBaselines ? '-' : alertCount} color={noBaselines ? 'default' : alertCount > 0 ? ((monitor?.critical as number) > 0 ? 'danger' : 'warning') : 'success'} icon={AlertTriangle} />
+            <MetricCard label="Sources" value={sourceCount} icon={HardDrive} />
+          </>
+        )}
       </div>
 
       {/* Section 2: Data Sources */}
@@ -120,20 +109,20 @@ export function Dashboard() {
       {/* Section 3: Quality & Debt */}
       <hr className="border-[var(--border-subtle)] mt-8" />
       <div className="mt-8 mb-4">
-        <h2 className="text-base font-semibold">Quality & Debt</h2>
+        <h2 className="text-lg font-semibold">Quality & Debt</h2>
         <p className="text-sm text-[var(--text-tertiary)] mt-0.5">Documentation coverage and drift alerts across your catalog</p>
       </div>
 
       {/* Health Summary Card */}
       {!loading && healthSummary && (
         <div
-          className="bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-xl p-5 mb-4 cursor-pointer hover:border-accent/50 transition-colors"
+          className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5 mb-4 cursor-pointer hover:border-[var(--border-muted)] transition-colors"
           onClick={() => navigate('/features?sort=health&order=asc')}
         >
           <div className="flex items-center gap-2 mb-3">
             <HeartPulse size={16} className="text-accent" />
             <h3 className="text-sm font-semibold">Catalog Health</h3>
-            <span className="ml-auto text-2xl font-bold">{healthSummary.average_score}<span className="text-sm font-normal text-[var(--text-tertiary)]">/100</span></span>
+            <span className="ml-auto text-2xl font-semibold">{healthSummary.average_score}<span className="text-sm font-normal text-[var(--text-tertiary)]">/100</span></span>
           </div>
           <div className="flex items-center gap-1 h-4 rounded-full overflow-hidden mb-2">
             {(['A', 'B', 'C', 'D'] as const).map(g => {
@@ -157,7 +146,7 @@ export function Dashboard() {
 
       <div className="grid grid-cols-1 lg:grid-cols-[3fr_2fr] gap-4 mb-6">
         <DocDebtHeatmap data={docDebt} loading={loading} />
-        <div className="bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-xl p-5">
+        <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5">
           <h3 className="text-sm font-semibold mb-3">Recent Drift Alerts</h3>
           {loading ? <Skeleton className="h-24" /> : noBaselines ? (
             <p className="text-[var(--text-tertiary)] text-sm">No baselines computed yet. Run baseline first.</p>
@@ -187,11 +176,11 @@ export function Dashboard() {
       {/* Section 4: Activity & Usage */}
       <hr className="border-[var(--border-subtle)] mt-8" />
       <div className="mt-8 mb-4">
-        <h2 className="text-base font-semibold">Activity & Usage</h2>
+        <h2 className="text-lg font-semibold">Activity & Usage</h2>
         <p className="text-sm text-[var(--text-tertiary)] mt-0.5">Recent catalog activity and feature adoption</p>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <div className="bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-xl p-5">
+        <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5">
           <h3 className="text-sm font-semibold mb-3">Top Features</h3>
           {loading ? <Skeleton className="h-24" /> : topFeatures.length === 0 ? (
             <p className="text-[var(--text-tertiary)] text-sm">No usage data yet</p>
@@ -217,7 +206,7 @@ export function Dashboard() {
           )}
         </div>
 
-        <div className="bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-xl p-5">
+        <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5">
           <h3 className="text-sm font-semibold mb-3">Orphaned Features</h3>
           {loading ? <Skeleton className="h-24" /> : orphaned.length === 0 ? (
             <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
@@ -241,7 +230,7 @@ export function Dashboard() {
           )}
         </div>
 
-        <div className="bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-xl p-5">
+        <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5">
           <h3 className="text-sm font-semibold mb-3">Recent Activity</h3>
           {loading ? <Skeleton className="h-24" /> : logs.length === 0 ? (
             <p className="text-[var(--text-tertiary)] text-sm">No recent activity</p>
@@ -262,10 +251,10 @@ export function Dashboard() {
       {/* Section 5: System */}
       <hr className="border-[var(--border-subtle)] mt-8" />
       <div className="mt-8 mb-4">
-        <h2 className="text-base font-semibold">System</h2>
+        <h2 className="text-lg font-semibold">System</h2>
         <p className="text-sm text-[var(--text-tertiary)] mt-0.5">Scheduled background jobs</p>
       </div>
-      <div className="bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-xl p-5">
+      <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5">
         <h3 className="text-sm font-semibold mb-3">Scheduled Jobs</h3>
         {loading ? <Skeleton className="h-24" /> : jobs.length === 0 ? (
           <p className="text-[var(--text-tertiary)] text-sm">No jobs configured</p>

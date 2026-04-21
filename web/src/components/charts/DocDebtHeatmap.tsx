@@ -29,7 +29,7 @@ export function DocDebtHeatmap({ data, loading }: DocDebtHeatmapProps) {
 
   if (data.length === 0) {
     return (
-      <div className="bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-xl p-5">
+      <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5">
         <h3 className="text-sm font-semibold mb-1">Documentation debt by owner and source</h3>
         <p className="text-[var(--text-tertiary)] text-sm">No features in catalog</p>
       </div>
@@ -68,7 +68,7 @@ export function DocDebtHeatmap({ data, loading }: DocDebtHeatmapProps) {
   }
 
   return (
-    <div className="bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-xl p-5">
+    <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5">
       <h3 className="text-sm font-semibold mb-1">Documentation debt by owner and source</h3>
       <p className="text-xs text-[var(--text-tertiary)] mb-3">Click a cell to view those features</p>
       <div className="overflow-x-auto">

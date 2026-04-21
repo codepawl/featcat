@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { timeAgo } from '../../api'
 import { Skeleton } from '../Skeleton'
+import { Badge } from '../Badge'
 
 interface SourceStat {
   source_name: string
@@ -21,27 +22,7 @@ interface DataSourceNodesProps {
 function truncatePath(path: string): string {
   const segments = path.replace(/\\/g, '/').split('/').filter(Boolean)
   if (segments.length <= 2) return path
-  return '\u2026/' + segments.slice(-2).join('/')
-}
-
-type HealthLevel = 'healthy' | 'warning' | 'critical'
-
-function getHealth(s: SourceStat): HealthLevel {
-  if (s.critical_alerts > 0) return 'critical'
-  if (s.drift_alerts > 0) return 'warning'
-  return 'healthy'
-}
-
-const DOT_COLORS: Record<HealthLevel, [string, string, string]> = {
-  healthy:  ['bg-green-500', 'bg-green-500', 'bg-green-500'],
-  warning:  ['bg-green-500', 'bg-amber-500', 'bg-[var(--bg-tertiary)]'],
-  critical: ['bg-green-500', 'bg-amber-500', 'bg-red-500'],
-}
-
-const CARD_BORDER: Record<HealthLevel, string> = {
-  healthy:  'border-[var(--border-subtle)]',
-  warning:  'border-amber-500/40 border-l-4 border-l-amber-500',
-  critical: 'border-red-500/40 border-l-4 border-l-red-500',
+  return '…/' + segments.slice(-2).join('/')
 }
 
 export function DataSourceNodes({ data, loading }: DataSourceNodesProps) {
@@ -52,8 +33,8 @@ export function DataSourceNodes({ data, loading }: DataSourceNodesProps) {
       <div>
         <h3 className="text-sm font-semibold mb-1">Data Sources</h3>
         <p className="text-xs text-[var(--text-tertiary)] mb-3">Click a source to explore its features</p>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-40" />)}
+        <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
+          {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-36" />)}
         </div>
       </div>
     )
@@ -75,73 +56,54 @@ export function DataSourceNodes({ data, loading }: DataSourceNodesProps) {
     <div>
       <h3 className="text-sm font-semibold mb-1">Data Sources</h3>
       <p className="text-xs text-[var(--text-tertiary)] mb-3">Click a source to explore its features</p>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
         {data.map(s => {
-          const health = getHealth(s)
           const docPct = s.feature_count > 0 ? Math.round((s.documented_count / s.feature_count) * 100) : 0
-          const dots = DOT_COLORS[health]
+          const isClean = s.drift_alerts === 0 && s.critical_alerts === 0
 
           return (
             <div
               key={s.source_name}
               onClick={() => navigate(`/features?source=${encodeURIComponent(s.source_name)}`)}
-              className={`bg-[var(--bg-primary)] border rounded-xl cursor-pointer transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg ${CARD_BORDER[health]} ${health === 'critical' ? 'animate-pulse-subtle' : ''}`}
-              style={{ maxWidth: 340 }}
+              className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg cursor-pointer transition-colors hover:border-[var(--border-muted)]"
             >
               {/* Header */}
-              <div className="px-4 pt-3 pb-2">
-                <div className="flex items-center gap-2 mb-1">
-                  <div className="flex gap-1">
-                    {dots.map((color, i) => (
-                      <span key={i} className={`w-2 h-2 rounded-full ${color}`} />
-                    ))}
-                  </div>
-                  <span className="font-mono text-sm font-semibold truncate">{s.source_name}</span>
+              <div className="px-3 pt-3 pb-2 flex items-start justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <span className="font-mono text-sm font-semibold text-[var(--text-primary)] truncate block">{s.source_name}</span>
+                  <p className="text-[11px] text-[var(--text-tertiary)] font-mono truncate mt-0.5" title={s.path}>
+                    {truncatePath(s.path)}
+                  </p>
                 </div>
-                <p className="text-[11px] text-[var(--text-tertiary)] font-mono truncate" title={s.path}>
-                  {truncatePath(s.path)}
-                </p>
+                {s.critical_alerts > 0 ? (
+                  <Badge variant="danger">{s.critical_alerts} critical</Badge>
+                ) : s.drift_alerts > 0 ? (
+                  <Badge variant="warning">{s.drift_alerts} alert{s.drift_alerts !== 1 ? 's' : ''}</Badge>
+                ) : null}
               </div>
 
               {/* Stats */}
-              <div className="border-t border-[var(--border-subtle)] px-4 py-2.5 space-y-1.5">
+              <div className="border-t border-[var(--border-subtle)] px-3 py-2.5 space-y-1.5">
                 <div className="text-[13px]">
                   <span className="font-medium">{s.feature_count}</span>
                   <span className="text-[var(--text-secondary)]"> feature{s.feature_count !== 1 ? 's' : ''}</span>
                 </div>
 
-                {/* Doc coverage bar */}
                 <div className="flex items-center gap-2">
                   <div className="flex-1 h-1.5 bg-[var(--bg-tertiary)] rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-accent rounded-full transition-all"
+                      className="h-full bg-[var(--accent)] rounded-full"
                       style={{ width: `${docPct}%` }}
                     />
                   </div>
                   <span className="text-[11px] text-[var(--text-secondary)] w-12 text-right">{docPct}% docs</span>
                 </div>
 
-                {/* Drift alerts */}
-                {s.drift_alerts > 0 ? (
-                  <div className={`text-[12px] ${s.critical_alerts > 0 ? 'text-red-500' : 'text-amber-500'}`}>
-                    {s.drift_alerts} drift alert{s.drift_alerts !== 1 ? 's' : ''}
-                  </div>
-                ) : (
-                  <div className="text-[12px] text-green-600 dark:text-green-400">No drift alerts</div>
-                )}
-
-                {/* Critical line */}
-                {s.critical_alerts > 0 ? (
-                  <div className="text-[12px] text-red-500 font-medium">
-                    {s.critical_alerts} critical{s.top_drifting_feature ? `: ${s.top_drifting_feature.split('.').pop()}` : ''}
-                  </div>
-                ) : (
-                  <div className="text-[12px] text-green-600 dark:text-green-400">No critical issues</div>
-                )}
+                {isClean && <Badge variant="success">All clear</Badge>}
               </div>
 
               {/* Footer */}
-              <div className="border-t border-[var(--border-subtle)] px-4 py-2">
+              <div className="border-t border-[var(--border-subtle)] px-3 py-2">
                 <span className="text-[11px] text-[var(--text-tertiary)]">
                   Scanned {s.last_scanned ? timeAgo(s.last_scanned) : 'never'}
                 </span>

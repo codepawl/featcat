@@ -29,7 +29,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   }, [])
 
   return (
-    <nav className="w-[220px] shrink-0 sticky top-0 h-screen overflow-y-auto flex flex-col bg-[var(--bg-primary)] border-r border-[var(--border-subtle)] py-4 transition-all">
+    <nav className="w-[220px] shrink-0 sticky top-0 h-screen overflow-y-auto flex flex-col bg-[var(--bg-primary)] border-r border-[var(--border-subtle)] py-4">
       {/* Brand */}
       <div className="px-5 pb-6 pt-1">
         <span className="font-mono text-base font-bold tracking-tight">
@@ -45,10 +45,10 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           end={n.to === '/'}
           onClick={onNavigate}
           className={({ isActive }) =>
-            `flex items-center gap-2.5 px-5 py-2.5 text-[13px] font-medium border-l-2 transition-all no-underline ${
+            `flex items-center gap-2.5 px-5 py-2.5 text-[13px] font-medium border-l-2 transition-colors no-underline ${
               isActive
                 ? 'text-accent border-accent bg-accent-muted'
-                : 'text-[var(--text-secondary)] border-transparent hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] hover:pl-6'
+                : 'text-[var(--text-secondary)] border-transparent hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]'
             }`
           }
         >
@@ -61,11 +61,11 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       <div className="mt-auto px-5 flex flex-col gap-3">
         <div className="border-t border-[var(--border-subtle)] pt-3 flex flex-col gap-2 text-xs text-[var(--text-tertiary)]">
           <div className="flex items-center gap-2">
-            <span className={`size-1.5 rounded-full ${serverOk ? 'bg-green-500 animate-glow-pulse' : 'bg-[var(--border-default)]'}`} />
+            <span className={`size-1.5 rounded-full ${serverOk ? 'bg-[var(--success)]' : 'bg-[var(--border-default)]'}`} />
             Server
           </div>
           <div className="flex items-center gap-2 truncate">
-            <span className={`size-1.5 rounded-full ${llm.ok ? 'bg-green-500 animate-glow-pulse' : 'bg-red-500'}`} />
+            <span className={`size-1.5 rounded-full ${llm.ok ? 'bg-[var(--success)]' : 'bg-[var(--danger)]'}`} />
             <span className="truncate">LLM: {llm.model}</span>
           </div>
         </div>

@@ -1,5 +1,4 @@
 import { useNavigate } from 'react-router-dom'
-import { PieChart, Pie, Cell, Label, ResponsiveContainer, Legend, Tooltip } from 'recharts'
 import { Skeleton } from '../Skeleton'
 
 interface DocCoverageDonutProps {
@@ -15,86 +14,71 @@ const COLORS = {
   noDoc: '#94A3B8',
 }
 
+const CARD = 'bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5'
+
 export function DocCoverageDonut({ totalFeatures, documentedFeatures, featuresWithHints, loading }: DocCoverageDonutProps) {
   const navigate = useNavigate()
 
-  if (loading) return <Skeleton className="h-52" />
-
-  if (totalFeatures === 0) {
+  if (loading) {
     return (
-      <div className="flex items-center justify-center h-52 text-sm text-[var(--text-tertiary)]">
-        No features in catalog
+      <div className={CARD}>
+        <h3 className="text-sm font-semibold mb-4">Documentation Coverage</h3>
+        <Skeleton className="h-24" />
       </div>
     )
   }
 
-  // hints-only = features that have hints but no doc
+  if (totalFeatures === 0) {
+    return (
+      <div className={CARD}>
+        <h3 className="text-sm font-semibold mb-4">Documentation Coverage</h3>
+        <div className="text-sm text-[var(--text-tertiary)]">No features in catalog</div>
+      </div>
+    )
+  }
+
   const hintsOnly = Math.max(0, featuresWithHints - documentedFeatures)
-  const noDoc = totalFeatures - documentedFeatures - hintsOnly
+  const noDoc = Math.max(0, totalFeatures - documentedFeatures - hintsOnly)
   const docPct = Math.round((documentedFeatures / totalFeatures) * 100)
 
-  const data = [
+  const segments = [
     { name: 'Documented', value: documentedFeatures, color: COLORS.documented },
-    { name: 'Has hints only', value: hintsOnly, color: COLORS.hintsOnly },
+    { name: 'Hints only', value: hintsOnly, color: COLORS.hintsOnly },
     { name: 'No doc', value: noDoc, color: COLORS.noDoc },
-  ].filter(d => d.value > 0)
+  ].filter(s => s.value > 0)
 
   return (
-    <div className="bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-xl p-5">
-      <h3 className="text-sm font-semibold mb-3">Documentation Coverage</h3>
-      <ResponsiveContainer width="100%" height={260}>
-        <PieChart>
-          <Pie
-            data={data}
-            cx="50%"
-            cy="50%"
-            innerRadius={70}
-            outerRadius={100}
-            paddingAngle={2}
-            dataKey="value"
-            onClick={() => navigate('/features?filter=undocumented')}
-            className="cursor-pointer"
-          >
-            {data.map((entry, idx) => (
-              <Cell key={idx} fill={entry.color} stroke="var(--bg-primary)" strokeWidth={2} />
-            ))}
-            <Label
-              content={({ viewBox }) => {
-                const { cx, cy } = viewBox as { cx: number; cy: number }
-                return (
-                  <g>
-                    <text x={cx} y={cy - 8} textAnchor="middle" dominantBaseline="middle"
-                      className="fill-[var(--text-primary)]" fontSize={28} fontWeight={700}>
-                      {docPct}%
-                    </text>
-                    <text x={cx} y={cy + 20} textAnchor="middle" dominantBaseline="middle"
-                      className="fill-[var(--text-tertiary)]" fontSize={13}>
-                      documented
-                    </text>
-                  </g>
-                )
-              }}
-            />
-          </Pie>
-          <Tooltip
-            contentStyle={{
-              background: 'var(--bg-secondary)',
-              border: '1px solid var(--border-default)',
-              borderRadius: 8,
-              fontSize: 13,
-              color: 'var(--text-primary)',
-            }}
-            formatter={(value, name) => [`${value} features`, name]}
+    <div
+      className={`${CARD} cursor-pointer transition-colors hover:border-[var(--border-muted)]`}
+      onClick={() => navigate('/features?filter=undocumented')}
+    >
+      <h3 className="text-sm font-semibold mb-4">Documentation Coverage</h3>
+
+      <div className="flex items-baseline gap-2 mb-3">
+        <span className="text-2xl font-semibold text-[var(--text-primary)] leading-none">{docPct}%</span>
+        <span className="text-xs text-[var(--text-secondary)]">documented</span>
+      </div>
+
+      <div className="flex h-2 w-full rounded-full overflow-hidden bg-[var(--bg-tertiary)] mb-3">
+        {segments.map(s => (
+          <div
+            key={s.name}
+            style={{ width: `${(s.value / totalFeatures) * 100}%`, background: s.color }}
+            className="h-full"
           />
-          <Legend
-            verticalAlign="bottom"
-            height={36}
-            iconType="circle"
-            iconSize={8}
-            formatter={(value: string) => <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{value}</span>}
-          />
-        </PieChart>
-      </ResponsiveContainer>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+        {segments.map(s => (
+          <div key={s.name} className="flex items-center gap-1.5 text-xs">
+            <span className="inline-block w-2 h-2 rounded-full" style={{ background: s.color }} />
+            <span className="text-[var(--text-secondary)]">
+              {s.name} <span className="text-[var(--text-tertiary)]">({s.value})</span>
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

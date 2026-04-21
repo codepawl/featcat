@@ -52,7 +52,7 @@ export function UsageBubbleChart({ data, orphaned, loading }: UsageBubbleChartPr
 
   if (data.length === 0 && orphaned.length === 0) {
     return (
-      <div className="bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-xl p-5">
+      <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5">
         <h3 className="text-sm font-semibold mb-1">Feature usage landscape (last 30 days)</h3>
         <p className="text-[var(--text-tertiary)] text-sm">No usage data yet</p>
       </div>
@@ -63,7 +63,7 @@ export function UsageBubbleChart({ data, orphaned, loading }: UsageBubbleChartPr
   const allZero = data.every(d => d.view_count + d.query_count === 0)
   if (allZero && data.length > 0) {
     return (
-      <div className="bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-xl p-5">
+      <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5">
         <h3 className="text-sm font-semibold mb-1">Feature usage landscape (last 30 days)</h3>
         <div className="flex items-center justify-center h-48 text-[var(--text-tertiary)] text-sm">
           No usage data yet. Features will appear here after team members start querying the catalog.
@@ -133,7 +133,7 @@ export function UsageBubbleChart({ data, orphaned, loading }: UsageBubbleChartPr
   }
 
   return (
-    <div className="bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-xl p-5">
+    <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5">
       <h3 className="text-sm font-semibold mb-1">Feature usage landscape (last 30 days)</h3>
       <p className="text-xs text-[var(--text-tertiary)] mb-3">Bubble size = query count. Red outline = orphaned.</p>
       <ResponsiveContainer width="100%" height={300}>
