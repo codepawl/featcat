@@ -1,1 +1,15 @@
-{}
+{
+  "page": {
+    "title": "Settings",
+    "subtitle": "Customize your featcat experience"
+  },
+  "language": {
+    "title": "Language",
+    "description": "Choose the display language for the interface",
+    "current": "Current",
+    "options": {
+      "vi": "Tiếng Việt",
+      "en": "English"
+    }
+  }
+}

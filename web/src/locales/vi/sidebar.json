@@ -1,1 +1,13 @@
-{}
+{
+  "nav": {
+    "dashboard": "Tổng quan",
+    "features": "Features",
+    "groups": "Nhóm",
+    "similarity": "Tương đồng",
+    "audit": "Nhật ký",
+    "monitoring": "Giám sát",
+    "jobs": "Tác vụ",
+    "chat": "AI Chat",
+    "settings": "Cài đặt"
+  }
+}

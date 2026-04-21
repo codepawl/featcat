@@ -1,21 +1,24 @@
 import { NavLink } from 'react-router-dom'
 import { useEffect, useState } from 'react'
-import { LayoutDashboard, Database, Activity, Clock, MessageSquare, FolderKanban, GitBranch, History } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { LayoutDashboard, Database, Activity, Clock, MessageSquare, FolderKanban, GitBranch, History, Settings } from 'lucide-react'
 import { api } from '../api'
 import { ThemeToggle } from './ThemeToggle'
 
 const NAV = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/features', label: 'Features', icon: Database },
-  { to: '/groups', label: 'Groups', icon: FolderKanban },
-  { to: '/similarity', label: 'Similarity', icon: GitBranch },
-  { to: '/audit', label: 'Audit', icon: History },
-  { to: '/monitoring', label: 'Monitoring', icon: Activity },
-  { to: '/jobs', label: 'Jobs', icon: Clock },
-  { to: '/chat', label: 'AI Chat', icon: MessageSquare },
-]
+  { to: '/', key: 'dashboard', icon: LayoutDashboard },
+  { to: '/features', key: 'features', icon: Database },
+  { to: '/groups', key: 'groups', icon: FolderKanban },
+  { to: '/similarity', key: 'similarity', icon: GitBranch },
+  { to: '/audit', key: 'audit', icon: History },
+  { to: '/monitoring', key: 'monitoring', icon: Activity },
+  { to: '/jobs', key: 'jobs', icon: Clock },
+  { to: '/chat', key: 'chat', icon: MessageSquare },
+  { to: '/settings', key: 'settings', icon: Settings },
+] as const
 
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
+  const { t } = useTranslation('sidebar')
   const [llm, setLlm] = useState<{ ok: boolean; model: string }>({ ok: false, model: 'checking...' })
   const [serverOk, setServerOk] = useState(false)
 
@@ -53,7 +56,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           }
         >
           <n.icon size={16} strokeWidth={1.8} />
-          {n.label}
+          {t(`nav.${n.key}`)}
         </NavLink>
       ))}
 

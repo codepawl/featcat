@@ -10,6 +10,7 @@ const Monitoring = lazy(() => import('./pages/Monitoring').then((m) => ({ defaul
 const Jobs = lazy(() => import('./pages/Jobs').then((m) => ({ default: m.Jobs })))
 const Audit = lazy(() => import('./pages/Audit').then((m) => ({ default: m.Audit })))
 const Chat = lazy(() => import('./pages/Chat').then((m) => ({ default: m.Chat })))
+const Settings = lazy(() => import('./pages/Settings').then((m) => ({ default: m.Settings })))
 
 function RouteFallback() {
   return (
@@ -34,6 +35,7 @@ export default function App() {
             <Route path="/monitoring" element={<Monitoring />} />
             <Route path="/jobs" element={<Jobs />} />
             <Route path="/chat" element={<Chat />} />
+            <Route path="/settings" element={<Settings />} />
           </Routes>
         </Suspense>
       </Layout>

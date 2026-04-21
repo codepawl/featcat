@@ -1,1 +1,13 @@
-{}
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "features": "Features",
+    "groups": "Groups",
+    "similarity": "Similarity",
+    "audit": "Audit",
+    "monitoring": "Monitoring",
+    "jobs": "Jobs",
+    "chat": "AI Chat",
+    "settings": "Settings"
+  }
+}
