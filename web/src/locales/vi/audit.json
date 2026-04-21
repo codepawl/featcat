@@ -1,1 +1,28 @@
-{}
+{
+  "page": {
+    "title": "Nhật ký Audit",
+    "subtitle": "Mọi thay đổi metadata trên catalog"
+  },
+  "filters": {
+    "last_n_days": "{{n}} ngày qua",
+    "all_time": "Toàn thời gian",
+    "all_users": "Tất cả người dùng",
+    "all_types": "Tất cả loại",
+    "changes_count": "{{count}} thay đổi"
+  },
+  "table": {
+    "when": "Thời điểm",
+    "feature": "Feature",
+    "changed_by": "Người sửa",
+    "type": "Loại",
+    "summary": "Tóm tắt"
+  },
+  "change_types": {
+    "doc": "Tài liệu",
+    "hints": "Gợi ý",
+    "definition": "Định nghĩa",
+    "tags": "Tag",
+    "metadata": "Metadata"
+  },
+  "empty": "Không có thay đổi nào trong khoảng thời gian này"
+}

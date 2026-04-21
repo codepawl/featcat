@@ -1,1 +1,47 @@
-{}
+{
+  "page": {
+    "title": "Feature Groups"
+  },
+  "actions": {
+    "new_group": "New Group",
+    "create": "Create",
+    "add_features": "Add Features",
+    "export": "Export",
+    "delete": "Delete",
+    "add": "Add"
+  },
+  "list": {
+    "empty": "No groups yet",
+    "members_count": "{{count}} features"
+  },
+  "detail": {
+    "select_hint": "Select a group to view details",
+    "owner_label": "Owner",
+    "members_heading": "Members ({{count}})",
+    "members_empty": "No features in this group yet"
+  },
+  "member_table": {
+    "feature": "Feature",
+    "dtype": "Dtype",
+    "docs": "Docs",
+    "has_docs_yes": "yes"
+  },
+  "create_modal": {
+    "title": "New Group",
+    "fields": {
+      "name": "Name",
+      "name_placeholder": "Group name",
+      "description": "Description",
+      "description_placeholder": "Optional description",
+      "project": "Project",
+      "project_placeholder": "Project name",
+      "owner": "Owner",
+      "owner_placeholder": "Owner name"
+    }
+  },
+  "add_modal": {
+    "title": "Add features to {{group}}"
+  },
+  "export_title": "{{name}} ({{count}} features)",
+  "confirm_delete": "Delete group \"{{name}}\"?"
+}

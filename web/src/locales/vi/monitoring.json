@@ -1,1 +1,57 @@
-{}
+{
+  "page": {
+    "title": "Giám sát"
+  },
+  "stats": {
+    "healthy": "Ổn định",
+    "warnings": "Cảnh báo",
+    "critical": "Nghiêm trọng"
+  },
+  "actions": {
+    "run_check_now": "Chạy kiểm tra",
+    "checking": "Đang kiểm tra...",
+    "refresh_baseline": "Làm mới Baseline",
+    "export_report": "Xuất báo cáo"
+  },
+  "hints": {
+    "run_baseline_first": "Chạy 'Làm mới Baseline' trước"
+  },
+  "drift_table": {
+    "title": "Trạng thái Drift của Feature",
+    "empty": "Chưa có dữ liệu drift. Chạy baseline trước, rồi kiểm tra.",
+    "columns": {
+      "feature": "Feature",
+      "severity": "Mức độ",
+      "issue": "Vấn đề",
+      "psi": "PSI"
+    }
+  },
+  "errors": {
+    "no_drift_data": "Không có dữ liệu drift. Chạy 'Làm mới Baseline' trước để thiết lập phân phối tham chiếu.",
+    "check_failed": "Chạy kiểm tra thất bại. Hãy chắc chắn baseline đã được tính.",
+    "baseline_failed": "Tính baseline thất bại."
+  },
+  "baseline_modal": {
+    "title": "Làm mới Baseline",
+    "body": "Thao tác này sẽ tính lại baseline cho toàn bộ Feature. Các cảnh báo drift hiện tại sẽ bị xóa cho đến lần kiểm tra tiếp theo."
+  },
+  "psi_labels": {
+    "no_data": "Không có dữ liệu",
+    "no_change": "Không thay đổi đáng kể",
+    "moderate": "Thay đổi vừa phải",
+    "significant": "Thay đổi lớn"
+  },
+  "detail": {
+    "issues": "Vấn đề",
+    "ai_analysis": "Phân tích AI",
+    "likely_cause": "Nguyên nhân có thể",
+    "view_feature": "Xem Feature →"
+  },
+  "stats_rows": {
+    "mean": "Trung bình",
+    "std": "Độ lệch chuẩn",
+    "min": "Nhỏ nhất",
+    "max": "Lớn nhất",
+    "null_ratio": "Tỷ lệ null"
+  }
+}

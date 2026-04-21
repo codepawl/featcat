@@ -1,1 +1,34 @@
-{}
+{
+  "page": {
+    "title": "Tương đồng Feature",
+    "subtitle": "Các Feature được nối với nhau theo độ tương đồng ngữ nghĩa — cạnh càng dày thể hiện liên hệ càng mạnh. Dùng trang này để phát hiện Feature liên quan và trùng lặp tiềm tàng."
+  },
+  "filter_placeholder": "Lọc node...",
+  "threshold_label": "Ngưỡng tương đồng:",
+  "actions": {
+    "fit": "Vừa màn hình",
+    "reset_layout": "Khôi phục bố cục",
+    "fit_title": "Vừa màn hình",
+    "reset_title": "Khôi phục bố cục"
+  },
+  "sources_label": "Nguồn",
+  "legend": {
+    "strong": "Tương đồng mạnh (>0.7)",
+    "moderate": "Vừa (0.4–0.7)",
+    "weak": "Yếu (<0.4)"
+  },
+  "empty": {
+    "title": "Không đủ Feature để tính tương đồng",
+    "subtitle": "Thêm ít nhất 2 Feature vào catalog để xem quan hệ tương đồng."
+  },
+  "tooltip": {
+    "type": "Loại",
+    "source": "Nguồn",
+    "tags": "Tag",
+    "tags_none": "không có",
+    "doc": "Tài liệu",
+    "drift": "Drift",
+    "connected_to_one": "── Nối với {{count}} Feature",
+    "connected_to_other": "── Nối với {{count}} Feature"
+  }
+}

@@ -1,1 +1,47 @@
-{}
+{
+  "page": {
+    "title": "Feature Groups"
+  },
+  "actions": {
+    "new_group": "Nhóm mới",
+    "create": "Tạo",
+    "add_features": "Thêm Feature",
+    "export": "Xuất",
+    "delete": "Xóa",
+    "add": "Thêm"
+  },
+  "list": {
+    "empty": "Chưa có nhóm nào",
+    "members_count": "{{count}} Feature"
+  },
+  "detail": {
+    "select_hint": "Chọn một nhóm để xem chi tiết",
+    "owner_label": "Chủ sở hữu",
+    "members_heading": "Thành viên ({{count}})",
+    "members_empty": "Chưa có Feature nào trong nhóm này"
+  },
+  "member_table": {
+    "feature": "Feature",
+    "dtype": "Dtype",
+    "docs": "Tài liệu",
+    "has_docs_yes": "có"
+  },
+  "create_modal": {
+    "title": "Nhóm mới",
+    "fields": {
+      "name": "Tên",
+      "name_placeholder": "Tên nhóm",
+      "description": "Mô tả",
+      "description_placeholder": "Mô tả tùy chọn",
+      "project": "Dự án",
+      "project_placeholder": "Tên dự án",
+      "owner": "Chủ sở hữu",
+      "owner_placeholder": "Tên chủ sở hữu"
+    }
+  },
+  "add_modal": {
+    "title": "Thêm Feature vào {{group}}"
+  },
+  "export_title": "{{name}} ({{count}} Feature)",
+  "confirm_delete": "Xóa nhóm \"{{name}}\"?"
+}

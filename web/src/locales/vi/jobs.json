@@ -1,1 +1,51 @@
-{}
+{
+  "page": {
+    "title": "Tác vụ"
+  },
+  "job_card": {
+    "no_description": "Không có mô tả",
+    "actions": {
+      "enable": "Bật",
+      "disable": "Tắt",
+      "run_now": "Chạy ngay",
+      "running": "Đang chạy...",
+      "edit_schedule": "Sửa lịch"
+    }
+  },
+  "history": {
+    "title": "Lịch sử chạy",
+    "filters": {
+      "all_jobs": "Tất cả Job",
+      "all_statuses": "Tất cả trạng thái"
+    },
+    "table": {
+      "job": "Job",
+      "status": "Trạng thái",
+      "started": "Bắt đầu",
+      "duration": "Thời lượng",
+      "result": "Kết quả",
+      "triggered_by": "Kích hoạt bởi"
+    }
+  },
+  "schedule_modal": {
+    "title": "Sửa lịch",
+    "cron_expression": "Biểu thức Cron",
+    "saving": "Đang lưu..."
+  },
+  "cron_human": {
+    "every_n_minutes": "Mỗi {{n}} phút",
+    "every_n_hours": "Mỗi {{n}} giờ",
+    "weekly_on": "Hàng tuần vào {{day}} lúc {{time}}",
+    "daily_at": "Hàng ngày lúc {{time}}",
+    "days": {
+      "Sunday": "Chủ nhật",
+      "Monday": "Thứ hai",
+      "Tuesday": "Thứ ba",
+      "Wednesday": "Thứ tư",
+      "Thursday": "Thứ năm",
+      "Friday": "Thứ sáu",
+      "Saturday": "Thứ bảy"
+    }
+  },
+  "confirm_run": "Chạy \"{{name}}\" ngay bây giờ? Có thể mất 30-60 giây."
+}

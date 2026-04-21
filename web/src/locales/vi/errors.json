@@ -1,1 +1,4 @@
-{}
+{
+  "fetch_failed": "Không thể kết nối tới server",
+  "generic": "Đã xảy ra lỗi"
+}

@@ -1,1 +1,51 @@
-{}
+{
+  "page": {
+    "title": "Jobs"
+  },
+  "job_card": {
+    "no_description": "No description",
+    "actions": {
+      "enable": "Enable",
+      "disable": "Disable",
+      "run_now": "Run Now",
+      "running": "Running...",
+      "edit_schedule": "Edit Schedule"
+    }
+  },
+  "history": {
+    "title": "Execution History",
+    "filters": {
+      "all_jobs": "All Jobs",
+      "all_statuses": "All Statuses"
+    },
+    "table": {
+      "job": "Job",
+      "status": "Status",
+      "started": "Started",
+      "duration": "Duration",
+      "result": "Result",
+      "triggered_by": "Triggered By"
+    }
+  },
+  "schedule_modal": {
+    "title": "Edit Schedule",
+    "cron_expression": "Cron Expression",
+    "saving": "Saving..."
+  },
+  "cron_human": {
+    "every_n_minutes": "Every {{n}} minutes",
+    "every_n_hours": "Every {{n}} hours",
+    "weekly_on": "Weekly on {{day}} at {{time}}",
+    "daily_at": "Daily at {{time}}",
+    "days": {
+      "Sunday": "Sunday",
+      "Monday": "Monday",
+      "Tuesday": "Tuesday",
+      "Wednesday": "Wednesday",
+      "Thursday": "Thursday",
+      "Friday": "Friday",
+      "Saturday": "Saturday"
+    }
+  },
+  "confirm_run": "Run \"{{name}}\" now? This may take 30-60 seconds."
+}

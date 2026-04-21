@@ -1,1 +1,4 @@
-{}
+{
+  "fetch_failed": "Cannot connect to server",
+  "generic": "An error occurred"
+}

@@ -1,1 +1,34 @@
-{}
+{
+  "page": {
+    "title": "Feature Similarity",
+    "subtitle": "Features are connected by semantic similarity — thicker edges mean stronger relationship. Use this to discover related features and potential duplicates."
+  },
+  "filter_placeholder": "Filter nodes...",
+  "threshold_label": "Similarity threshold:",
+  "actions": {
+    "fit": "Fit",
+    "reset_layout": "Reset",
+    "fit_title": "Fit to screen",
+    "reset_title": "Reset layout"
+  },
+  "sources_label": "Sources",
+  "legend": {
+    "strong": "Strong similarity (>0.7)",
+    "moderate": "Moderate (0.4–0.7)",
+    "weak": "Weak (<0.4)"
+  },
+  "empty": {
+    "title": "Not enough features to compute similarity",
+    "subtitle": "Add at least 2 features to the catalog to see similarity relationships."
+  },
+  "tooltip": {
+    "type": "Type",
+    "source": "Source",
+    "tags": "Tags",
+    "tags_none": "none",
+    "doc": "Doc",
+    "drift": "Drift",
+    "connected_to_one": "── Connected to {{count}} feature",
+    "connected_to_other": "── Connected to {{count}} features"
+  }
+}

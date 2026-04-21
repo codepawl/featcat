@@ -1,1 +1,28 @@
-{}
+{
+  "page": {
+    "title": "Audit Log",
+    "subtitle": "All metadata changes across the catalog"
+  },
+  "filters": {
+    "last_n_days": "Last {{n}} days",
+    "all_time": "All time",
+    "all_users": "All users",
+    "all_types": "All types",
+    "changes_count": "{{count}} changes"
+  },
+  "table": {
+    "when": "When",
+    "feature": "Feature",
+    "changed_by": "Changed by",
+    "type": "Type",
+    "summary": "Summary"
+  },
+  "change_types": {
+    "doc": "Documentation",
+    "hints": "Hints",
+    "definition": "Definition",
+    "tags": "Tags",
+    "metadata": "Metadata"
+  },
+  "empty": "No changes recorded in this period"
+}

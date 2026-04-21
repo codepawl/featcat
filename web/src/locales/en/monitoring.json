@@ -1,1 +1,57 @@
-{}
+{
+  "page": {
+    "title": "Monitoring"
+  },
+  "stats": {
+    "healthy": "Healthy",
+    "warnings": "Warnings",
+    "critical": "Critical"
+  },
+  "actions": {
+    "run_check_now": "Run Check Now",
+    "checking": "Checking...",
+    "refresh_baseline": "Refresh Baseline",
+    "export_report": "Export Report"
+  },
+  "hints": {
+    "run_baseline_first": "Run 'Refresh Baseline' first"
+  },
+  "drift_table": {
+    "title": "Feature Drift Status",
+    "empty": "No drift data. Run baseline first, then check.",
+    "columns": {
+      "feature": "Feature",
+      "severity": "Severity",
+      "issue": "Issue",
+      "psi": "PSI"
+    }
+  },
+  "errors": {
+    "no_drift_data": "No drift data returned. Run 'Refresh Baseline' first to establish reference distributions.",
+    "check_failed": "Failed to run check. Ensure baselines are computed first.",
+    "baseline_failed": "Failed to compute baseline."
+  },
+  "baseline_modal": {
+    "title": "Refresh Baseline",
+    "body": "This will recompute baseline statistics for all features. Current drift alerts will be cleared until the next check."
+  },
+  "psi_labels": {
+    "no_data": "No data",
+    "no_change": "No significant change",
+    "moderate": "Moderate change",
+    "significant": "Significant change"
+  },
+  "detail": {
+    "issues": "Issues",
+    "ai_analysis": "AI Analysis",
+    "likely_cause": "Likely cause",
+    "view_feature": "View feature →"
+  },
+  "stats_rows": {
+    "mean": "Mean",
+    "std": "Std",
+    "min": "Min",
+    "max": "Max",
+    "null_ratio": "Null %"
+  }
+}
