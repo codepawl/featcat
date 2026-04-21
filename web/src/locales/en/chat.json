@@ -53,6 +53,7 @@
     "prefix": "Error: {{message}}"
   },
   "thinking_stream": {
-    "using_tool": "\nUsing tool: {{tool}}..."
+    "using_tool": "Using tool: {{tool}}...",
+    "looking_up": "Looking up: {{tool}}..."
   }
 }

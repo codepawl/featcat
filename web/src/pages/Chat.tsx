@@ -197,8 +197,11 @@ export function Chat() {
           case 'thinking_end':
             updateLastMessage({ isDoneThinking: true })
             return false
+          case 'tool_start':
+            appendToLastMessage('thinking', '\n' + t('thinking_stream.looking_up', { tool: data.tool }))
+            return false
           case 'tool_call':
-            appendToLastMessage('thinking', t('thinking_stream.using_tool', { tool: data.name }))
+            appendToLastMessage('thinking', '\n' + t('thinking_stream.using_tool', { tool: data.name }))
             return false
           case 'tool_result':
             return false
@@ -308,10 +311,10 @@ export function Chat() {
   const renderAiContent = (msg: ChatMsg) => (
     <>
       {(msg.thinking || (msg.isStreaming && !msg.content && !msg.result)) && (
-        <ThinkingBlock content={msg.thinking || ''} isDone={msg.isDoneThinking ?? false} />
-      )}
-      {msg.isDoneThinking && msg.thinking && !msg.isStreaming && (
-        <ThinkingBlock content={msg.thinking} isDone />
+        <ThinkingBlock
+          content={msg.thinking || ''}
+          isDone={(msg.isDoneThinking ?? false) || !msg.isStreaming}
+        />
       )}
       {msg.isStreaming && !msg.content && !msg.thinking && !msg.result && (
         <div className="flex items-center gap-2 text-sm text-[var(--text-tertiary)]">

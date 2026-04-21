@@ -53,6 +53,7 @@
     "prefix": "Lỗi: {{message}}"
   },
   "thinking_stream": {
-    "using_tool": "\nĐang dùng công cụ: {{tool}}..."
+    "using_tool": "Đang dùng công cụ: {{tool}}...",
+    "looking_up": "Đang tra cứu: {{tool}}..."
   }
 }
