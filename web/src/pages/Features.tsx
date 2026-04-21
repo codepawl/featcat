@@ -1081,23 +1081,6 @@ function MiniBarChart({ data }: { data: { date: string; count: number }[] }) {
 }
 
 
-function HealthBar({ value, max, label, detail }: { value: number; max: number; label: string; detail?: string }) {
-  const pct = max > 0 ? (value / max) * 100 : 0
-  return (
-    <div className="grid grid-cols-[112px_1fr_auto] gap-3 items-center">
-      <span className="text-sm text-[var(--text-secondary)]">{label}</span>
-      <div className="h-1.5 bg-[var(--bg-tertiary)] rounded-full overflow-hidden">
-        <div className="h-full bg-[var(--accent)] transition-all" style={{ width: `${pct}%` }} />
-      </div>
-      <div className="flex items-center gap-2 whitespace-nowrap">
-        <span className="text-xs font-mono text-[var(--text-secondary)] tabular-nums">{value}/{max}</span>
-        {detail && <span className="text-xs text-[var(--text-tertiary)]">{detail}</span>}
-      </div>
-    </div>
-  )
-}
-
-
 function HealthBreakdown({ feature }: { feature: FeatureRow }) {
   const score = feature.health_score ?? 0
   const grade = feature.health_grade ?? '-'
@@ -1110,6 +1093,13 @@ function HealthBreakdown({ feature }: { feature: FeatureRow }) {
   if (bd.drift === 0) tips.push('Feature has critical drift — investigate data quality')
   if (bd.usage === 0) tips.push('Feature not queried recently (+10pts if used)')
 
+  const driftNote = bd.drift === 40 ? 'healthy' : bd.drift === 0 ? 'critical' : bd.drift === 20 ? 'warning' : 'unknown'
+  const usageNote = bd.usage === 0 ? 'no recent usage' : undefined
+
+  const docPct = (bd.documentation / 40) * 100
+  const driftPct = (bd.drift / 40) * 100
+  const usagePct = (bd.usage / 20) * 100
+
   return (
     <div>
       <div className="flex items-center gap-3 mb-3">
@@ -1117,10 +1107,32 @@ function HealthBreakdown({ feature }: { feature: FeatureRow }) {
         <span className="text-[var(--text-tertiary)] text-sm">/ 100</span>
         <span className={`px-2 py-0.5 rounded text-xs font-bold ${cls}`}>{grade}</span>
       </div>
-      <div className="space-y-2">
-        <HealthBar value={bd.documentation} max={40} label="Documentation" />
-        <HealthBar value={bd.drift} max={40} label="Drift" detail={bd.drift === 40 ? 'healthy' : bd.drift === 0 ? 'critical' : bd.drift === 20 ? 'warning' : 'unknown'} />
-        <HealthBar value={bd.usage} max={20} label="Usage" detail={bd.usage === 0 ? 'no recent usage' : undefined} />
+      <div className="grid grid-cols-[112px_1fr_auto] gap-x-3 gap-y-3 items-center">
+        <span className="text-sm text-[var(--text-secondary)]">Documentation</span>
+        <div className="h-1.5 bg-[var(--bg-tertiary)] rounded-full overflow-hidden">
+          <div className="h-full bg-[var(--accent)] transition-all" style={{ width: `${docPct}%` }} />
+        </div>
+        <div className="flex items-center gap-2 whitespace-nowrap text-xs">
+          <span className="font-mono text-[var(--text-secondary)] tabular-nums">{bd.documentation}/40</span>
+        </div>
+
+        <span className="text-sm text-[var(--text-secondary)]">Drift</span>
+        <div className="h-1.5 bg-[var(--bg-tertiary)] rounded-full overflow-hidden">
+          <div className="h-full bg-[var(--accent)] transition-all" style={{ width: `${driftPct}%` }} />
+        </div>
+        <div className="flex items-center gap-2 whitespace-nowrap text-xs">
+          <span className="font-mono text-[var(--text-secondary)] tabular-nums">{bd.drift}/40</span>
+          <span className="text-[var(--text-tertiary)]">{driftNote}</span>
+        </div>
+
+        <span className="text-sm text-[var(--text-secondary)]">Usage</span>
+        <div className="h-1.5 bg-[var(--bg-tertiary)] rounded-full overflow-hidden">
+          <div className="h-full bg-[var(--accent)] transition-all" style={{ width: `${usagePct}%` }} />
+        </div>
+        <div className="flex items-center gap-2 whitespace-nowrap text-xs">
+          <span className="font-mono text-[var(--text-secondary)] tabular-nums">{bd.usage}/20</span>
+          {usageNote && <span className="text-[var(--text-tertiary)]">{usageNote}</span>}
+        </div>
       </div>
       {tips.length > 0 && (
         <div className="mt-3 pt-3 border-t border-[var(--border-subtle)] space-y-1">
