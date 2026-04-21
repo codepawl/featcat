@@ -1,1 +1,55 @@
-{}
+{
+  "empty": {
+    "greeting": "Chào bạn — hãy hỏi về features của bạn",
+    "subtitle": "featcat AI giúp bạn tìm, phân tích, và hiểu dữ liệu catalog"
+  },
+  "suggestions": {
+    "discover": {
+      "title": "Khám phá features",
+      "example": "Ví dụ: \"cho tôi danh sách feature chưa có tài liệu\"",
+      "prompt": "Cho tôi danh sách feature chưa có tài liệu"
+    },
+    "drift": {
+      "title": "Kiểm tra drift",
+      "example": "Ví dụ: \"tìm features bị drift mạnh nhất\"",
+      "prompt": "Tìm features bị drift mạnh nhất trong 7 ngày qua"
+    },
+    "similar": {
+      "title": "Tìm tương đồng",
+      "example": "Ví dụ: \"có features nào giống rssi không\"",
+      "prompt": "Có features nào tương đồng với client_logs.rssi không?"
+    },
+    "improve": {
+      "title": "Cải thiện catalog",
+      "example": "Ví dụ: \"features nào cần bổ sung tài liệu gấp\"",
+      "prompt": "Features nào cần bổ sung tài liệu gấp?"
+    }
+  },
+  "input": {
+    "placeholder": "Hỏi về features...",
+    "send": "Gửi",
+    "clear": "Xóa",
+    "clear_title": "Xóa cuộc trò chuyện"
+  },
+  "status": {
+    "generating": "Đang tạo phản hồi...",
+    "llm_unavailable": "LLM không khả dụng. Phản hồi AI có thể chỉ giới hạn tìm kiếm theo từ khóa.",
+    "empty_response": "LLM trả về phản hồi rỗng. Thử lại hoặc kiểm tra /api/health.",
+    "connection_lost": "Mất kết nối. Server có thể không khả dụng."
+  },
+  "result_table": {
+    "feature": "Feature",
+    "score": "Điểm",
+    "reason": "Lý do",
+    "name": "Tên",
+    "relevance": "Độ liên quan",
+    "relevant_features": "Features liên quan",
+    "suggested_new": "Features gợi ý mới",
+    "from_source": "từ {{source}}",
+    "no_matches": "Không tìm thấy Feature phù hợp.",
+    "try_follow_up": "Thử: {{text}}"
+  },
+  "errors": {
+    "prefix": "Lỗi: {{message}}"
+  }
+}

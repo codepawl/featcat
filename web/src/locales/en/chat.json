@@ -1,1 +1,55 @@
-{}
+{
+  "empty": {
+    "greeting": "Hi — ask anything about your features",
+    "subtitle": "featcat AI helps you discover, analyze, and understand your catalog"
+  },
+  "suggestions": {
+    "discover": {
+      "title": "Discover features",
+      "example": "E.g. \"list features without documentation\"",
+      "prompt": "List features without documentation"
+    },
+    "drift": {
+      "title": "Check drift",
+      "example": "E.g. \"find features with highest drift\"",
+      "prompt": "Find features with the highest drift in the last 7 days"
+    },
+    "similar": {
+      "title": "Find similar",
+      "example": "E.g. \"features similar to rssi\"",
+      "prompt": "Features similar to client_logs.rssi"
+    },
+    "improve": {
+      "title": "Improve catalog",
+      "example": "E.g. \"which features need urgent documentation\"",
+      "prompt": "Which features need urgent documentation?"
+    }
+  },
+  "input": {
+    "placeholder": "Ask about features...",
+    "send": "Send",
+    "clear": "Clear",
+    "clear_title": "Clear chat"
+  },
+  "status": {
+    "generating": "Generating response...",
+    "llm_unavailable": "LLM is not available. AI responses may be limited to keyword search only.",
+    "empty_response": "LLM returned an empty response. Try again or check /api/health.",
+    "connection_lost": "Connection lost. Server may be unavailable."
+  },
+  "result_table": {
+    "feature": "Feature",
+    "score": "Score",
+    "reason": "Reason",
+    "name": "Name",
+    "relevance": "Relevance",
+    "relevant_features": "Relevant features",
+    "suggested_new": "Suggested new features",
+    "from_source": "from {{source}}",
+    "no_matches": "No matching features found.",
+    "try_follow_up": "Try: {{text}}"
+  },
+  "errors": {
+    "prefix": "Error: {{message}}"
+  }
+}

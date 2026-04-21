@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
-import { Send, Sparkles, BarChart3, Activity, Loader2, Trash2 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { Send, Sparkles, Activity, Search, Lightbulb, Bot, Loader2, Trash2 } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import { api, invalidateCache } from '../api'
 import { useChatStore } from '../hooks/useChatStore'
 import { ChatMessage } from '../components/ChatMessage'
@@ -8,6 +10,7 @@ import { chatStore } from '../stores/chatStore'
 import type { ChatMessage as ChatMsg } from '../stores/chatStore'
 
 function ResultTable({ data }: { data: any }) {
+  const { t } = useTranslation('chat')
   if (!data) return null
   const results = data.results || []
   const existingFeatures = data.existing_features || []
@@ -18,9 +21,9 @@ function ResultTable({ data }: { data: any }) {
       {results.length > 0 && (
         <table className="w-full text-[13px] border-collapse">
           <thead><tr className="text-xs text-[var(--text-tertiary)] border-b border-[var(--border-default)]">
-            <th className="text-left py-1 font-medium">Feature</th>
-            <th className="text-right py-1 font-medium">Score</th>
-            <th className="text-left py-1 font-medium">Reason</th>
+            <th className="text-left py-1 font-medium">{t('result_table.feature')}</th>
+            <th className="text-right py-1 font-medium">{t('result_table.score')}</th>
+            <th className="text-left py-1 font-medium">{t('result_table.reason')}</th>
           </tr></thead>
           <tbody>
             {results.map((r: any, i: number) => (
@@ -34,20 +37,20 @@ function ResultTable({ data }: { data: any }) {
         </table>
       )}
       {results.length === 0 && !existingFeatures.length && !suggestions.length && (
-        <p className="text-[var(--text-tertiary)] italic text-sm">No matching features found.</p>
+        <p className="text-[var(--text-tertiary)] italic text-sm">{t('result_table.no_matches')}</p>
       )}
       {data.interpretation && <p className="text-xs text-[var(--text-secondary)]">{data.interpretation}</p>}
-      {data.follow_up && <p className="text-xs text-blue-500">Try: {data.follow_up}</p>}
+      {data.follow_up && <p className="text-xs text-[var(--accent)]">{t('result_table.try_follow_up', { text: data.follow_up })}</p>}
       {data.summary && <p className="text-sm text-[var(--text-secondary)] mt-2">{data.summary}</p>}
 
       {existingFeatures.length > 0 && (
         <>
-          <h4 className="text-xs font-semibold mt-3">Relevant features</h4>
+          <h4 className="text-xs font-semibold mt-3">{t('result_table.relevant_features')}</h4>
           <table className="w-full text-[13px] border-collapse">
             <thead><tr className="text-xs text-[var(--text-tertiary)] border-b border-[var(--border-default)]">
-              <th className="text-left py-1 font-medium">Name</th>
-              <th className="text-right py-1 font-medium">Relevance</th>
-              <th className="text-left py-1 font-medium">Reason</th>
+              <th className="text-left py-1 font-medium">{t('result_table.name')}</th>
+              <th className="text-right py-1 font-medium">{t('result_table.relevance')}</th>
+              <th className="text-left py-1 font-medium">{t('result_table.reason')}</th>
             </tr></thead>
             <tbody>
               {existingFeatures.map((f: any, i: number) => (
@@ -64,12 +67,12 @@ function ResultTable({ data }: { data: any }) {
 
       {suggestions.length > 0 && (
         <>
-          <h4 className="text-xs font-semibold mt-3">Suggested new features</h4>
+          <h4 className="text-xs font-semibold mt-3">{t('result_table.suggested_new')}</h4>
           <div className="space-y-2">
             {suggestions.map((s: any, i: number) => (
               <div key={i} className="p-3 bg-[var(--bg-secondary)] rounded-lg border-l-2 border-accent">
                 <span className="font-medium text-sm">{s.name}</span>
-                <span className="text-[11px] text-[var(--text-tertiary)] ml-2">from {s.source}</span>
+                <span className="text-[11px] text-[var(--text-tertiary)] ml-2">{t('result_table.from_source', { source: s.source })}</span>
                 <p className="text-xs text-[var(--text-secondary)] mt-1">{s.reason}</p>
                 {s.column_expression && <code className="text-[11px] bg-[var(--code-bg)] px-1.5 py-0.5 rounded mt-1 inline-block font-mono">{s.column_expression}</code>}
               </div>
@@ -89,7 +92,28 @@ function tryParseResult(text: string): any | null {
   return null
 }
 
+const SUGGESTIONS = [
+  { icon: Sparkles,  titleKey: 'suggestions.discover.title', exampleKey: 'suggestions.discover.example', promptKey: 'suggestions.discover.prompt' },
+  { icon: Activity,  titleKey: 'suggestions.drift.title',    exampleKey: 'suggestions.drift.example',    promptKey: 'suggestions.drift.prompt' },
+  { icon: Search,    titleKey: 'suggestions.similar.title',  exampleKey: 'suggestions.similar.example',  promptKey: 'suggestions.similar.prompt' },
+  { icon: Lightbulb, titleKey: 'suggestions.improve.title',  exampleKey: 'suggestions.improve.example',  promptKey: 'suggestions.improve.prompt' },
+] as const
+
+function SuggestionCard({ icon: Icon, title, example, onClick }: { icon: LucideIcon; title: string; example: string; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="text-left p-4 bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg hover:border-[var(--border-muted)] hover:bg-[var(--bg-secondary)] transition-colors"
+    >
+      <Icon size={18} className="text-[var(--accent)] mb-2" />
+      <div className="text-sm font-medium text-[var(--text-primary)] mb-1">{title}</div>
+      <div className="text-xs text-[var(--text-tertiary)] leading-relaxed">{example}</div>
+    </button>
+  )
+}
+
 export function Chat() {
+  const { t } = useTranslation('chat')
   const { messages, addMessage, updateLastMessage, appendToLastMessage, clear } = useChatStore()
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
@@ -114,8 +138,8 @@ export function Chat() {
 
   useEffect(scrollToBottom, [messages])
 
-  const send = () => {
-    const q = input.trim()
+  const send = (overrideInput?: string) => {
+    const q = (overrideInput ?? input).trim()
     if (!q || busy) return
     setInput('')
     setBusy(true)
@@ -147,12 +171,11 @@ export function Chat() {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: res.statusText }))
-        updateLastMessage({ content: `Error: ${err.detail || res.statusText}`, isStreaming: false })
+        updateLastMessage({ content: t('errors.prefix', { message: err.detail || res.statusText }), isStreaming: false })
         setBusy(false)
         return
       }
 
-      // Capture session ID from response header
       const sid = res.headers.get('X-Session-Id')
       if (sid) sessionIdRef.current = sid
 
@@ -161,7 +184,6 @@ export function Chat() {
       let buffer = ''
       let eventData = ''
 
-      // Returns true when the caller should stop reading (terminal event).
       const dispatch = (raw: string): boolean => {
         let data: any
         try { data = JSON.parse(raw) } catch { return false }
@@ -192,7 +214,7 @@ export function Chat() {
             const hasContent = last?.content?.trim() || last?.result || last?.html
             if (!hasContent) {
               updateLastMessage({
-                content: '\u26a0 LLM returned an empty response. Try again or check /api/health.',
+                content: '⚠ ' + t('status.empty_response'),
                 isStreaming: false,
               })
             } else {
@@ -202,7 +224,7 @@ export function Chat() {
             return true
           }
           case 'error':
-            updateLastMessage({ content: `Error: ${data.content}`, isStreaming: false })
+            updateLastMessage({ content: t('errors.prefix', { message: data.content }), isStreaming: false })
             setBusy(false)
             return true
         }
@@ -212,14 +234,11 @@ export function Chat() {
       while (true) {
         const { done, value } = await reader.read()
         if (done) {
-          // Some proxies (e.g. Vite dev) close the stream without a trailing
-          // blank line after the final event. Flush any residual data.
           if (eventData && dispatch(eventData)) return
           break
         }
         buffer += decoder.decode(value, { stream: true })
 
-        // Split on CRLF or LF — proxies may rewrite line endings.
         const lines = buffer.split(/\r?\n/)
         buffer = lines.pop() || ''
 
@@ -234,13 +253,12 @@ export function Chat() {
         }
       }
 
-      // Stream ended without done event
       updateLastMessage({ isStreaming: false })
       setBusy(false)
     } catch (err) {
       if ((err as Error).name === 'AbortError') return
       updateLastMessage({
-        content: '\u26a0 Connection lost. Server may be unavailable.',
+        content: '⚠ ' + t('status.connection_lost'),
         isStreaming: false,
       })
       setBusy(false)
@@ -253,7 +271,7 @@ export function Chat() {
       const data = await api.ai.discover(useCase)
       addMessage({ role: 'ai', content: '', result: data })
     } catch (e: any) {
-      addMessage({ role: 'ai', content: `Error: ${e.message}` })
+      addMessage({ role: 'ai', content: t('errors.prefix', { message: e.message }) })
     }
     setBusy(false)
   }
@@ -270,7 +288,7 @@ export function Chat() {
         result: details.length ? { results: details.map(dd => ({ feature: dd.feature, score: dd.psi, reason: dd.severity })) } : undefined,
       })
     } catch (e) {
-      addMessage({ role: 'ai', content: `Error: ${e instanceof Error ? e.message : String(e)}` })
+      addMessage({ role: 'ai', content: t('errors.prefix', { message: e instanceof Error ? e.message : String(e) }) })
     }
     setBusy(false)
   }
@@ -282,7 +300,7 @@ export function Chat() {
       const html = `<div class="grid grid-cols-4 gap-3 text-center"><div><div class="text-lg font-semibold font-mono">${s.total_features || s.features || 0}</div><div class="text-[11px] text-[var(--text-tertiary)]">Features</div></div><div><div class="text-lg font-semibold font-mono">${s.sources || 0}</div><div class="text-[11px] text-[var(--text-tertiary)]">Sources</div></div><div><div class="text-lg font-semibold font-mono">${s.coverage ? Math.round(s.coverage) : 0}%</div><div class="text-[11px] text-[var(--text-tertiary)]">Coverage</div></div><div><div class="text-lg font-semibold font-mono">${s.documented || 0}/${s.total_features || s.features || 0}</div><div class="text-[11px] text-[var(--text-tertiary)]">Documented</div></div></div>`
       addMessage({ role: 'ai', content: '', html })
     } catch (e: any) {
-      addMessage({ role: 'ai', content: `Error: ${e.message}` })
+      addMessage({ role: 'ai', content: t('errors.prefix', { message: e.message }) })
     }
     setBusy(false)
   }
@@ -297,7 +315,7 @@ export function Chat() {
       )}
       {msg.isStreaming && !msg.content && !msg.thinking && !msg.result && (
         <div className="flex items-center gap-2 text-sm text-[var(--text-tertiary)]">
-          <Loader2 size={14} className="animate-spin" /> Generating response...
+          <Loader2 size={14} className="animate-spin" /> {t('status.generating')}
         </div>
       )}
       {msg.result && <ResultTable data={msg.result} />}
@@ -305,59 +323,83 @@ export function Chat() {
       {!msg.result && !msg.html && msg.content && (
         tryParseResult(msg.content)
           ? <ResultTable data={tryParseResult(msg.content)} />
-          : msg.content.startsWith('\u26a0')
-            ? <div className="text-amber-400 text-sm italic">{msg.content}</div>
+          : msg.content.startsWith('⚠')
+            ? <div className="text-[var(--warning)] text-sm italic">{msg.content}</div>
             : <span>{msg.content}</span>
       )}
     </>
   )
 
+  const isEmpty = messages.length === 0
+
   return (
     <div className="flex flex-col" style={{ height: 'calc(100vh - 48px)' }}>
       {llmAvailable === false && (
-        <div className="bg-amber-900/30 border-b border-amber-500/40 px-4 py-2 text-amber-300 text-sm flex items-center gap-2">
-          <span>{'\u26a0'}</span> LLM is not available. AI responses may be limited to keyword search only.
+        <div className="bg-[var(--warning-subtle-bg)] border-b border-[var(--warning-subtle-bg)] px-4 py-2 text-[var(--warning)] text-sm flex items-center gap-2">
+          <span>{'⚠'}</span> {t('status.llm_unavailable')}
         </div>
       )}
-      <div className="flex-1 overflow-y-auto px-4">
-        {messages.map((m) => (
-          <ChatMessage key={m.id} role={m.role}>
-            {m.role === 'user' ? m.content : renderAiContent(m)}
-          </ChatMessage>
-        ))}
-        <div ref={messagesEndRef} />
-      </div>
+
+      {isEmpty ? (
+        <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 overflow-y-auto">
+          <div className="max-w-3xl w-full text-center">
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-[var(--accent-subtle-bg)] mb-6">
+              <Bot size={24} className="text-[var(--accent)]" />
+            </div>
+
+            <h1 className="text-2xl font-semibold text-[var(--text-primary)] mb-2">
+              {t('empty.greeting')}
+            </h1>
+            <p className="text-sm text-[var(--text-secondary)] mb-10">
+              {t('empty.subtitle')}
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 text-left">
+              {SUGGESTIONS.map((s, i) => (
+                <SuggestionCard
+                  key={i}
+                  icon={s.icon}
+                  title={t(s.titleKey)}
+                  example={t(s.exampleKey)}
+                  onClick={() => send(t(s.promptKey))}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto px-4">
+          {messages.map((m) => (
+            <ChatMessage key={m.id} role={m.role}>
+              {m.role === 'user' ? m.content : renderAiContent(m)}
+            </ChatMessage>
+          ))}
+          <div ref={messagesEndRef} />
+        </div>
+      )}
 
       <div className="border-t border-[var(--border-subtle)] bg-[var(--bg-primary)] p-4">
-        <div className="flex gap-2 mb-2">
-          {[
-            { label: 'Discover', query: 'discover: ', icon: Sparkles },
-            { label: 'Check Drift', query: 'which features have drifted?', icon: Activity },
-            { label: 'Stats', query: '/stats', icon: BarChart3 },
-          ].map((s) => (
-            <button key={s.label} onClick={() => setInput(s.query)}
-              className="flex items-center gap-1 px-3 py-1 text-[11px] border border-[var(--border-default)] rounded-md bg-[var(--bg-primary)] hover:bg-[var(--bg-secondary)] transition-colors">
-              <s.icon size={12} /> {s.label}
+        {!isEmpty && (
+          <div className="flex gap-2 mb-2">
+            <button onClick={() => { clear(); sessionIdRef.current = null }} title={t('input.clear_title')}
+              className="ml-auto flex items-center gap-1 px-3 py-1 text-[11px] text-[var(--text-tertiary)] border border-[var(--border-default)] rounded-md hover:bg-[var(--bg-secondary)] transition-colors">
+              <Trash2 size={12} /> {t('input.clear')}
             </button>
-          ))}
-          <button onClick={() => { clear(); sessionIdRef.current = null }} title="Clear chat"
-            className="ml-auto flex items-center gap-1 px-3 py-1 text-[11px] text-[var(--text-tertiary)] border border-[var(--border-default)] rounded-md hover:bg-[var(--bg-secondary)] transition-colors">
-            <Trash2 size={12} /> Clear
-          </button>
-        </div>
+          </div>
+        )}
         <div className="flex gap-2">
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
-            placeholder="Ask about features..."
+            placeholder={t('input.placeholder')}
             disabled={busy}
             className="flex-1 bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px] focus:border-accent focus:ring-2 focus:ring-accent/20 outline-none disabled:opacity-50"
           />
-          <button onClick={send} disabled={busy || !input.trim()}
+          <button onClick={() => send()} disabled={busy || !input.trim()}
             className="flex items-center gap-1.5 px-4 py-2 bg-accent text-white rounded-lg text-[13px] font-medium disabled:opacity-50 hover:bg-accent-emphasis transition-colors">
             {busy ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-            Send
+            {t('input.send')}
           </button>
         </div>
       </div>
