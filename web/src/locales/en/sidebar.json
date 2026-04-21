@@ -9,5 +9,12 @@
     "jobs": "Jobs",
     "chat": "AI Chat",
     "settings": "Settings"
+  },
+  "status": {
+    "server": "Server",
+    "llm_label": "LLM",
+    "connected": "Connected",
+    "disconnected": "Disconnected",
+    "checking": "checking..."
   }
 }

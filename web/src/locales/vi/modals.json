@@ -1,1 +1,43 @@
-{}
+{
+  "export": {
+    "title": "Xuất: {{name}}",
+    "actions": {
+      "export_and_download": "Xuất & Tải xuống ({{count}})",
+      "exporting": "Đang xuất...",
+      "download_parquet": "Tải Parquet",
+      "download_csv": "Tải CSV"
+    },
+    "result": {
+      "complete_summary": "Hoàn tất — {{rows}} dòng, {{features}} Feature, {{size}}"
+    },
+    "form": {
+      "format_label": "Định dạng",
+      "parquet_recommended": "Parquet (khuyến nghị)",
+      "join_column_label": "Cột join",
+      "auto_detect_placeholder": "tự động phát hiện",
+      "auto_detect_help": "Để trống để tự động phát hiện cột chung giữa các nguồn",
+      "features_to_include": "Feature sẽ xuất:"
+    },
+    "python_snippet": "Python snippet",
+    "errors": {
+      "export_failed": "Xuất thất bại"
+    }
+  },
+  "feature_selector": {
+    "search_placeholder": "Tìm Feature...",
+    "selected_count": "Đã chọn ({{count}})",
+    "ai_suggest": "✨ AI gợi ý",
+    "ai_suggesting": "Đang gợi ý...",
+    "ai_suggested_tooltip": "AI gợi ý",
+    "shift_tip": "Mẹo: giữ Shift để chọn một dải",
+    "select_all_from_source": "Chọn tất cả từ {{source}} ({{count}})",
+    "empty_selected": "Chưa chọn Feature nào.",
+    "selected_not_found": "Không tìm thấy Feature đã chọn. Hãy xóa tìm kiếm.",
+    "no_matches": "Không có Feature phù hợp.",
+    "n_of_m_selected": "{{n}} / {{m}} đã chọn"
+  },
+  "thinking": {
+    "thinking": "Đang suy nghĩ...",
+    "done": "Quá trình suy nghĩ"
+  }
+}

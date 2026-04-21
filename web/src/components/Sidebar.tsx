@@ -19,17 +19,21 @@ const NAV = [
 
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const { t } = useTranslation('sidebar')
-  const [llm, setLlm] = useState<{ ok: boolean; model: string }>({ ok: false, model: 'checking...' })
+  const [llm, setLlm] = useState<{ ok: boolean; model: string | null; checked: boolean }>({ ok: false, model: null, checked: false })
   const [serverOk, setServerOk] = useState(false)
 
   useEffect(() => {
     api.health()
       .then((d) => {
         setServerOk(true)
-        setLlm({ ok: !!d.llm, model: d.model || (d.llm ? 'connected' : 'offline') })
+        setLlm({ ok: !!d.llm, model: (d.model as string) || null, checked: true })
       })
-      .catch(() => setServerOk(false))
+      .catch(() => { setServerOk(false); setLlm(s => ({ ...s, checked: true })) })
   }, [])
+
+  const llmDisplay = !llm.checked
+    ? t('status.checking')
+    : llm.model ?? (llm.ok ? t('status.connected') : t('status.disconnected'))
 
   return (
     <nav className="w-[220px] shrink-0 sticky top-0 h-screen overflow-y-auto flex flex-col bg-[var(--bg-primary)] border-r border-[var(--border-subtle)] py-4">
@@ -65,11 +69,11 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         <div className="border-t border-[var(--border-subtle)] pt-3 flex flex-col gap-2 text-xs text-[var(--text-tertiary)]">
           <div className="flex items-center gap-2">
             <span className={`size-1.5 rounded-full ${serverOk ? 'bg-[var(--success)]' : 'bg-[var(--border-default)]'}`} />
-            Server
+            {t('status.server')}
           </div>
           <div className="flex items-center gap-2 truncate">
             <span className={`size-1.5 rounded-full ${llm.ok ? 'bg-[var(--success)]' : 'bg-[var(--danger)]'}`} />
-            <span className="truncate">LLM: {llm.model}</span>
+            <span className="truncate">{t('status.llm_label')}: {llmDisplay}</span>
           </div>
         </div>
         <div className="border-t border-[var(--border-subtle)] pt-3 pb-1">

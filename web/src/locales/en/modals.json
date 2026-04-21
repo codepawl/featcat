@@ -1,1 +1,43 @@
-{}
+{
+  "export": {
+    "title": "Export: {{name}}",
+    "actions": {
+      "export_and_download": "Export & Download ({{count}})",
+      "exporting": "Exporting...",
+      "download_parquet": "Download Parquet",
+      "download_csv": "Download CSV"
+    },
+    "result": {
+      "complete_summary": "Export complete — {{rows}} rows, {{features}} features, {{size}}"
+    },
+    "form": {
+      "format_label": "Format",
+      "parquet_recommended": "Parquet (recommended)",
+      "join_column_label": "Join column",
+      "auto_detect_placeholder": "auto-detect",
+      "auto_detect_help": "Leave empty to auto-detect common column across sources",
+      "features_to_include": "Features to include:"
+    },
+    "python_snippet": "Python snippet",
+    "errors": {
+      "export_failed": "Export failed"
+    }
+  },
+  "feature_selector": {
+    "search_placeholder": "Search features...",
+    "selected_count": "Selected ({{count}})",
+    "ai_suggest": "✨ AI Suggest",
+    "ai_suggesting": "Suggesting...",
+    "ai_suggested_tooltip": "AI suggested",
+    "shift_tip": "Tip: hold Shift to select a range",
+    "select_all_from_source": "Select all from {{source}} ({{count}})",
+    "empty_selected": "No features selected yet.",
+    "selected_not_found": "Selected features not found. Try clearing search.",
+    "no_matches": "No matching features.",
+    "n_of_m_selected": "{{n}} of {{m}} selected"
+  },
+  "thinking": {
+    "thinking": "Thinking...",
+    "done": "Thought process"
+  }
+}

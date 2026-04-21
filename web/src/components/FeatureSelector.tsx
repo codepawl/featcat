@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api'
 import { SearchInput } from './SearchInput'
 
@@ -35,8 +36,10 @@ export function FeatureSelector({
   groupName,
   showAISuggest,
   maxHeight = '320px',
-  placeholder = 'Search features...',
+  placeholder,
 }: FeatureSelectorProps) {
+  const { t } = useTranslation('modals')
+  const effectivePlaceholder = placeholder ?? t('feature_selector.search_placeholder')
   const [searchQuery, setSearchQuery] = useState('')
   const [showSelectedOnly, setShowSelectedOnly] = useState(false)
   const [suggesting, setSuggesting] = useState(false)
@@ -118,7 +121,7 @@ export function FeatureSelector({
     <div>
       {/* Toolbar */}
       <div className="flex items-center gap-2 mb-2">
-        <SearchInput placeholder={placeholder} onSearch={setSearchQuery} delay={200} className="flex-1" />
+        <SearchInput placeholder={effectivePlaceholder} onSearch={setSearchQuery} delay={200} className="flex-1" />
         <button
           onClick={() => setShowSelectedOnly(prev => !prev)}
           className={`text-sm px-3 py-1.5 rounded border whitespace-nowrap ${
@@ -127,7 +130,7 @@ export function FeatureSelector({
               : 'border-[var(--border-default)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'
           }`}
         >
-          Selected ({selected.size})
+          {t('feature_selector.selected_count', { count: selected.size })}
         </button>
         {enableAI && llmAvailable && (
           <button
@@ -135,7 +138,7 @@ export function FeatureSelector({
             disabled={suggesting}
             className="text-sm px-3 py-1.5 rounded border border-[var(--accent-border)] text-[var(--accent)] hover:bg-[var(--accent-subtle-bg)] disabled:opacity-50 whitespace-nowrap"
           >
-            {suggesting ? 'Suggesting...' : '\u2728 AI Suggest'}
+            {suggesting ? t('feature_selector.ai_suggesting') : t('feature_selector.ai_suggest')}
           </button>
         )}
       </div>
@@ -143,12 +146,12 @@ export function FeatureSelector({
       {/* Source select + tip */}
       <div className="flex items-center justify-between mb-1">
         <p className="text-[10px] text-[var(--text-tertiary)]">
-          Tip: hold Shift to select a range
+          {t('feature_selector.shift_tip')}
         </p>
         {dominantSource && (
           <button onClick={() => selectAllFromSource(dominantSource)}
             className="text-[10px] text-accent hover:underline whitespace-nowrap">
-            Select all from {dominantSource} ({dominantCount})
+            {t('feature_selector.select_all_from_source', { source: dominantSource, count: dominantCount })}
           </button>
         )}
       </div>
@@ -158,10 +161,10 @@ export function FeatureSelector({
         {filtered.length === 0 ? (
           <p className="text-sm text-[var(--text-tertiary)] py-4 text-center">
             {showSelectedOnly && selected.size === 0
-              ? 'No features selected yet.'
+              ? t('feature_selector.empty_selected')
               : showSelectedOnly
-                ? 'Selected features not found. Try clearing search.'
-                : 'No matching features.'}
+                ? t('feature_selector.selected_not_found')
+                : t('feature_selector.no_matches')}
           </p>
         ) : filtered.map(f => (
           <div
@@ -176,7 +179,7 @@ export function FeatureSelector({
               tabIndex={-1}
               className="accent-accent pointer-events-none"
             />
-            {aiSuggested.has(f.spec) && <span className="text-xs" title="AI suggested">{'\u2728'}</span>}
+            {aiSuggested.has(f.spec) && <span className="text-xs" title={t('feature_selector.ai_suggested_tooltip')}>{'\u2728'}</span>}
             <span className="font-medium flex-1">{f.spec}</span>
             <span className="text-xs text-[var(--text-tertiary)] font-mono">{f.dtype}</span>
             {f.health_grade && (
@@ -190,7 +193,7 @@ export function FeatureSelector({
 
       {/* Footer */}
       <p className="text-[10px] text-[var(--text-tertiary)] mt-1.5">
-        {selected.size} of {features.length} selected
+        {t('feature_selector.n_of_m_selected', { n: selected.size, m: features.length })}
       </p>
     </div>
   )

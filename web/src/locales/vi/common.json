@@ -1,1 +1,52 @@
-{}
+{
+  "actions": {
+    "search": "Tìm kiếm",
+    "refresh": "Làm mới",
+    "save": "Lưu",
+    "cancel": "Hủy",
+    "delete": "Xóa",
+    "close": "Đóng",
+    "apply": "Áp dụng",
+    "reset": "Đặt lại",
+    "export": "Xuất",
+    "import": "Nhập",
+    "confirm": "Xác nhận",
+    "back": "Quay lại",
+    "next": "Tiếp theo",
+    "previous": "Trước",
+    "select_all": "Chọn tất cả",
+    "deselect_all": "Bỏ chọn tất cả",
+    "loading": "Đang tải...",
+    "copy": "Sao chép",
+    "copied": "Đã sao chép",
+    "download": "Tải xuống",
+    "open_menu": "Mở menu",
+    "toggle_theme": "Đổi giao diện"
+  },
+  "state": {
+    "empty": "Không có dữ liệu",
+    "error": "Đã xảy ra lỗi",
+    "no_results": "Không tìm thấy kết quả",
+    "all_clear": "Tất cả ổn định"
+  },
+  "units": {
+    "features_one": "{{count}} Feature",
+    "features_other": "{{count}} Features",
+    "sources_one": "{{count}} nguồn",
+    "sources_other": "{{count}} nguồn",
+    "selected": "{{count}} đã chọn"
+  },
+  "labels": {
+    "coverage": "Độ bao phủ",
+    "documentation": "Tài liệu",
+    "owner": "Chủ sở hữu",
+    "source": "Nguồn",
+    "sources": "Nguồn",
+    "health_score": "Điểm sức khỏe",
+    "total": "Tổng",
+    "undocumented_only": "Chỉ chưa có tài liệu"
+  },
+  "placeholders": {
+    "search": "Tìm kiếm..."
+  }
+}

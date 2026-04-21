@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { ChevronUp, ChevronDown } from 'lucide-react'
 
 interface Column<T> {
@@ -16,6 +17,7 @@ interface Props<T> {
 }
 
 export function DataTable<T extends Record<string, any>>({ columns, data, onRowClick, pageSize = 25 }: Props<T>) {
+  const { t } = useTranslation('common')
   const [sortCol, setSortCol] = useState('')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [page, setPage] = useState(0)
@@ -78,7 +80,7 @@ export function DataTable<T extends Record<string, any>>({ columns, data, onRowC
             {paged.length === 0 && (
               <tr>
                 <td colSpan={columns.length} className="px-3 py-10 text-center text-[var(--text-tertiary)] text-sm">
-                  No data
+                  {t('state.empty')}
                 </td>
               </tr>
             )}
@@ -89,12 +91,12 @@ export function DataTable<T extends Record<string, any>>({ columns, data, onRowC
         <div className="flex gap-1 justify-center mt-4">
           <button disabled={page === 0} onClick={() => setPage(p => p - 1)}
             className="px-3 py-1.5 text-xs font-medium rounded-lg border border-[var(--border-default)] bg-[var(--bg-primary)] disabled:opacity-30 hover:bg-[var(--bg-secondary)] transition-colors">
-            Prev
+            {t('actions.previous')}
           </button>
           <span className="px-3 py-1.5 text-xs text-[var(--text-tertiary)] font-mono">{page + 1} / {totalPages}</span>
           <button disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}
             className="px-3 py-1.5 text-xs font-medium rounded-lg border border-[var(--border-default)] bg-[var(--bg-primary)] disabled:opacity-30 hover:bg-[var(--bg-secondary)] transition-colors">
-            Next
+            {t('actions.next')}
           </button>
         </div>
       )}

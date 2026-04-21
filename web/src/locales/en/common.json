@@ -1,1 +1,52 @@
-{}
+{
+  "actions": {
+    "search": "Search",
+    "refresh": "Refresh",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "close": "Close",
+    "apply": "Apply",
+    "reset": "Reset",
+    "export": "Export",
+    "import": "Import",
+    "confirm": "Confirm",
+    "back": "Back",
+    "next": "Next",
+    "previous": "Previous",
+    "select_all": "Select all",
+    "deselect_all": "Deselect all",
+    "loading": "Loading...",
+    "copy": "Copy",
+    "copied": "Copied",
+    "download": "Download",
+    "open_menu": "Open menu",
+    "toggle_theme": "Toggle theme"
+  },
+  "state": {
+    "empty": "No data",
+    "error": "An error occurred",
+    "no_results": "No results found",
+    "all_clear": "All clear"
+  },
+  "units": {
+    "features_one": "{{count}} feature",
+    "features_other": "{{count}} features",
+    "sources_one": "{{count}} source",
+    "sources_other": "{{count}} sources",
+    "selected": "{{count}} selected"
+  },
+  "labels": {
+    "coverage": "Coverage",
+    "documentation": "Documentation",
+    "owner": "Owner",
+    "source": "Source",
+    "sources": "Sources",
+    "health_score": "Health score",
+    "total": "Total",
+    "undocumented_only": "Undocumented only"
+  },
+  "placeholders": {
+    "search": "Search..."
+  }
+}

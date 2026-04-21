@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { ChevronDown, ChevronRight, Brain, Loader2 } from 'lucide-react'
 
 interface Props {
@@ -7,6 +8,7 @@ interface Props {
 }
 
 export function ThinkingBlock({ content, isDone }: Props) {
+  const { t } = useTranslation('modals')
   const [isOpen, setIsOpen] = useState(false)
 
   if (!content && !isDone) return null
@@ -23,7 +25,7 @@ export function ThinkingBlock({ content, isDone }: Props) {
           <Loader2 size={14} className="text-[var(--warning)] animate-spin shrink-0" />
         )}
         <span className="flex-1 text-left">
-          {isDone ? 'Thought process' : 'Thinking...'}
+          {isDone ? t('thinking.done') : t('thinking.thinking')}
         </span>
         {content && (
           isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />

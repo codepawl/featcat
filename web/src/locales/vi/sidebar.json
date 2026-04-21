@@ -9,5 +9,12 @@
     "jobs": "Tác vụ",
     "chat": "AI Chat",
     "settings": "Cài đặt"
+  },
+  "status": {
+    "server": "Server",
+    "llm_label": "LLM",
+    "connected": "Đã kết nối",
+    "disconnected": "Mất kết nối",
+    "checking": "đang kiểm tra..."
   }
 }
