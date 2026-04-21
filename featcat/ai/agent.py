@@ -106,7 +106,7 @@ class CatalogAgent:
                         break
                     tool_call_history.add(call_key)
 
-                    yield {"type": "thinking", "content": f"Looking up: {tool_name}..."}
+                    yield {"type": "tool_start", "tool": tool_name}
                     yield {"type": "tool_call", "name": tool_name, "params": tool_params}
 
                     tool_result = self.executor.execute(tool_name, tool_params)

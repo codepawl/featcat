@@ -195,9 +195,13 @@ async def stream_ask(query: str, db=Depends(get_db), llm=Depends(get_llm)):
             if buffer.strip():
                 if in_thinking:
                     yield {"event": "message", "data": json.dumps({"type": "thinking", "content": buffer})}
-                    yield {"event": "message", "data": json.dumps({"type": "thinking_end"})}
                 else:
                     yield {"event": "message", "data": json.dumps({"type": "token", "content": buffer})}
+
+            # Safety: ensure thinking_end fires even if the LLM never emitted </think>
+            if in_thinking:
+                yield {"event": "message", "data": json.dumps({"type": "thinking_end"})}
+                in_thinking = False
 
             # Parse final response and send structured result
             from ...llm.base import _extract_json, strip_thinking_tags
