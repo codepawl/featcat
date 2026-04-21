@@ -418,7 +418,7 @@ function FeatureDetailModal({ feature, onClose, onDocGenerated }: { feature: Fea
 
       {/* Metadata */}
       <Section title="Metadata">
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-4">
           <MetaItem label="Data Type" value={feature.dtype} mono />
           <MetaItem label="Column" value={feature.column_name} mono />
           <MetaItem label="Owner" value={feature.owner || '-'} />
@@ -430,15 +430,28 @@ function FeatureDetailModal({ feature, onClose, onDocGenerated }: { feature: Fea
       {/* Statistics */}
       {hasStats && (
         <Section title="Statistics">
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {statKeys.map((k) =>
-              stats[k] != null && (
-                <div key={k} className="bg-[var(--bg-secondary)] rounded-lg p-2.5 text-center">
-                  <div className="text-[10px] text-[var(--text-tertiary)] uppercase tracking-wide mb-0.5">{k.replace('_', ' ')}</div>
-                  <div className="font-mono text-sm">{typeof stats[k] === 'number' ? stats[k].toFixed(4) : stats[k]}</div>
+          <div className="grid grid-cols-3 gap-x-6 gap-y-4">
+            {([
+              { label: 'Mean',         value: stats.mean,         format: 'decimal' as const },
+              { label: 'Std',          value: stats.std,          format: 'decimal' as const },
+              { label: 'Min',          value: stats.min,          format: 'decimal' as const },
+              { label: 'Max',          value: stats.max,          format: 'decimal' as const },
+              { label: 'Null Ratio',   value: stats.null_ratio,   format: 'decimal' as const },
+              { label: 'Unique Count', value: stats.unique_count, format: 'integer' as const },
+            ] as const)
+              .filter(s => s.value !== null && s.value !== undefined)
+              .map(s => (
+                <div key={s.label}>
+                  <div className="text-[11px] uppercase tracking-wider text-[var(--text-tertiary)] font-medium mb-1">
+                    {s.label}
+                  </div>
+                  <div className="text-sm font-mono text-[var(--text-primary)] tabular-nums">
+                    {s.format === 'integer'
+                      ? Math.round(s.value as number).toLocaleString()
+                      : (s.value as number).toFixed(4)}
+                  </div>
                 </div>
-              )
-            )}
+              ))}
           </div>
         </Section>
       )}
@@ -1071,13 +1084,15 @@ function MiniBarChart({ data }: { data: { date: string; count: number }[] }) {
 function HealthBar({ value, max, label, detail }: { value: number; max: number; label: string; detail?: string }) {
   const pct = max > 0 ? (value / max) * 100 : 0
   return (
-    <div className="flex items-center gap-3 text-sm">
-      <span className="w-28 text-[var(--text-secondary)] text-xs shrink-0">{label}</span>
-      <div className="flex-1 h-2 bg-[var(--bg-secondary)] rounded-full overflow-hidden">
-        <div className="h-full bg-accent rounded-full transition-all" style={{ width: `${pct}%` }} />
+    <div className="grid grid-cols-[112px_1fr_auto] gap-3 items-center">
+      <span className="text-sm text-[var(--text-secondary)]">{label}</span>
+      <div className="h-1.5 bg-[var(--bg-tertiary)] rounded-full overflow-hidden">
+        <div className="h-full bg-[var(--accent)] transition-all" style={{ width: `${pct}%` }} />
       </div>
-      <span className="w-12 text-right font-mono text-xs text-[var(--text-secondary)]">{value}/{max}</span>
-      {detail && <span className="text-[10px] text-[var(--text-tertiary)] shrink-0">{detail}</span>}
+      <div className="flex items-center gap-2 whitespace-nowrap">
+        <span className="text-xs font-mono text-[var(--text-secondary)] tabular-nums">{value}/{max}</span>
+        {detail && <span className="text-xs text-[var(--text-tertiary)]">{detail}</span>}
+      </div>
     </div>
   )
 }
