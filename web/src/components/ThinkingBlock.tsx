@@ -18,9 +18,9 @@ export function ThinkingBlock({ content, isDone }: Props) {
         className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] transition-colors"
       >
         {isDone ? (
-          <Brain size={14} className="text-green-500 shrink-0" />
+          <Brain size={14} className="text-[var(--success)] shrink-0" />
         ) : (
-          <Loader2 size={14} className="text-amber-500 animate-spin shrink-0" />
+          <Loader2 size={14} className="text-[var(--warning)] animate-spin shrink-0" />
         )}
         <span className="flex-1 text-left">
           {isDone ? 'Thought process' : 'Thinking...'}

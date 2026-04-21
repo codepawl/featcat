@@ -120,9 +120,9 @@ export function Monitoring() {
       </div>
 
       {error && (
-        <div className="bg-red-900/30 border border-red-500/40 rounded-lg p-3 text-red-300 text-sm mb-4 flex items-center justify-between">
+        <div className="bg-[var(--danger-subtle-bg)] border border-[var(--danger-subtle-bg)] rounded-lg p-3 text-[var(--danger)] text-sm mb-4 flex items-center justify-between">
           <span>{error}</span>
-          <button onClick={() => setError(null)} className="text-red-400 hover:text-red-200 ml-2 shrink-0">&times;</button>
+          <button onClick={() => setError(null)} className="text-[var(--danger)] hover:opacity-80 ml-2 shrink-0">&times;</button>
         </div>
       )}
 

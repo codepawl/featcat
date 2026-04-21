@@ -59,7 +59,7 @@ export function Dashboard() {
   if (error) {
     return (
       <div className="text-center py-20">
-        <p className="text-red-500 mb-4">Cannot connect to server</p>
+        <p className="text-[var(--danger)] mb-4">Cannot connect to server</p>
         <button onClick={load} className="px-4 py-2 bg-accent text-white rounded-lg text-sm">Retry</button>
       </div>
     )
@@ -209,13 +209,13 @@ export function Dashboard() {
         <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5">
           <h3 className="text-sm font-semibold mb-3">Orphaned Features</h3>
           {loading ? <Skeleton className="h-24" /> : orphaned.length === 0 ? (
-            <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
+            <div className="flex items-center gap-2 text-sm text-[var(--success)]">
               All features active in the last 30 days
             </div>
           ) : (
             <div>
               <div className="flex items-center gap-2 mb-3">
-                <AlertTriangle size={16} className="text-amber-500" />
+                <AlertTriangle size={16} className="text-[var(--warning)]" />
                 <span className="text-sm font-medium">{orphaned.length} feature{orphaned.length !== 1 ? 's' : ''} with no recent usage</span>
               </div>
               <div className="space-y-1">

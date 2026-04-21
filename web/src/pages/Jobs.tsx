@@ -180,7 +180,7 @@ export function Jobs() {
               <div className="mt-3 p-3 bg-[var(--bg-secondary)] rounded-lg text-xs font-mono animate-fade-in whitespace-pre-wrap">
                 {JSON.stringify(paged[expanded].result_summary, null, 2)}
                 {paged[expanded].error_message && (
-                  <p className="text-red-500 mt-2">{paged[expanded].error_message}</p>
+                  <p className="text-[var(--danger)] mt-2">{paged[expanded].error_message}</p>
                 )}
               </div>
             )}

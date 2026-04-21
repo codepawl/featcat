@@ -454,8 +454,8 @@ export function Similarity() {
         <Skeleton className="flex-1 min-h-[500px]" />
       ) : isEmpty ? (
         <div className="flex flex-col items-center justify-center flex-1 min-h-[400px] text-center gap-3">
-          <p className="text-slate-300 font-medium">Not enough features to compute similarity</p>
-          <p className="text-slate-500 text-sm max-w-sm">
+          <p className="text-[var(--text-primary)] font-medium">Not enough features to compute similarity</p>
+          <p className="text-[var(--text-tertiary)] text-sm max-w-sm">
             Add at least 2 features to the catalog to see similarity relationships.
           </p>
         </div>

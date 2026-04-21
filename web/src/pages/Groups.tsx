@@ -58,7 +58,7 @@ export function Groups() {
     { key: 'dtype', label: 'Dtype', render: (r: any) => <span className="font-mono text-xs">{r.dtype}</span> },
     { key: 'has_doc', label: 'Docs', sortable: false, render: (r: any) => r.has_doc ? <Badge variant="success">yes</Badge> : <span className="text-[var(--text-tertiary)]">-</span> },
     { key: '_remove', label: '', sortable: false, render: (r: any) => (
-      <button onClick={(e) => { e.stopPropagation(); removeMember(r.name) }} className="text-[var(--text-tertiary)] hover:text-red-500 transition-colors p-1">
+      <button onClick={(e) => { e.stopPropagation(); removeMember(r.name) }} className="text-[var(--text-tertiary)] hover:text-[var(--danger)] transition-colors p-1">
         <Trash2 size={13} />
       </button>
     )},
@@ -133,7 +133,7 @@ export function Groups() {
                       <Download size={14} /> Export
                     </button>
                   )}
-                  <button onClick={() => deleteGroup(detail.name)} className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium border border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20">
+                  <button onClick={() => deleteGroup(detail.name)} className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium border border-[var(--danger-subtle-bg)] text-[var(--danger)] rounded-lg hover:bg-[var(--danger-subtle-bg)]">
                     <Trash2 size={14} /> Delete
                   </button>
                 </div>
@@ -194,7 +194,7 @@ function CreateGroupModal({ open, onClose, onCreated }: { open: boolean; onClose
           { k: 'owner', label: 'Owner', placeholder: 'Owner name' },
         ].map(({ k, label, placeholder, required }) => (
           <div key={k}>
-            <label className="block text-xs font-medium mb-1">{label} {required && <span className="text-red-500">*</span>}</label>
+            <label className="block text-xs font-medium mb-1">{label} {required && <span className="text-[var(--danger)]">*</span>}</label>
             <input
               value={(form as any)[k]}
               onChange={(e) => set(k, e.target.value)}

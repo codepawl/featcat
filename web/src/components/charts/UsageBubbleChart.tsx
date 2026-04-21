@@ -127,7 +127,7 @@ export function UsageBubbleChart({ data, orphaned, loading }: UsageBubbleChartPr
         <p className="text-[var(--text-secondary)]">Usage: {d.views} views, {d.queries} queries</p>
         {d.created && <p className="text-[var(--text-secondary)]">Created: {daysAgo(d.created)} days ago</p>}
         <p className="text-[var(--text-secondary)]">Source: {d.source}</p>
-        {d.isOrphaned && <p className="text-amber-500 font-medium mt-0.5">Orphaned</p>}
+        {d.isOrphaned && <p className="text-[var(--warning)] font-medium mt-0.5">Orphaned</p>}
       </div>
     )
   }

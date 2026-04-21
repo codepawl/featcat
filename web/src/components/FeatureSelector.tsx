@@ -133,7 +133,7 @@ export function FeatureSelector({
           <button
             onClick={handleAISuggest}
             disabled={suggesting}
-            className="text-sm px-3 py-1.5 rounded border border-teal-500/40 text-teal-400 hover:bg-teal-500/10 disabled:opacity-50 whitespace-nowrap"
+            className="text-sm px-3 py-1.5 rounded border border-[var(--accent-border)] text-[var(--accent)] hover:bg-[var(--accent-subtle-bg)] disabled:opacity-50 whitespace-nowrap"
           >
             {suggesting ? 'Suggesting...' : '\u2728 AI Suggest'}
           </button>

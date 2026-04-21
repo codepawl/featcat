@@ -198,7 +198,7 @@ export function Features() {
     { key: 'tags', label: 'Tags', sortable: false, render: (r: FeatureRow) => (
       <div className="flex gap-1 flex-wrap">{(r.tags || []).map((t: string, i: number) => <Tag key={i}>{t}</Tag>)}</div>
     )},
-    { key: 'has_doc', label: 'Docs', render: (r: FeatureRow) => r.has_doc ? <Check size={14} className="text-green-500" /> : <span className="text-[var(--text-tertiary)]">-</span> },
+    { key: 'has_doc', label: 'Docs', render: (r: FeatureRow) => r.has_doc ? <Check size={14} className="text-[var(--success)]" /> : <span className="text-[var(--text-tertiary)]">-</span> },
     { key: 'health_score', label: 'Health', render: (r: FeatureRow) => {
       const searchScore = (r as FeatureRow & { search_score?: number }).search_score
       if (searchScore != null) {
@@ -919,7 +919,7 @@ function AddSourceModal({ open, onClose, onSubmit }: { open: boolean; onClose: (
           { k: 'tags', label: 'Tags', placeholder: 'Comma-separated tags' },
         ].map(({ k, label, placeholder, required }) => (
           <div key={k}>
-            <label className="block text-xs font-medium mb-1">{label} {required && <span className="text-red-500">*</span>}</label>
+            <label className="block text-xs font-medium mb-1">{label} {required && <span className="text-[var(--danger)]">*</span>}</label>
             <input
               value={form[k as keyof typeof form]}
               onChange={(e) => set(k, e.target.value)}
@@ -1013,7 +1013,7 @@ function BulkScanModal({ open, onClose, onDone }: { open: boolean; onClose: () =
       ) : (
         <div className="space-y-3">
           <div>
-            <label className="block text-xs font-medium mb-1">Directory Path <span className="text-red-500">*</span></label>
+            <label className="block text-xs font-medium mb-1">Directory Path <span className="text-[var(--danger)]">*</span></label>
             <input value={form.path} onChange={(e) => setForm((f) => ({ ...f, path: e.target.value }))} placeholder="/path/to/data"
               className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px] focus:border-accent outline-none" />
           </div>
@@ -1037,7 +1037,7 @@ function BulkScanModal({ open, onClose, onDone }: { open: boolean; onClose: () =
             <div className="flex gap-1 flex-wrap mb-1">
               {tags.map((t) => (
                 <span key={t} className="inline-flex items-center gap-1 px-2 py-0.5 bg-[var(--bg-tertiary)] rounded text-xs font-mono">
-                  {t} <button onClick={() => setTags(tags.filter((x) => x !== t))} className="hover:text-red-500"><X size={10} /></button>
+                  {t} <button onClick={() => setTags(tags.filter((x) => x !== t))} className="hover:text-[var(--danger)]"><X size={10} /></button>
                 </span>
               ))}
             </div>
@@ -1185,8 +1185,8 @@ function VersionTimeline({ versions, loading }: { versions: Record<string, unkno
                   {Object.keys(next).map(key => (
                     <div key={key}>
                       <span className="text-[var(--text-tertiary)]">{key}:</span>
-                      <div className="text-red-500">- {String(prev[key] ?? '(empty)')}</div>
-                      <div className="text-green-500">+ {String(next[key] ?? '(empty)')}</div>
+                      <div className="text-[var(--danger)]">- {String(prev[key] ?? '(empty)')}</div>
+                      <div className="text-[var(--success)]">+ {String(next[key] ?? '(empty)')}</div>
                     </div>
                   ))}
                 </div>
@@ -1209,7 +1209,7 @@ function HighlightedText({ text, terms }: { text: string; terms: string[] }) {
     <span>
       {parts.map((part, i) =>
         terms.some(t => t.toLowerCase() === part.toLowerCase())
-          ? <mark key={i} className="bg-teal-500/20 text-teal-300 rounded px-0.5">{part}</mark>
+          ? <mark key={i} className="bg-[var(--accent-subtle-bg)] text-[var(--accent)] rounded px-0.5">{part}</mark>
           : <span key={i}>{part}</span>
       )}
     </span>

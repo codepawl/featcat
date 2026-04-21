@@ -38,9 +38,9 @@ function deltaColor(pctChange: number, isPct: boolean): string {
   const threshold = isPct ? 0.01 : 0.1 // 1pp for null_ratio, 10% for others
   const warningThreshold = isPct ? 0.01 : 0.3
   const abs = Math.abs(pctChange)
-  if (abs <= threshold) return 'text-green-600 dark:text-green-400'
-  if (abs <= warningThreshold) return 'text-amber-600 dark:text-amber-400'
-  return 'text-red-600 dark:text-red-400'
+  if (abs <= threshold) return 'text-[var(--success)]'
+  if (abs <= warningThreshold) return 'text-[var(--warning)]'
+  return 'text-[var(--danger)]'
 }
 
 function computeDelta(base: number | undefined, curr: number | undefined, isPct: boolean): { display: string; colorClass: string } {
@@ -58,7 +58,7 @@ function computeDelta(base: number | undefined, curr: number | undefined, isPct:
 
   // For numeric stats: show percentage change
   if (base === 0) {
-    if (curr === 0) return { display: '0%', colorClass: 'text-green-600 dark:text-green-400' }
+    if (curr === 0) return { display: '0%', colorClass: 'text-[var(--success)]' }
     return { display: 'N/A', colorClass: 'text-[var(--text-tertiary)]' }
   }
   const pctChange = (curr - base) / Math.abs(base)

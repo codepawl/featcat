@@ -90,7 +90,7 @@ export function ExportModal({ open, onClose, title, featureSpecs, groupName }: E
     }>
       {result ? (
         <div className="space-y-4">
-          <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+          <div className="flex items-center gap-2 text-[var(--success)]">
             <Check size={16} />
             <span className="text-sm font-medium">
               Export complete &mdash; {result.row_count.toLocaleString()} rows,{' '}
@@ -108,7 +108,7 @@ export function ExportModal({ open, onClose, title, featureSpecs, groupName }: E
           {result.warnings.length > 0 && (
             <div className="space-y-1">
               {result.warnings.map((w, i) => (
-                <p key={i} className="text-xs text-amber-500">{w}</p>
+                <p key={i} className="text-xs text-[var(--warning)]">{w}</p>
               ))}
             </div>
           )}
@@ -132,7 +132,7 @@ export function ExportModal({ open, onClose, title, featureSpecs, groupName }: E
         </div>
       ) : (
         <div className="space-y-4">
-          {error && <p className="text-xs text-red-500">{error}</p>}
+          {error && <p className="text-xs text-[var(--danger)]">{error}</p>}
 
           <div>
             <label className="block text-xs font-medium mb-2">Format</label>
