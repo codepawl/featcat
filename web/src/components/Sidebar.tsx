@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { LayoutDashboard, Database, Activity, Clock, MessageSquare, FolderKanban, GitBranch, History, Settings } from 'lucide-react'
 import { api } from '../api'
-import { ThemeToggle } from './ThemeToggle'
 
 const NAV = [
   { to: '/', key: 'dashboard', icon: LayoutDashboard },
@@ -65,8 +64,8 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       ))}
 
       {/* Footer */}
-      <div className="mt-auto px-5 flex flex-col gap-3">
-        <div className="border-t border-[var(--border-subtle)] pt-3 flex flex-col gap-2 text-xs text-[var(--text-tertiary)]">
+      <div className="mt-auto px-5">
+        <div className="border-t border-[var(--border-subtle)] pt-3 pb-1 flex flex-col gap-2 text-xs text-[var(--text-tertiary)]">
           <div className="flex items-center gap-2">
             <span className={`size-1.5 rounded-full ${serverOk ? 'bg-[var(--success)]' : 'bg-[var(--border-default)]'}`} />
             {t('status.server')}
@@ -75,9 +74,6 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
             <span className={`size-1.5 rounded-full ${llm.ok ? 'bg-[var(--success)]' : 'bg-[var(--danger)]'}`} />
             <span className="truncate">{t('status.llm_label')}: {llmDisplay}</span>
           </div>
-        </div>
-        <div className="border-t border-[var(--border-subtle)] pt-3 pb-1">
-          <ThemeToggle />
         </div>
       </div>
     </nav>

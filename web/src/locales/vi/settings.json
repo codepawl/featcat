@@ -11,5 +11,13 @@
       "vi": "Tiếng Việt",
       "en": "English"
     }
+  },
+  "theme": {
+    "title": "Giao diện",
+    "description": "Chọn kiểu hiển thị sáng hoặc tối",
+    "options": {
+      "light": "Sáng",
+      "dark": "Tối"
+    }
   }
 }

@@ -11,5 +11,13 @@
       "vi": "Tiếng Việt",
       "en": "English"
     }
+  },
+  "theme": {
+    "title": "Theme",
+    "description": "Choose a light or dark appearance",
+    "options": {
+      "light": "Light",
+      "dark": "Dark"
+    }
   }
 }
