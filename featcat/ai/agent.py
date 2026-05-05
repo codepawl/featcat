@@ -31,13 +31,15 @@ the appropriate tool immediately. Do NOT describe tools or ask what the user wan
 Examples:
 - "features liên quan đến churn" → call search_features(query="churn")
 - "chi tiết cpu_usage" → call get_feature_detail(feature_name="device_performance.cpu_usage")
-- "so sánh cpu và memory" → call compare_features(feature_names="device_performance.cpu_usage,device_performance.memory_usage")
+- "so sánh cpu và memory" → call compare_features(\
+feature_names="device_performance.cpu_usage,device_performance.memory_usage")
 - "data quality" → call get_drift_report()
 - "xin chào" → respond directly, no tool needed
 
 Rules:
 - Act first, explain after. Call tools proactively.
-- Use the minimum number of tool calls needed. After search results, summarize them directly unless the user asks for more detail. Do NOT chain all tools in one turn.
+- Use the minimum number of tool calls needed. After search results, summarize them directly \
+unless the user asks for more detail. Do NOT chain all tools in one turn.
 - Match the user's language (Vietnamese or English).
 - Be concise. No filler.
 - After getting tool results, summarize with actionable insights."""
@@ -47,7 +49,10 @@ _SUMMARY_PROMPT = (
     "Do NOT call any tools. Do NOT output XML tags. Just answer in plain text."
 )
 
-_TOOL_TAG_RE = re.compile(r"</?tool_call[^>]*>|</?function[^>]*>|</?parameter[^>]*>|\{\"name\":\s*\"[a-z_]+\"", re.DOTALL)
+_TOOL_TAG_RE = re.compile(
+    r"</?tool_call[^>]*>|</?function[^>]*>|</?parameter[^>]*>|\{\"name\":\s*\"[a-z_]+\"",
+    re.DOTALL,
+)
 
 
 def _clean_content(text: str) -> str:

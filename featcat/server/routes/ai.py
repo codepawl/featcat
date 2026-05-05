@@ -48,7 +48,11 @@ async def discover(body: DiscoverRequest, db=Depends(get_db), llm=Depends(get_ll
     try:
         result = await asyncio.wait_for(
             run_in_threadpool(
-                plugin.execute, db, llm, use_case=body.use_case, max_features=max_features,
+                plugin.execute,
+                db,
+                llm,
+                use_case=body.use_case,
+                max_features=max_features,
             ),
             timeout=LLM_TIMEOUT,
         )

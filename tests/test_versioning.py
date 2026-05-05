@@ -24,8 +24,10 @@ def db_with_feature(tmp_path):
     source = DataSource(name="test_src", path=str(pq_path))
     db.add_source(source)
     feature = Feature(
-        name="test_src.score", data_source_id=source.id,
-        column_name="score", dtype="float64",
+        name="test_src.score",
+        data_source_id=source.id,
+        column_name="score",
+        dtype="float64",
     )
     db.upsert_feature(feature)
 
@@ -177,8 +179,10 @@ class TestRecentVersions:
         db, feature = db_with_feature
 
         feature2 = Feature(
-            name="test_src.user_id", data_source_id=feature.data_source_id,
-            column_name="user_id", dtype="int64",
+            name="test_src.user_id",
+            data_source_id=feature.data_source_id,
+            column_name="user_id",
+            dtype="int64",
         )
         db.upsert_feature(feature2)
 

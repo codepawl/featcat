@@ -18,27 +18,33 @@ def catalog_with_sources(tmp_path):
 
     # Create parquet files
     users_path = tmp_path / "users.parquet"
-    users = pa.table({
-        "user_id": pa.array([1, 2, 3, 4, 5]),
-        "session_count": pa.array([10, 20, 30, 40, 50]),
-        "churn_label": pa.array([0, 1, 0, 1, 0]),
-    })
+    users = pa.table(
+        {
+            "user_id": pa.array([1, 2, 3, 4, 5]),
+            "session_count": pa.array([10, 20, 30, 40, 50]),
+            "churn_label": pa.array([0, 1, 0, 1, 0]),
+        }
+    )
     pq.write_table(users, users_path)
 
     devices_path = tmp_path / "devices.parquet"
-    devices = pa.table({
-        "user_id": pa.array([1, 2, 3, 4, 5]),
-        "cpu_usage": pa.array([0.5, 0.8, 0.3, 0.9, 0.1]),
-        "memory_usage": pa.array([2.0, 4.0, 1.0, 3.0, 5.0]),
-    })
+    devices = pa.table(
+        {
+            "user_id": pa.array([1, 2, 3, 4, 5]),
+            "cpu_usage": pa.array([0.5, 0.8, 0.3, 0.9, 0.1]),
+            "memory_usage": pa.array([2.0, 4.0, 1.0, 3.0, 5.0]),
+        }
+    )
     pq.write_table(devices, devices_path)
 
     # No common column file
     events_path = tmp_path / "events.parquet"
-    events = pa.table({
-        "event_id": pa.array([100, 200, 300]),
-        "event_type": pa.array(["click", "view", "scroll"]),
-    })
+    events = pa.table(
+        {
+            "event_id": pa.array([100, 200, 300]),
+            "event_type": pa.array(["click", "view", "scroll"]),
+        }
+    )
     pq.write_table(events, events_path)
 
     db_path = str(tmp_path / "test.db")
@@ -200,20 +206,25 @@ class TestExportAPI:
         with TestClient(app) as c:
             # Add a source with features
             users_path = tmp_path / "users.parquet"
-            users = pa.table({
-                "user_id": pa.array([1, 2, 3]),
-                "score": pa.array([0.5, 0.8, 0.3]),
-            })
+            users = pa.table(
+                {
+                    "user_id": pa.array([1, 2, 3]),
+                    "score": pa.array([0.5, 0.8, 0.3]),
+                }
+            )
             pq.write_table(users, users_path)
             c.post("/api/sources", json={"path": str(users_path), "name": "users"})
             c.post("/api/sources/users/scan")
             yield c
 
     def test_export_endpoint(self, client):
-        resp = client.post("/api/export", json={
-            "feature_specs": ["users.score"],
-            "format": "parquet",
-        })
+        resp = client.post(
+            "/api/export",
+            json={
+                "feature_specs": ["users.score"],
+                "format": "parquet",
+            },
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert data["feature_count"] == 1
@@ -234,10 +245,13 @@ class TestExportAPI:
         assert resp.status_code == 400
 
     def test_export_invalid_format(self, client):
-        resp = client.post("/api/export", json={
-            "feature_specs": ["users.score"],
-            "format": "xlsx",
-        })
+        resp = client.post(
+            "/api/export",
+            json={
+                "feature_specs": ["users.score"],
+                "format": "xlsx",
+            },
+        )
         assert resp.status_code == 400
 
     def test_download_expired(self, client):

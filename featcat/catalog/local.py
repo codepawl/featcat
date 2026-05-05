@@ -6,6 +6,7 @@ import json
 import sqlite3
 import threading
 from datetime import datetime, timezone
+from typing import Any
 
 from .backend import CatalogBackend
 from .models import DataSource, Feature, FeatureGroup, _new_id
@@ -275,7 +276,8 @@ class LocalBackend(CatalogBackend):
 
             self.conn.execute(
                 """INSERT INTO features
-                   (id, name, data_source_id, column_name, dtype, description, tags, owner, stats, created_at, updated_at)
+                   (id, name, data_source_id, column_name, dtype, description, tags, owner, stats,
+                    created_at, updated_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT(data_source_id, column_name) DO UPDATE SET
                        dtype = excluded.dtype,
@@ -309,8 +311,7 @@ class LocalBackend(CatalogBackend):
             # Overwrite auto-generated summary
             with self._lock:
                 self.conn.execute(
-                    "UPDATE feature_versions SET change_summary = ? "
-                    "WHERE feature_id = ? AND version = 1",
+                    "UPDATE feature_versions SET change_summary = ? WHERE feature_id = ? AND version = 1",
                     ("Initial registration via scan", feature.id),
                 )
                 self.conn.commit()
@@ -375,9 +376,15 @@ class LocalBackend(CatalogBackend):
                     change_type, previous_value, new_value)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
-                    _new_id(), feature_id, next_version, json.dumps(snapshot),
-                    "; ".join(parts), changed_by, now,
-                    change_type, json.dumps(prev_val, default=str),
+                    _new_id(),
+                    feature_id,
+                    next_version,
+                    json.dumps(snapshot),
+                    "; ".join(parts),
+                    changed_by,
+                    now,
+                    change_type,
+                    json.dumps(prev_val, default=str),
                     json.dumps(new_val, default=str),
                 ),
             )
@@ -403,18 +410,22 @@ class LocalBackend(CatalogBackend):
             # Determine change type from changed fields
             ct = "tags" if set(changes) == {"tags"} else "metadata"
             self._snapshot_feature(
-                feature_id, changes,
-                changed_by=kwargs.get("owner", current.get("owner", "")),
+                feature_id,
+                changes,
+                changed_by=kwargs.get("owner") or current.get("owner") or "",
                 change_type=ct,
             )
             if _rollback_version is not None:
                 self.conn.execute(
-                    "UPDATE feature_versions SET change_summary = 'rollback to v' || ? || ': ' || change_summary"
-                    " WHERE feature_id = ? AND version = (SELECT MAX(version) FROM feature_versions WHERE feature_id = ?)",
+                    "UPDATE feature_versions"
+                    " SET change_summary = 'rollback to v' || ? || ': ' || change_summary"
+                    " WHERE feature_id = ?"
+                    " AND version = (SELECT MAX(version) FROM feature_versions WHERE feature_id = ?)",
                     (str(_rollback_version), feature_id, feature_id),
                 )
             now = datetime.now(timezone.utc)
-            sets, vals = [], []
+            sets: list[str] = []
+            vals: list[Any] = []
             for k, v in kwargs.items():
                 if k.startswith("_"):
                     continue
@@ -452,9 +463,7 @@ class LocalBackend(CatalogBackend):
         d["previous_value"] = (
             json.loads(d["previous_value"]) if isinstance(d.get("previous_value"), str) else d.get("previous_value")
         )
-        d["new_value"] = (
-            json.loads(d["new_value"]) if isinstance(d.get("new_value"), str) else d.get("new_value")
-        )
+        d["new_value"] = json.loads(d["new_value"]) if isinstance(d.get("new_value"), str) else d.get("new_value")
         d.setdefault("change_type", "metadata")
         return d
 
@@ -559,7 +568,10 @@ class LocalBackend(CatalogBackend):
         changes = {"short_description": (old_short, new_short)}
         summary = "Updated short_description" if old_short else "Generated documentation"
         self._snapshot_feature(
-            feature_id, changes, changed_by=resolve_user(), change_type="doc",
+            feature_id,
+            changes,
+            changed_by=resolve_user(),
+            change_type="doc",
         )
         # Overwrite auto-generated summary with more descriptive one
         with self._lock:
@@ -585,7 +597,8 @@ class LocalBackend(CatalogBackend):
         with self._lock:
             total = self.conn.execute("SELECT COUNT(*) FROM features").fetchone()[0]
             documented = self.conn.execute(
-                "SELECT COUNT(DISTINCT feature_id) FROM feature_docs WHERE short_description IS NOT NULL AND short_description != ''"
+                "SELECT COUNT(DISTINCT feature_id) FROM feature_docs"
+                " WHERE short_description IS NOT NULL AND short_description != ''"
             ).fetchone()[0]
             with_hints = self.conn.execute(
                 "SELECT COUNT(*) FROM features WHERE generation_hints IS NOT NULL AND generation_hints != ''"
@@ -659,8 +672,15 @@ class LocalBackend(CatalogBackend):
             self.conn.execute(
                 """INSERT INTO feature_groups (id, name, description, project, owner, created_at, updated_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (group.id, group.name, group.description, group.project,
-                 group.owner, group.created_at, group.updated_at),
+                (
+                    group.id,
+                    group.name,
+                    group.description,
+                    group.project,
+                    group.owner,
+                    group.created_at,
+                    group.updated_at,
+                ),
             )
             self.conn.commit()
         return group
@@ -963,7 +983,10 @@ class LocalBackend(CatalogBackend):
                        COALESCE(NULLIF(f.owner, ''), 'unassigned') as owner,
                        ds.name as source,
                        COUNT(*) as total,
-                       COUNT(*) - COUNT(CASE WHEN fd.short_description IS NOT NULL AND fd.short_description != '' THEN fd.feature_id END) as undocumented
+                       COUNT(*) - COUNT(
+                           CASE WHEN fd.short_description IS NOT NULL AND fd.short_description != ''
+                                THEN fd.feature_id END
+                       ) as undocumented
                    FROM features f
                    JOIN data_sources ds ON f.data_source_id = ds.id
                    LEFT JOIN feature_docs fd ON f.id = fd.feature_id
@@ -1028,7 +1051,10 @@ class LocalBackend(CatalogBackend):
                        ds.name as source_name,
                        ds.path,
                        COUNT(DISTINCT f.id) as feature_count,
-                       COUNT(DISTINCT CASE WHEN fd.short_description IS NOT NULL AND fd.short_description != '' THEN f.id END) as documented_count,
+                       COUNT(DISTINCT
+                           CASE WHEN fd.short_description IS NOT NULL AND fd.short_description != ''
+                                THEN f.id END
+                       ) as documented_count,
                        ds.updated_at as last_scanned
                    FROM data_sources ds
                    LEFT JOIN features f ON f.data_source_id = ds.id
@@ -1063,16 +1089,20 @@ class LocalBackend(CatalogBackend):
                 critical = [c for c in checks if c["severity"] in ("critical", "error")]
                 top_drift = max(checks, key=lambda c: c["psi"] or 0, default=None)
                 ls = r["last_scanned"]
-                result.append({
-                    "source_name": src,
-                    "path": r["path"],
-                    "feature_count": r["feature_count"],
-                    "documented_count": r["documented_count"],
-                    "drift_alerts": len(drift),
-                    "critical_alerts": len(critical),
-                    "last_scanned": ls.isoformat() if hasattr(ls, "isoformat") else ls,
-                    "top_drifting_feature": top_drift["feature_name"] if top_drift and (top_drift["psi"] or 0) > 0.1 else None,
-                })
+                result.append(
+                    {
+                        "source_name": src,
+                        "path": r["path"],
+                        "feature_count": r["feature_count"],
+                        "documented_count": r["documented_count"],
+                        "drift_alerts": len(drift),
+                        "critical_alerts": len(critical),
+                        "last_scanned": ls.isoformat() if hasattr(ls, "isoformat") else ls,
+                        "top_drifting_feature": (
+                            top_drift["feature_name"] if top_drift and (top_drift["psi"] or 0) > 0.1 else None
+                        ),
+                    }
+                )
             return result
 
     # --- Lineage ---
@@ -1081,7 +1111,8 @@ class LocalBackend(CatalogBackend):
         with self._lock:
             now = datetime.now(timezone.utc)
             self.conn.execute(
-                """INSERT OR IGNORE INTO feature_lineage (id, child_feature_id, parent_feature_id, transform, created_at)
+                """INSERT OR IGNORE INTO feature_lineage
+                   (id, child_feature_id, parent_feature_id, transform, created_at)
                    VALUES (?, ?, ?, ?, ?)""",
                 (_new_id(), child_feature_id, parent_feature_id, transform, now),
             )
@@ -1116,12 +1147,14 @@ class LocalBackend(CatalogBackend):
                 feature_ids.add(r["child_feature_id"])
                 feature_ids.add(r["parent_feature_id"])
                 ca = r["created_at"]
-                edges.append({
-                    "source": r["parent_name"],
-                    "target": r["child_name"],
-                    "transform": r["transform"] or "",
-                    "created_at": ca.isoformat() if hasattr(ca, "isoformat") else ca,
-                })
+                edges.append(
+                    {
+                        "source": r["parent_name"],
+                        "target": r["child_name"],
+                        "transform": r["transform"] or "",
+                        "created_at": ca.isoformat() if hasattr(ca, "isoformat") else ca,
+                    }
+                )
 
             # Fetch feature details and doc/drift status
             placeholders = ",".join("?" for _ in feature_ids)
@@ -1133,7 +1166,8 @@ class LocalBackend(CatalogBackend):
             doc_ids = {
                 r["feature_id"]
                 for r in self.conn.execute(
-                    f"SELECT feature_id FROM feature_docs WHERE feature_id IN ({placeholders}) AND short_description IS NOT NULL AND short_description != ''",  # noqa: S608
+                    f"SELECT feature_id FROM feature_docs WHERE feature_id IN ({placeholders})"  # noqa: S608
+                    " AND short_description IS NOT NULL AND short_description != ''",
                     list(feature_ids),
                 ).fetchall()
             }
@@ -1152,14 +1186,16 @@ class LocalBackend(CatalogBackend):
             for r in feat_rows:
                 f = _row_to_feature(r)
                 src = f.name.split(".")[0] if "." in f.name else ""
-                nodes.append({
-                    "id": f.name,
-                    "spec": f.name,
-                    "source": src,
-                    "dtype": f.dtype,
-                    "has_doc": f.id in doc_ids,
-                    "drift_status": drift_map.get(f.id, "healthy"),
-                })
+                nodes.append(
+                    {
+                        "id": f.name,
+                        "spec": f.name,
+                        "source": src,
+                        "dtype": f.dtype,
+                        "has_doc": f.id in doc_ids,
+                        "drift_status": drift_map.get(f.id, "healthy"),
+                    }
+                )
 
             return {"nodes": nodes, "edges": edges}
 
@@ -1169,7 +1205,11 @@ class LocalBackend(CatalogBackend):
         if feature is None:
             return {"feature": None, "parents": [], "children": []}
 
-        root = {"spec": feature.name, "dtype": feature.dtype, "source": feature.name.split(".")[0] if "." in feature.name else ""}
+        root = {
+            "spec": feature.name,
+            "dtype": feature.dtype,
+            "source": feature.name.split(".")[0] if "." in feature.name else "",
+        }
 
         def _get_parents(fid: str, d: int) -> list[dict]:
             if d <= 0:
@@ -1184,12 +1224,14 @@ class LocalBackend(CatalogBackend):
                 ).fetchall()
             result = []
             for r in rows:
-                result.append({
-                    "spec": r["name"],
-                    "transform": r["transform"] or "",
-                    "dtype": r["dtype"],
-                    "parents": _get_parents(r["id"], d - 1),
-                })
+                result.append(
+                    {
+                        "spec": r["name"],
+                        "transform": r["transform"] or "",
+                        "dtype": r["dtype"],
+                        "parents": _get_parents(r["id"], d - 1),
+                    }
+                )
             return result
 
         def _get_children(fid: str, d: int) -> list[dict]:
@@ -1205,12 +1247,14 @@ class LocalBackend(CatalogBackend):
                 ).fetchall()
             result = []
             for r in rows:
-                result.append({
-                    "spec": r["name"],
-                    "transform": r["transform"] or "",
-                    "dtype": r["dtype"],
-                    "children": _get_children(r["id"], d - 1),
-                })
+                result.append(
+                    {
+                        "spec": r["name"],
+                        "transform": r["transform"] or "",
+                        "dtype": r["dtype"],
+                        "children": _get_children(r["id"], d - 1),
+                    }
+                )
             return result
 
         parents = _get_parents(feature.id, depth) if direction in ("both", "up") else []

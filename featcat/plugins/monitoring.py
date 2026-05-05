@@ -39,7 +39,7 @@ class MonitoringPlugin(BasePlugin):
     def execute(
         self,
         catalog_db: CatalogBackend,
-        llm: BaseLLM,
+        llm: BaseLLM | None,
         **kwargs: Any,
     ) -> PluginResult:
         action: str = kwargs.get("action", "check")
@@ -81,7 +81,7 @@ class MonitoringPlugin(BasePlugin):
     def _run_check(
         self,
         db: CatalogBackend,
-        llm: BaseLLM,
+        llm: BaseLLM | None,
         feature_name: str | None = None,
         refresh_baseline: bool = False,
         use_llm: bool = False,
