@@ -37,8 +37,12 @@ if [ ! -f "$MODEL_FILE" ]; then
   mv "${MODEL_FILE}.part" "$MODEL_FILE"
 fi
 
-# Start llama.cpp server via Docker if not already running
-if ! curl -s http://localhost:8080/health >/dev/null 2>&1; then
+# Start llama.cpp server via Docker if not already running. If docker isn't
+# usable, warn and continue — backend+frontend still come up; LLM-dependent
+# routes will just fail at runtime until an LLM server is reachable on :8080.
+if curl -s http://localhost:8080/health >/dev/null 2>&1; then
+  echo "LLM server already running on :8080"
+elif command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
   echo "Starting llama.cpp server..."
   docker rm -f featcat-llm 2>/dev/null || true
   docker run -d --rm --name featcat-llm \
@@ -56,7 +60,9 @@ if ! curl -s http://localhost:8080/health >/dev/null 2>&1; then
   done
   echo "LLM server ready."
 else
-  echo "LLM server already running on :8080"
+  echo "warning: docker daemon unavailable; skipping LLM container." >&2
+  echo "  Start it with: 'sudo service docker start' (WSL native) or launch Docker Desktop." >&2
+  echo "  LLM-dependent routes will fail at runtime until an LLM server is on :8080." >&2
 fi
 
 # Init catalog + import sample data on first run only.
