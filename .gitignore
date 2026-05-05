@@ -62,6 +62,7 @@ test_results.txt
 web/node_modules/
 web/dist/
 web/.vite/
+web/package-lock.json
 featcat/server/static/
 
 # OpenPawl

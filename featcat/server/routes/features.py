@@ -181,10 +181,14 @@ def health_summary(db=Depends(get_db)):
             queries_30d=usage["queries"],
         )
         grades[health["grade"]] += 1
-        scored.append({
-            "spec": f.name, "score": health["score"],
-            "grade": health["grade"], "breakdown": health["breakdown"],
-        })
+        scored.append(
+            {
+                "spec": f.name,
+                "score": health["score"],
+                "grade": health["grade"],
+                "breakdown": health["breakdown"],
+            }
+        )
 
     scored.sort(key=lambda x: x["score"])
     avg = round(sum(s["score"] for s in scored) / len(scored))
@@ -411,15 +415,17 @@ def similarity_graph(
     nodes = []
     for f in features:
         src = f.name.split(".")[0] if "." in f.name else ""
-        nodes.append({
-            "id": f.name,
-            "spec": f.name,
-            "source": src,
-            "dtype": f.dtype,
-            "has_doc": f.id in all_docs,
-            "drift_status": drift_map.get(f.id, "healthy"),
-            "tags": f.tags or [],
-        })
+        nodes.append(
+            {
+                "id": f.name,
+                "spec": f.name,
+                "source": src,
+                "dtype": f.dtype,
+                "has_doc": f.id in all_docs,
+                "drift_status": drift_map.get(f.id, "healthy"),
+                "tags": f.tags or [],
+            }
+        )
 
     edges = []
     seen: set[tuple[str, str]] = set()
@@ -435,10 +441,12 @@ def similarity_graph(
             if pair in seen:
                 continue
             seen.add(pair)
-            edges.append({
-                "source": f.name,
-                "target": features[j].name,
-                "similarity": round(score, 3),
-            })
+            edges.append(
+                {
+                    "source": f.name,
+                    "target": features[j].name,
+                    "similarity": round(score, 3),
+                }
+            )
 
     return {"nodes": nodes, "edges": edges}

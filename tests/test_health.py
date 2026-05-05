@@ -10,7 +10,11 @@ from featcat.catalog.health import compute_health_score
 class TestComputeHealthScore:
     def test_perfect_score(self):
         result = compute_health_score(
-            has_doc=True, has_hints=True, drift_status="healthy", views_30d=10, queries_30d=5,
+            has_doc=True,
+            has_hints=True,
+            drift_status="healthy",
+            views_30d=10,
+            queries_30d=5,
         )
         assert result["score"] == 100
         assert result["grade"] == "A"
@@ -18,7 +22,11 @@ class TestComputeHealthScore:
 
     def test_zero_score(self):
         result = compute_health_score(
-            has_doc=False, has_hints=False, drift_status="critical", views_30d=0, queries_30d=0,
+            has_doc=False,
+            has_hints=False,
+            drift_status="critical",
+            views_30d=0,
+            queries_30d=0,
         )
         assert result["score"] == 0
         assert result["grade"] == "D"

@@ -25,10 +25,14 @@ def db_with_features(tmp_path: Path):
     source = DataSource(name="src", path="/data/test.parquet")
     db.add_source(source)
     for col in ["col_a", "col_b", "col_c"]:
-        db.upsert_feature(Feature(
-            name=f"src.{col}", data_source_id=source.id,
-            column_name=col, dtype="int64",
-        ))
+        db.upsert_feature(
+            Feature(
+                name=f"src.{col}",
+                data_source_id=source.id,
+                column_name=col,
+                dtype="int64",
+            )
+        )
     yield db
     db.close()
 

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .backend import CatalogBackend
+    from .models import Feature
 
 
 @dataclass
@@ -84,13 +85,15 @@ def build_doc_context(
                     source = m.name.split(".")[0] if "." in m.name else ""
                     if source != target_source:
                         continue
-                    context.append(FeatureContext(
-                        spec=m.name,
-                        dtype=m.dtype,
-                        stats_summary=_extract_stats_summary(m.stats),
-                        generation_hints=m.generation_hints,
-                        source="same_source_same_group",
-                    ))
+                    context.append(
+                        FeatureContext(
+                            spec=m.name,
+                            dtype=m.dtype,
+                            stats_summary=_extract_stats_summary(m.stats),
+                            generation_hints=m.generation_hints,
+                            source="same_source_same_group",
+                        )
+                    )
                     used_ids.add(m.id)
                     if len(context) >= 4:
                         break
@@ -99,30 +102,26 @@ def build_doc_context(
 
     # 2. Same source, other features (fill remaining up to max)
     same_source_features = [
-        f for f in all_features
-        if f.id not in used_ids
-        and "." in f.name
-        and f.name.split(".")[0] == target_source
+        f for f in all_features if f.id not in used_ids and "." in f.name and f.name.split(".")[0] == target_source
     ]
     for f in same_source_features:
         if len(context) >= max_context_features:
             break
-        context.append(FeatureContext(
-            spec=f.name,
-            dtype=f.dtype,
-            stats_summary=_extract_stats_summary(f.stats),
-            generation_hints=f.generation_hints,
-            source="same_source",
-        ))
+        context.append(
+            FeatureContext(
+                spec=f.name,
+                dtype=f.dtype,
+                stats_summary=_extract_stats_summary(f.stats),
+                generation_hints=f.generation_hints,
+                source="same_source",
+            )
+        )
         used_ids.add(f.id)
 
     # 3. Cross-source TF-IDF similarity
     remaining = max_context_features - len(context)
     if remaining > 0:
-        other_features = [
-            f for f in all_features
-            if f.id not in used_ids
-        ]
+        other_features = [f for f in all_features if f.id not in used_ids]
         if other_features:
             cross_source = _tfidf_similar(target, other_features, top_k=remaining)
             context.extend(cross_source)
@@ -131,8 +130,8 @@ def build_doc_context(
 
 
 def _tfidf_similar(
-    target: object,
-    candidates: list,
+    target: Feature,
+    candidates: list[Feature],
     top_k: int,
     threshold: float = 0.15,
 ) -> list[FeatureContext]:
@@ -143,7 +142,7 @@ def _tfidf_similar(
     except ImportError:
         return []
 
-    target_text = _feature_text(target.name, target.tags or [])  # type: ignore[union-attr]
+    target_text = _feature_text(target.name, target.tags or [])
     candidate_texts = [_feature_text(f.name, f.tags or []) for f in candidates]
 
     all_texts = [target_text, *candidate_texts]
@@ -166,12 +165,14 @@ def _tfidf_similar(
     for feat, sim in scored[:top_k]:
         if sim < threshold:
             break
-        results.append(FeatureContext(
-            spec=feat.name,
-            dtype=feat.dtype,
-            stats_summary=_extract_stats_summary(feat.stats),
-            generation_hints=feat.generation_hints,
-            source="cross_source",
-            similarity=round(float(sim), 4),
-        ))
+        results.append(
+            FeatureContext(
+                spec=feat.name,
+                dtype=feat.dtype,
+                stats_summary=_extract_stats_summary(feat.stats),
+                generation_hints=feat.generation_hints,
+                source="cross_source",
+                similarity=round(float(sim), 4),
+            )
+        )
     return results

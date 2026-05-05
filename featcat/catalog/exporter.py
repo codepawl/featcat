@@ -33,7 +33,8 @@ class ExportResult:
 
 
 def _group_by_source(
-    feature_specs: list[str], db: CatalogBackend,
+    feature_specs: list[str],
+    db: CatalogBackend,
 ) -> dict[str, list[str]]:
     """Group feature specs by source, returning {source_name: [column_names]}."""
     source_columns: dict[str, list[str]] = {}
@@ -61,7 +62,8 @@ def _find_common_columns(source_paths: dict[str, str]) -> list[str]:
 
 
 def _read_source_columns(
-    path: str, columns: list[str],
+    path: str,
+    columns: list[str],
 ) -> pa.Table:
     """Read specific columns from a parquet file."""
     return pq.read_table(path, columns=columns)
@@ -80,11 +82,7 @@ def _generate_snippet(
 
     if fmt == "csv":
         return (
-            f"import polars as pl\n\n"
-            f'df = pl.read_csv("{fname}")\n'
-            f"# Features: {col_comment}\n"
-            f"print(df.shape)\n"
-            f"df.head()"
+            f'import polars as pl\n\ndf = pl.read_csv("{fname}")\n# Features: {col_comment}\nprint(df.shape)\ndf.head()'
         )
 
     if len(sources_used) == 1:
@@ -100,11 +98,7 @@ def _generate_snippet(
         )
 
     return (
-        f"import polars as pl\n\n"
-        f'df = pl.read_parquet("{fname}")\n'
-        f"# Features: {col_comment}\n"
-        f"print(df.shape)\n"
-        f"df.head()"
+        f'import polars as pl\n\ndf = pl.read_parquet("{fname}")\n# Features: {col_comment}\nprint(df.shape)\ndf.head()'
     )
 
 
@@ -163,9 +157,7 @@ def export_features(
                 msg = "No common column for join. Use --join-on to specify."
                 raise ValueError(msg)
             if len(common) > 1:
-                warnings.append(
-                    f"Multiple common columns: {', '.join(common)}. Using '{common[0]}'."
-                )
+                warnings.append(f"Multiple common columns: {', '.join(common)}. Using '{common[0]}'.")
             join_on = common[0]
 
         # Read each source with join column + feature columns

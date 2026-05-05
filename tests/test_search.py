@@ -10,23 +10,31 @@ from featcat.catalog.search import highlight_matches, search_features
 
 SAMPLE_FEATURES = [
     {
-        "name": "user_behavior.session_count", "column_name": "session_count",
-        "tags": ["behavior", "30d"], "description": "Number of user sessions",
+        "name": "user_behavior.session_count",
+        "column_name": "session_count",
+        "tags": ["behavior", "30d"],
+        "description": "Number of user sessions",
         "generation_hints": None,
     },
     {
-        "name": "user_behavior.churn_label", "column_name": "churn_label",
-        "tags": ["churn"], "description": "Binary churn indicator",
+        "name": "user_behavior.churn_label",
+        "column_name": "churn_label",
+        "tags": ["churn"],
+        "description": "Binary churn indicator",
         "generation_hints": "1=churned, 0=active",
     },
     {
-        "name": "device_performance.cpu_usage", "column_name": "cpu_usage",
-        "tags": ["device", "performance"], "description": "CPU utilization percentage",
+        "name": "device_performance.cpu_usage",
+        "column_name": "cpu_usage",
+        "tags": ["device", "performance"],
+        "description": "CPU utilization percentage",
         "generation_hints": None,
     },
     {
-        "name": "device_performance.memory_usage", "column_name": "memory_usage",
-        "tags": ["device"], "description": "Memory usage in GB",
+        "name": "device_performance.memory_usage",
+        "column_name": "memory_usage",
+        "tags": ["device"],
+        "description": "Memory usage in GB",
         "generation_hints": None,
     },
 ]
@@ -107,11 +115,13 @@ class TestSearchAPI:
         with TestClient(app) as c:
             # Create source with features
             pq_path = tmp_path / "users.parquet"
-            table = pa.table({
-                "user_id": pa.array([1, 2, 3]),
-                "session_count": pa.array([10, 20, 30]),
-                "churn_label": pa.array([0, 1, 0]),
-            })
+            table = pa.table(
+                {
+                    "user_id": pa.array([1, 2, 3]),
+                    "session_count": pa.array([10, 20, 30]),
+                    "churn_label": pa.array([0, 1, 0]),
+                }
+            )
             pq.write_table(table, pq_path)
             c.post("/api/sources", json={"path": str(pq_path), "name": "users"})
             c.post("/api/sources/users/scan")

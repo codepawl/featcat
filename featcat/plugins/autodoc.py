@@ -151,9 +151,7 @@ class AutodocPlugin(BasePlugin):
 
         same_source_section = ""
         if same_lines:
-            same_source_section = (
-                "RELATED FEATURES IN SAME SOURCE:\n" + "\n".join(same_lines)
-            )
+            same_source_section = "RELATED FEATURES IN SAME SOURCE:\n" + "\n".join(same_lines)
 
         # Build cross-source context section
         cross_source = [c for c in context_features if c.source == "cross_source"]
@@ -167,9 +165,7 @@ class AutodocPlugin(BasePlugin):
 
         cross_source_section = ""
         if cross_lines:
-            cross_source_section = (
-                "CROSS-SOURCE RELATED FEATURES:\n" + "\n".join(cross_lines)
-            )
+            cross_source_section = "CROSS-SOURCE RELATED FEATURES:\n" + "\n".join(cross_lines)
 
         prompt = AUTODOC_PROMPT_SINGLE.format(
             feature_name=feature.name,

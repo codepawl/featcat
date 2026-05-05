@@ -488,11 +488,7 @@ def _export_data(
 
     size_mb = result.file_size / (1024 * 1024)
     console.print(f"\n[green]Export complete:[/green] {result.output_path}")
-    console.print(
-        f"Features: {result.feature_count}  |  "
-        f"Rows: {result.row_count:,}  |  "
-        f"Size: {size_mb:.1f} MB"
-    )
+    console.print(f"Features: {result.feature_count}  |  Rows: {result.row_count:,}  |  Size: {size_mb:.1f} MB")
     console.print("\n[dim]Python snippet:[/dim]")
     console.print(f"[cyan]{result.code_snippet}[/cyan]")
 
@@ -1896,11 +1892,13 @@ def feature_show_definition(
         console.print(f"[dim]No definition set for {spec}[/dim]")
         return
 
-    console.print(Panel(
-        defn["definition"],
-        title=f"{spec} ({defn['definition_type']})",
-        border_style="cyan",
-    ))
+    console.print(
+        Panel(
+            defn["definition"],
+            title=f"{spec} ({defn['definition_type']})",
+            border_style="cyan",
+        )
+    )
 
 
 # =========================================================================
@@ -1993,13 +1991,18 @@ def _get_health_inputs(db, feature):
     except Exception:  # noqa: BLE001
         pass
 
-    return compute_health_score(
-        has_doc=has_doc,
-        has_hints=has_hints,
-        drift_status=drift_status,
-        views_30d=views_30d,
-        queries_30d=queries_30d,
-    ), drift_status, views_30d, queries_30d
+    return (
+        compute_health_score(
+            has_doc=has_doc,
+            has_hints=has_hints,
+            drift_status=drift_status,
+            views_30d=views_30d,
+            queries_30d=queries_30d,
+        ),
+        drift_status,
+        views_30d,
+        queries_30d,
+    )
 
 
 def _health_bar(value: int, max_value: int, width: int = 20) -> str:
@@ -2225,8 +2228,11 @@ def usage_activity(
 
     for r in results:
         table.add_row(
-            r["date"], str(r["view_count"]), str(r["query_count"]),
-            str(r["unique_features"]), str(r["total"]),
+            r["date"],
+            str(r["view_count"]),
+            str(r["query_count"]),
+            str(r["unique_features"]),
+            str(r["total"]),
         )
 
     console.print(table)

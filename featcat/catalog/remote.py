@@ -205,8 +205,12 @@ class RemoteBackend(CatalogBackend):
     # --- Feature Definitions ---
 
     def set_feature_definition(self, feature_id: str, definition: str, definition_type: str) -> None:
-        self._request("PUT", "/api/features/by-name/definition", params={"name": feature_id},
-                       json={"definition": definition, "definition_type": definition_type})
+        self._request(
+            "PUT",
+            "/api/features/by-name/definition",
+            params={"name": feature_id},
+            json={"definition": definition, "definition_type": definition_type},
+        )
 
     def get_feature_definition(self, feature_id: str) -> dict | None:
         try:
@@ -239,20 +243,17 @@ class RemoteBackend(CatalogBackend):
     # --- Generation Hints ---
 
     def set_feature_hint(self, feature_id: str, hint: str) -> None:
-        self._request("PATCH", "/api/features/by-name/hints",
-                       params={"name": feature_id}, json={"hints": hint})
+        self._request("PATCH", "/api/features/by-name/hints", params={"name": feature_id}, json={"hints": hint})
 
     def get_feature_hint(self, feature_id: str) -> str | None:
         try:
-            result = self._request("GET", "/api/features/by-name",
-                                    params={"name": feature_id})
+            result = self._request("GET", "/api/features/by-name", params={"name": feature_id})
             return result.get("generation_hints")
         except httpx.HTTPStatusError:
             return None
 
     def clear_feature_hint(self, feature_id: str) -> None:
-        self._request("DELETE", "/api/features/by-name/hints",
-                       params={"name": feature_id})
+        self._request("DELETE", "/api/features/by-name/hints", params={"name": feature_id})
 
     # --- Visualization Queries ---
 
@@ -274,7 +275,11 @@ class RemoteBackend(CatalogBackend):
     # --- Lineage ---
 
     def add_lineage(self, child_feature_id: str, parent_feature_id: str, transform: str = "") -> None:
-        self._request("POST", "/api/lineage", json={"child": child_feature_id, "parent": parent_feature_id, "transform": transform})
+        self._request(
+            "POST",
+            "/api/lineage",
+            json={"child": child_feature_id, "parent": parent_feature_id, "transform": transform},
+        )
 
     def remove_lineage(self, child_feature_id: str, parent_feature_id: str) -> None:
         self._request("DELETE", "/api/lineage", params={"child": child_feature_id, "parent": parent_feature_id})
@@ -283,7 +288,11 @@ class RemoteBackend(CatalogBackend):
         return self._request("GET", "/api/lineage/graph")
 
     def get_feature_lineage(self, feature_name: str, direction: str = "both", depth: int = 3) -> dict:
-        return self._request("GET", f"/api/lineage/feature/{feature_name}", params={"direction": direction, "depth": depth})
+        return self._request(
+            "GET",
+            f"/api/lineage/feature/{feature_name}",
+            params={"direction": direction, "depth": depth},
+        )
 
     # --- Server-side AI/plugin operations (used by CLI in remote mode) ---
 
