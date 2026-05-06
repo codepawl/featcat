@@ -1286,6 +1286,118 @@ class LocalBackend(CatalogBackend):
             )
         return result
 
+    # --- Similarity (T1.2b) ---
+
+    def find_similar_features(self, feature_id: str, top_k: int = 10) -> list[dict]:
+        """Return up to ``top_k`` features most similar to ``feature_id``.
+
+        Routing:
+        - **postgres + embedding present**: pgvector top-K cosine via the
+          ``<=>`` operator on the HNSW index. Sub-100ms target even at 5k+
+          features.
+        - **anything else** (sqlite mode, missing embedding, postgres without
+          the embedding for this feature): falls back to a Python-side
+          TF-IDF cosine over feature names + descriptions across the catalog.
+          Slower but always works.
+
+        Each result: ``{name, dtype, similarity}`` where ``similarity`` is
+        in ``[0, 1]`` (cosine).
+        """
+        if self.backend == "postgres":
+            with self.session() as s:
+                row = s.execute(
+                    text("SELECT embedding IS NOT NULL AS has_emb FROM features WHERE id = :id"),
+                    {"id": feature_id},
+                ).first()
+            if row is not None and row[0]:
+                return self._find_similar_pgvector(feature_id, top_k)
+        return self._find_similar_tfidf(feature_id, top_k)
+
+    def _find_similar_pgvector(self, feature_id: str, top_k: int) -> list[dict]:
+        """pgvector ``<=>`` (cosine distance) top-K. Postgres-only."""
+        with self.session() as s:
+            rows = (
+                s.execute(
+                    text(
+                        "SELECT f.id, f.name, f.dtype, "
+                        "       1 - (f.embedding <=> ref.embedding) AS similarity "
+                        "FROM features f, "
+                        "     (SELECT embedding FROM features WHERE id = :id) AS ref "
+                        "WHERE f.id != :id AND f.embedding IS NOT NULL "
+                        "ORDER BY f.embedding <=> ref.embedding "
+                        "LIMIT :k"
+                    ),
+                    {"id": feature_id, "k": top_k},
+                )
+                .mappings()
+                .all()
+            )
+        return [
+            {
+                "id": r["id"],
+                "name": r["name"],
+                "dtype": r["dtype"],
+                "similarity": float(r["similarity"]) if r["similarity"] is not None else 0.0,
+            }
+            for r in rows
+        ]
+
+    def _find_similar_tfidf(self, feature_id: str, top_k: int) -> list[dict]:
+        """Fallback: TF-IDF cosine over the catalog when embeddings aren't usable.
+
+        Reads every feature into memory and does sklearn TF-IDF cosine — the
+        existing similarity-graph code path uses the same approach. Acceptable
+        for sub-1k catalogs; postgres+embeddings is the answer at scale.
+        """
+        with self.session() as s:
+            rows = s.execute(text("SELECT id, name, dtype, description, tags FROM features")).mappings().all()
+        if len(rows) < 2:
+            return []
+
+        import numpy as np
+        from sklearn.feature_extraction.text import TfidfVectorizer
+        from sklearn.metrics.pairwise import cosine_similarity
+
+        ids: list[str] = []
+        corpus: list[str] = []
+        ref_idx: int | None = None
+        for i, r in enumerate(rows):
+            ids.append(r["id"])
+            text_blob = r["name"].replace("_", " ").replace(".", " ")
+            tags = r["tags"]
+            if isinstance(tags, str) and tags:
+                with contextlib.suppress(json.JSONDecodeError):
+                    text_blob += " " + " ".join(json.loads(tags))
+            if r["description"]:
+                text_blob += " " + r["description"]
+            corpus.append(text_blob)
+            if r["id"] == feature_id:
+                ref_idx = i
+        if ref_idx is None:
+            return []
+
+        vectorizer = TfidfVectorizer(ngram_range=(1, 2), min_df=1)
+        matrix = vectorizer.fit_transform(corpus)
+        # cosine_similarity accepts sparse matrices; cast keeps the type-checker
+        # happy on the slice (sklearn returns scipy.sparse.spmatrix which lacks
+        # __getitem__ in mypy stubs).
+        ref_row = matrix[ref_idx : ref_idx + 1]
+        sims = cosine_similarity(ref_row, matrix)[0]
+        # Argsort descending excluding self.
+        order = np.argsort(-sims)
+        result: list[dict] = []
+        for idx in order:
+            if idx == ref_idx:
+                continue
+            sim = float(sims[idx])
+            if sim <= 0:
+                break  # cosine of zero-vector pair → unrelated; stop early
+            row = rows[idx]
+            result.append({"id": row["id"], "name": row["name"], "dtype": row["dtype"], "similarity": sim})
+            if len(result) >= top_k:
+                break
+        return result
+
     # --- Lineage ---
 
     def add_lineage(

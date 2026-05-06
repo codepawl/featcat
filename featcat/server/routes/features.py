@@ -349,6 +349,25 @@ def rollback_feature_endpoint(name: str = Query(...), body: RollbackRequest = ..
     return result
 
 
+@router.get("/by-name/similar")
+def get_similar_by_name(
+    name: str = Query(..., description="Feature name (source.column)"),
+    top_k: int = Query(10, ge=1, le=50),
+    db=Depends(get_db),  # noqa: B008
+):
+    """Return the ``top_k`` features most similar to ``name`` (T1.2b).
+
+    Postgres + embeddings present → pgvector ``<=>`` cosine top-K.
+    Anywhere else → TF-IDF cosine over name + description + tags. Both
+    return ``[{id, name, dtype, similarity}]``. Registered ABOVE
+    ``/by-name`` so FastAPI's longest-match wins despite the shared prefix.
+    """
+    feature = db.get_feature_by_name(name)
+    if feature is None:
+        raise HTTPException(status_code=404, detail=f"Feature not found: {name}")
+    return db.find_similar_features(feature.id, top_k=top_k)
+
+
 @router.get("/by-name")
 def get_feature_by_name(name: str = Query(...), db=Depends(get_db)):
     """Get a feature by name (query param for dotted names)."""

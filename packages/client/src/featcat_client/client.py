@@ -240,18 +240,49 @@ class FeatCatClient:
         return [Feature.model_validate(r) for r in rows[:limit]]
 
     def find_similar(self, name: str, *, top_k: int = 10, threshold: float = 0.3) -> list[Feature]:
-        """Return features most similar to ``name`` (TF-IDF cosine similarity).
+        """Return features most similar to ``name``.
 
-        Wraps ``GET /api/features/similarity-graph?threshold=X`` and filters
-        to edges incident on ``name``, sorted by similarity score.
+        Calls the dedicated ``GET /api/features/by-name/similar`` endpoint
+        added in T1.2b — server picks pgvector cosine when available, TF-IDF
+        otherwise. Falls back to walking the legacy ``similarity-graph`` if
+        the new endpoint isn't there (older servers).
+
+        ``threshold`` is honored only on the legacy fallback path; the new
+        endpoint already returns ranked top-K so threshold filtering happens
+        client-side.
         """
+        # Try the dedicated endpoint first. A 404 means EITHER the endpoint
+        # isn't there (older server) OR the feature itself doesn't exist; in
+        # both cases the graph-walk fallback returns sensible results (empty
+        # for the missing-feature case, populated for the older-server case),
+        # so a single ``except`` covers both without distinguishing.
+        try:
+            rows = self._request(
+                "GET",
+                "/api/features/by-name/similar",
+                params={"name": name, "top_k": top_k},
+            )
+        except ServerError as exc:
+            if exc.status_code != 404:
+                raise
+            rows = None
+        if rows is not None:
+            out: list[Feature] = []
+            for r in rows:
+                if r.get("similarity", 0) < threshold:
+                    continue
+                try:
+                    out.append(self.get_feature(r["name"]))
+                except FeatureNotFound:
+                    continue
+            return out
+
         graph = self._request(
             "GET",
             "/api/features/similarity-graph",
             params={"threshold": threshold},
         )
         edges = graph.get("edges", [])
-        # Edges: {"source": "name1", "target": "name2", "similarity": 0.8}
         scored: list[tuple[str, float]] = []
         for e in edges:
             if e.get("source") == name:
@@ -259,8 +290,7 @@ class FeatCatClient:
             elif e.get("target") == name:
                 scored.append((e.get("source", ""), float(e.get("similarity", 0.0))))
         scored.sort(key=lambda x: x[1], reverse=True)
-        # Resolve top_k names back to Feature objects.
-        out: list[Feature] = []
+        out = []
         for n, _score in scored[:top_k]:
             try:
                 out.append(self.get_feature(n))
