@@ -1,166 +1,32 @@
-"""Local SQLite backend for the feature catalog."""
+"""Local SQLite backend for the feature catalog.
+
+Phase 1 of the SQLite -> Postgres migration uses SQLAlchemy for engine and schema
+management (see ``featcat.db.models``). The per-method query layer still uses the
+raw ``sqlite3`` connection exposed as ``self.conn`` so the ~30 callsites in
+scheduler/routes/CLI keep working unchanged. Phase 2/3 migrate those callsites
+and add Postgres support.
+"""
 
 from __future__ import annotations
 
 import json
 import sqlite3
 import threading
+from contextlib import contextmanager
 from datetime import datetime, timezone
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+from ..db.connection import make_engine, make_session_factory
+from ..db.models import Base
 from .backend import CatalogBackend
 from .models import DataSource, Feature, FeatureGroup, _new_id
 
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+    from sqlalchemy.orm import Session
+
 DEFAULT_DB = "catalog.db"
-
-SCHEMA_SQL = """\
-CREATE TABLE IF NOT EXISTS data_sources (
-    id TEXT PRIMARY KEY,
-    name TEXT UNIQUE NOT NULL,
-    path TEXT NOT NULL,
-    storage_type TEXT NOT NULL DEFAULT 'local',
-    format TEXT NOT NULL DEFAULT 'parquet',
-    description TEXT DEFAULT '',
-    created_at TIMESTAMP NOT NULL,
-    updated_at TIMESTAMP NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS features (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    data_source_id TEXT NOT NULL REFERENCES data_sources(id),
-    column_name TEXT NOT NULL,
-    dtype TEXT DEFAULT '',
-    description TEXT DEFAULT '',
-    tags TEXT DEFAULT '[]',
-    owner TEXT DEFAULT '',
-    stats TEXT DEFAULT '{}',
-    created_at TIMESTAMP NOT NULL,
-    updated_at TIMESTAMP NOT NULL,
-    UNIQUE(data_source_id, column_name)
-);
-
-CREATE TABLE IF NOT EXISTS feature_docs (
-    feature_id TEXT NOT NULL REFERENCES features(id),
-    short_description TEXT DEFAULT '',
-    long_description TEXT DEFAULT '',
-    expected_range TEXT DEFAULT '',
-    potential_issues TEXT DEFAULT '',
-    generated_at TIMESTAMP,
-    model_used TEXT DEFAULT ''
-);
-
-CREATE TABLE IF NOT EXISTS monitoring_baselines (
-    feature_id TEXT NOT NULL REFERENCES features(id),
-    baseline_stats TEXT DEFAULT '{}',
-    computed_at TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS job_schedules (
-    job_name TEXT PRIMARY KEY,
-    cron_expression TEXT NOT NULL,
-    enabled INTEGER DEFAULT 1,
-    last_run_at TIMESTAMP,
-    next_run_at TIMESTAMP,
-    description TEXT DEFAULT '',
-    max_log_retention_days INTEGER DEFAULT 30
-);
-
-CREATE TABLE IF NOT EXISTS job_logs (
-    id TEXT PRIMARY KEY,
-    job_name TEXT NOT NULL,
-    status TEXT NOT NULL,
-    started_at TIMESTAMP NOT NULL,
-    finished_at TIMESTAMP,
-    duration_seconds REAL,
-    result_summary TEXT DEFAULT '{}',
-    error_message TEXT,
-    triggered_by TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS feature_versions (
-    id TEXT PRIMARY KEY,
-    feature_id TEXT NOT NULL REFERENCES features(id) ON DELETE CASCADE,
-    version INTEGER NOT NULL,
-    snapshot TEXT NOT NULL,
-    change_summary TEXT DEFAULT '',
-    changed_by TEXT DEFAULT '',
-    created_at TIMESTAMP NOT NULL,
-    UNIQUE(feature_id, version)
-);
-
-CREATE TABLE IF NOT EXISTS feature_groups (
-    id TEXT PRIMARY KEY,
-    name TEXT UNIQUE NOT NULL,
-    description TEXT DEFAULT '',
-    project TEXT DEFAULT '',
-    owner TEXT DEFAULT '',
-    created_at TIMESTAMP NOT NULL,
-    updated_at TIMESTAMP NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS feature_group_members (
-    group_id TEXT NOT NULL REFERENCES feature_groups(id) ON DELETE CASCADE,
-    feature_id TEXT NOT NULL REFERENCES features(id) ON DELETE CASCADE,
-    added_at TIMESTAMP NOT NULL,
-    PRIMARY KEY (group_id, feature_id)
-);
-
-CREATE TABLE IF NOT EXISTS usage_log (
-    id TEXT PRIMARY KEY,
-    feature_id TEXT NOT NULL REFERENCES features(id),
-    action TEXT NOT NULL,
-    user TEXT DEFAULT '',
-    context TEXT DEFAULT '',
-    created_at TIMESTAMP NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_usage_log_feature ON usage_log(feature_id);
-CREATE INDEX IF NOT EXISTS idx_usage_log_created ON usage_log(created_at);
-
-CREATE TABLE IF NOT EXISTS monitoring_checks (
-    id TEXT PRIMARY KEY,
-    feature_id TEXT NOT NULL REFERENCES features(id),
-    feature_name TEXT NOT NULL,
-    psi REAL,
-    severity TEXT NOT NULL,
-    checked_at TIMESTAMP NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_monitoring_checks_feature ON monitoring_checks(feature_name);
-CREATE INDEX IF NOT EXISTS idx_monitoring_checks_date ON monitoring_checks(checked_at);
-
-CREATE TABLE IF NOT EXISTS feature_lineage (
-    id TEXT PRIMARY KEY,
-    child_feature_id TEXT NOT NULL REFERENCES features(id) ON DELETE CASCADE,
-    parent_feature_id TEXT NOT NULL REFERENCES features(id) ON DELETE CASCADE,
-    transform TEXT DEFAULT '',
-    created_at TIMESTAMP NOT NULL,
-    UNIQUE(child_feature_id, parent_feature_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_lineage_child ON feature_lineage(child_feature_id);
-CREATE INDEX IF NOT EXISTS idx_lineage_parent ON feature_lineage(parent_feature_id);
-
-CREATE TABLE IF NOT EXISTS action_items (
-    id TEXT PRIMARY KEY,
-    feature_id TEXT NOT NULL REFERENCES features(id) ON DELETE CASCADE,
-    source TEXT NOT NULL,
-    title TEXT NOT NULL,
-    recommendation TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'pending',
-    created_by TEXT DEFAULT '',
-    applied_by TEXT DEFAULT '',
-    applied_at TIMESTAMP,
-    change_summary TEXT DEFAULT '',
-    context_json TEXT DEFAULT '{}',
-    created_at TIMESTAMP NOT NULL,
-    updated_at TIMESTAMP NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_action_items_feature ON action_items(feature_id, status);
-CREATE INDEX IF NOT EXISTS idx_action_items_status ON action_items(status, created_at);
-"""
 
 
 def _adapt_datetime(val: datetime) -> str:
@@ -206,6 +72,12 @@ class LocalBackend(CatalogBackend):
     def __init__(self, db_path: str = DEFAULT_DB) -> None:
         self.db_path = db_path
         self._lock = threading.RLock()
+        # SQLAlchemy engine + sessionmaker — schema source of truth, used by
+        # init_db() and any new code that opts into Session via self.session().
+        self.engine = make_engine(db_path)
+        self.session_factory = make_session_factory(self.engine)
+        # Raw sqlite3 connection — kept for the ~30 callsites in scheduler,
+        # routes, and CLI that issue raw SQL. Phase 3 migrates those off `.conn`.
         self.conn = sqlite3.connect(
             db_path,
             detect_types=sqlite3.PARSE_DECLTYPES,
@@ -215,42 +87,57 @@ class LocalBackend(CatalogBackend):
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys = ON")
 
+    @contextmanager
+    def session(self) -> Iterator[Session]:
+        """Yield a SQLAlchemy Session bound to this backend's engine.
+
+        New code should prefer this over ``self.conn``. Caller is responsible for
+        committing; the context manager closes the session on exit.
+        """
+        s = self.session_factory()
+        try:
+            yield s
+        finally:
+            s.close()
+
     def init_db(self) -> None:
         import contextlib
 
-        self.conn.executescript(SCHEMA_SQL)
-        # Add auto_refresh column if not present (added in Phase 6)
+        # Fresh DBs: ORM models are the schema source of truth.
+        # Existing DBs: create_all is a no-op (tables already exist), so the
+        # backward-compat ALTER TABLE shims below still upgrade older catalogs.
+        Base.metadata.create_all(self.engine, checkfirst=True)
+        # Backward-compat ALTER TABLE migrations for catalogs created before
+        # these columns existed. Each is idempotent (suppress OperationalError
+        # if the column already exists). When Alembic owns migrations end-to-end
+        # in Phase 2+, these get folded into versioned revisions.
         with contextlib.suppress(sqlite3.OperationalError):
             self.conn.execute("ALTER TABLE data_sources ADD COLUMN auto_refresh INTEGER DEFAULT 0")
-        # Feature definition columns
         with contextlib.suppress(sqlite3.OperationalError):
             self.conn.execute("ALTER TABLE features ADD COLUMN definition TEXT")
         with contextlib.suppress(sqlite3.OperationalError):
             self.conn.execute("ALTER TABLE features ADD COLUMN definition_type TEXT")
         with contextlib.suppress(sqlite3.OperationalError):
             self.conn.execute("ALTER TABLE features ADD COLUMN definition_updated_at TIMESTAMP")
-        # Generation hints
         with contextlib.suppress(sqlite3.OperationalError):
             self.conn.execute("ALTER TABLE features ADD COLUMN generation_hints TEXT")
-        # Doc generation audit columns
         with contextlib.suppress(sqlite3.OperationalError):
             self.conn.execute("ALTER TABLE feature_docs ADD COLUMN hints_used TEXT")
         with contextlib.suppress(sqlite3.OperationalError):
             self.conn.execute("ALTER TABLE feature_docs ADD COLUMN context_features TEXT")
-        # Version tracking: change_type, previous/new value
         with contextlib.suppress(sqlite3.OperationalError):
             self.conn.execute("ALTER TABLE feature_versions ADD COLUMN change_type TEXT DEFAULT 'metadata'")
         with contextlib.suppress(sqlite3.OperationalError):
             self.conn.execute("ALTER TABLE feature_versions ADD COLUMN previous_value TEXT")
         with contextlib.suppress(sqlite3.OperationalError):
             self.conn.execute("ALTER TABLE feature_versions ADD COLUMN new_value TEXT")
-        # Persist LLM analysis snapshot on monitoring checks (lifecycle loop)
         with contextlib.suppress(sqlite3.OperationalError):
             self.conn.execute("ALTER TABLE monitoring_checks ADD COLUMN llm_analysis_json TEXT")
         self.conn.commit()
 
     def close(self) -> None:
         self.conn.close()
+        self.engine.dispose()
 
     # --- Sources ---
 
