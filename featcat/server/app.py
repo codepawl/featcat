@@ -100,6 +100,7 @@ def build_app() -> FastAPI:
     from .routes.actions import router as actions_router
     from .routes.admin import router as admin_router
     from .routes.ai import router as ai_router
+    from .routes.bulk import router as bulk_router
     from .routes.docs import router as docs_router
     from .routes.export import router as export_router
     from .routes.features import router as features_router
@@ -128,6 +129,7 @@ def build_app() -> FastAPI:
     app.include_router(export_router, prefix="/api/export", tags=["export"])
     app.include_router(versions_router, prefix="/api/versions", tags=["versions"])
     app.include_router(lineage_router, prefix="/api/lineage", tags=["lineage"])
+    app.include_router(bulk_router, prefix="/api/features/bulk", tags=["bulk"])
 
     # Mount static assets (js, css) under /assets if present
     assets_dir = STATIC_DIR / "assets"
