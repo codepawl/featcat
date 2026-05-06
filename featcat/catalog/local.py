@@ -1,29 +1,28 @@
-"""Catalog backend — SQLAlchemy-based, dual SQLite/PostgreSQL.
+"""Catalog backend — SQLAlchemy-based, runs on SQLite or PostgreSQL.
 
 Phase history:
 
-- Phase 1 added SQLAlchemy + Alembic for engine and schema management.
-- Phase 2 wired engine support for PostgreSQL via ``FEATCAT_DB_BACKEND=postgres``
-  and added the migration script + Docker compose service.
-- Phase 2.5 (this file) ports the ~60 catalog query methods off the raw
-  ``sqlite3`` connection to portable ``Session.execute(text(...))`` queries.
-  Methods now run on either backend. SQLite-specific syntax has been
-  generalized:
-  - ``?`` placeholders → ``:name`` bind params
-  - ``datetime('now', '-X days')`` → Python-computed ``cutoff`` bound as a parameter
-  - ``INSERT OR IGNORE`` → ``INSERT … ON CONFLICT DO NOTHING``
-  - ``DATE(col)`` (SQLite-specific) → date extraction in Python after read
-- Phase 3 (planned) cleans up the remaining ~30 raw ``self.conn.execute``
-  callsites in scheduler, routes, and CLI.
+- Phase 1 introduced SQLAlchemy + Alembic for engine/schema management.
+- Phase 2 wired PostgreSQL via ``FEATCAT_DB_BACKEND=postgres`` plus the
+  migration script and Docker compose service.
+- Phase 2.5 ported the ~60 catalog query methods off the raw ``sqlite3``
+  connection to portable ``Session.execute(text(...))`` queries.
+- **Phase 3 (this file)** ports the remaining ~30 raw-conn callers in
+  scheduler, routes, and CLI; removes the legacy ``self.conn`` raw
+  ``sqlite3.Connection`` exposure entirely; drops the
+  ``_NoRawConnInPostgresMode`` sentinel (no callers); drops the
+  module-level ``sqlite3.register_adapter``/``register_converter`` hooks
+  (only fired on the legacy raw conn). LocalBackend is now a single
+  SA-engine-driven path that runs identically on either backend.
 
-The legacy raw ``self.conn`` is still exposed in ``sqlite`` mode for the
-Phase-3 callers. In ``postgres`` mode, ``self.conn`` is a sentinel that raises
-``NotImplementedError`` with a self-describing message naming the cleanup
-phase.
+``ResponseCache`` (``featcat/utils/cache.py``) keeps its own raw sqlite3
+connection — that's an intentional local-only cache, not part of the
+catalog DB.
 """
 
 from __future__ import annotations
 
+import contextlib
 import json
 import sqlite3
 from collections import defaultdict
@@ -32,6 +31,7 @@ from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import text
+from sqlalchemy.exc import OperationalError
 
 from ..db.connection import make_engine, make_session_factory, resolve_backend
 from ..db.models import Base
@@ -46,38 +46,17 @@ if TYPE_CHECKING:
 DEFAULT_DB = "catalog.db"
 
 
-class _NoRawConnInPostgresMode:
-    """Sentinel returned by ``self.conn`` in postgres mode.
-
-    Pre-Phase-3 callsites (scheduler, routes, CLI) still call
-    ``db.conn.execute(...)`` with sqlite-only ``?``-style SQL. Until they're
-    migrated, raise loudly with a self-describing message rather than a
-    cryptic ``AttributeError``.
-    """
-
-    def __getattr__(self, name: str) -> Any:
-        raise NotImplementedError(
-            f"LocalBackend.conn.{name} is not available in postgres mode. "
-            "This callsite still uses raw sqlite3 SQL and is scheduled for "
-            "Phase 3 (scheduler+routes+CLI cleanup). "
-            "Until then, use FEATCAT_DB_BACKEND=sqlite (the default)."
-        )
-
-
-def _adapt_datetime(val: datetime) -> str:
+# Override sqlite3's built-in datetime adapter (deprecated in Python 3.12+).
+# SA's sqlite dialect bind-converts datetime → str via this adapter when
+# inserting; without an explicit registration each datetime bind emits a
+# ``DeprecationWarning: The default datetime adapter is deprecated``.
+# ``isoformat()`` matches SA's read-side parser so tz-aware datetimes round-trip
+# correctly (postgres' TIMESTAMPTZ preserves tz natively).
+def _adapt_datetime_iso(val: datetime) -> str:
     return val.isoformat()
 
 
-def _convert_datetime(val: bytes) -> datetime:
-    return datetime.fromisoformat(val.decode())
-
-
-# Module-level — applies to ALL sqlite3.Connection instances opened with
-# ``detect_types=PARSE_DECLTYPES``. Used by the legacy ``self.conn`` path; the
-# SQLAlchemy engine deliberately doesn't pass that flag (see db/connection.py)
-# so SA's own datetime conversion runs without double-decoding.
-sqlite3.register_adapter(datetime, _adapt_datetime)
-sqlite3.register_converter("TIMESTAMP", _convert_datetime)
+sqlite3.register_adapter(datetime, _adapt_datetime_iso)
 
 
 def _row_to_feature(row: Any) -> Feature:
@@ -121,23 +100,10 @@ class LocalBackend(CatalogBackend):
         self.db_path = db_path
         # Backend resolution — driven by FEATCAT_DB_BACKEND env var. Tests and
         # default dev/CI runs leave it unset → "sqlite". Production deploys set
-        # "postgres" once Phase 3 cleans up the raw-conn callers.
+        # "postgres".
         self.backend = resolve_backend()
         self.engine = make_engine(backend=self.backend, db_path=db_path)
         self.session_factory = make_session_factory(self.engine)
-        if self.backend == "sqlite":
-            # Raw sqlite3 connection — kept for the ~30 Phase-3 callsites in
-            # scheduler, routes, and CLI that still issue raw SQL.
-            self.conn = sqlite3.connect(
-                db_path,
-                detect_types=sqlite3.PARSE_DECLTYPES,
-                check_same_thread=False,
-                timeout=30.0,  # 30 second timeout for lock contention
-            )
-            self.conn.row_factory = sqlite3.Row
-            self.conn.execute("PRAGMA foreign_keys = ON")
-        else:
-            self.conn = _NoRawConnInPostgresMode()  # type: ignore[assignment]
 
     @contextmanager
     def session(self) -> Iterator[Session]:
@@ -153,41 +119,32 @@ class LocalBackend(CatalogBackend):
             s.close()
 
     def init_db(self) -> None:
-        import contextlib
-
         Base.metadata.create_all(self.engine, checkfirst=True)
         # Backward-compat ALTER TABLE migrations for sqlite catalogs created
         # before these columns existed. Sqlite-only — postgres has no legacy
-        # schema (operators bring up postgres via Alembic).
+        # schema (operators bring up postgres via Alembic). Each ALTER is
+        # idempotent: ``OperationalError`` fires when the column already exists.
         if self.backend != "sqlite":
             return
-        with contextlib.suppress(sqlite3.OperationalError):
-            self.conn.execute("ALTER TABLE data_sources ADD COLUMN auto_refresh INTEGER DEFAULT 0")
-        with contextlib.suppress(sqlite3.OperationalError):
-            self.conn.execute("ALTER TABLE features ADD COLUMN definition TEXT")
-        with contextlib.suppress(sqlite3.OperationalError):
-            self.conn.execute("ALTER TABLE features ADD COLUMN definition_type TEXT")
-        with contextlib.suppress(sqlite3.OperationalError):
-            self.conn.execute("ALTER TABLE features ADD COLUMN definition_updated_at TIMESTAMP")
-        with contextlib.suppress(sqlite3.OperationalError):
-            self.conn.execute("ALTER TABLE features ADD COLUMN generation_hints TEXT")
-        with contextlib.suppress(sqlite3.OperationalError):
-            self.conn.execute("ALTER TABLE feature_docs ADD COLUMN hints_used TEXT")
-        with contextlib.suppress(sqlite3.OperationalError):
-            self.conn.execute("ALTER TABLE feature_docs ADD COLUMN context_features TEXT")
-        with contextlib.suppress(sqlite3.OperationalError):
-            self.conn.execute("ALTER TABLE feature_versions ADD COLUMN change_type TEXT DEFAULT 'metadata'")
-        with contextlib.suppress(sqlite3.OperationalError):
-            self.conn.execute("ALTER TABLE feature_versions ADD COLUMN previous_value TEXT")
-        with contextlib.suppress(sqlite3.OperationalError):
-            self.conn.execute("ALTER TABLE feature_versions ADD COLUMN new_value TEXT")
-        with contextlib.suppress(sqlite3.OperationalError):
-            self.conn.execute("ALTER TABLE monitoring_checks ADD COLUMN llm_analysis_json TEXT")
-        self.conn.commit()
+        legacy_alters = (
+            "ALTER TABLE data_sources ADD COLUMN auto_refresh INTEGER DEFAULT 0",
+            "ALTER TABLE features ADD COLUMN definition TEXT",
+            "ALTER TABLE features ADD COLUMN definition_type TEXT",
+            "ALTER TABLE features ADD COLUMN definition_updated_at TIMESTAMP",
+            "ALTER TABLE features ADD COLUMN generation_hints TEXT",
+            "ALTER TABLE feature_docs ADD COLUMN hints_used TEXT",
+            "ALTER TABLE feature_docs ADD COLUMN context_features TEXT",
+            "ALTER TABLE feature_versions ADD COLUMN change_type TEXT DEFAULT 'metadata'",
+            "ALTER TABLE feature_versions ADD COLUMN previous_value TEXT",
+            "ALTER TABLE feature_versions ADD COLUMN new_value TEXT",
+            "ALTER TABLE monitoring_checks ADD COLUMN llm_analysis_json TEXT",
+        )
+        with self.engine.begin() as conn:
+            for stmt in legacy_alters:
+                with contextlib.suppress(OperationalError):
+                    conn.execute(text(stmt))
 
     def close(self) -> None:
-        if self.backend == "sqlite" and isinstance(self.conn, sqlite3.Connection):
-            self.conn.close()
         self.engine.dispose()
 
     # --- Sources ---
@@ -1097,6 +1054,19 @@ class LocalBackend(CatalogBackend):
                 .all()
             )
             return [dict(r) for r in rows]
+
+    def get_latest_severity(self, feature_id: str) -> str | None:
+        """Return the severity of the most recent monitoring_check for a feature.
+
+        Helper used by routes and CLI that want a single feature's drift status
+        without joining the whole monitoring_checks table.
+        """
+        with self.session() as s:
+            row = s.execute(
+                text("SELECT severity FROM monitoring_checks WHERE feature_id = :fid ORDER BY checked_at DESC LIMIT 1"),
+                {"fid": feature_id},
+            ).first()
+            return row[0] if row else None
 
     def save_monitoring_result(self, feature_id: str, feature_name: str, psi: float | None, severity: str) -> None:
         with self.session() as s:
