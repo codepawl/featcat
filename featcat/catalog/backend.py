@@ -110,6 +110,15 @@ class CatalogBackend(ABC):
     def save_baseline(self, feature_id: str, stats: dict) -> None:
         """Save or replace baseline stats for a feature."""
 
+    def get_latest_severity(self, feature_id: str) -> str | None:
+        """Return the severity of the most recent monitoring_check for a feature.
+
+        Default implementation returns None — backends without a direct
+        monitoring_checks query (RemoteBackend) opt out cleanly. LocalBackend
+        overrides this with a real query.
+        """
+        return None
+
     # --- Stats ---
 
     @abstractmethod

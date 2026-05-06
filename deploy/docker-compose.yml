@@ -18,6 +18,22 @@ services:
         limits:
           memory: 2G
 
+  postgres:
+    image: postgres:16-alpine
+    container_name: featcat-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-featcat}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-featcat_local_only}
+      POSTGRES_DB: ${POSTGRES_DB:-featcat}
+    volumes:
+      - featcat-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-featcat} -d ${POSTGRES_DB:-featcat}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
   featcat:
     build:
       context: ..
@@ -33,16 +49,25 @@ services:
     ports:
       - "${FEATCAT_PORT:-8000}:8000"
     environment:
+      # Backend selection. Defaults to 'postgres' as of Phase 3 (scheduler /
+      # routes / CLI all run portably). Operators can override to 'sqlite' for
+      # local dev or testing — FEATCAT_CATALOG_DB_PATH still applies in that mode.
+      - FEATCAT_DB_BACKEND=${FEATCAT_DB_BACKEND:-postgres}
+      - FEATCAT_DB_URL=${FEATCAT_DB_URL:-postgresql+psycopg2://${POSTGRES_USER:-featcat}:${POSTGRES_PASSWORD:-featcat_local_only}@postgres:5432/${POSTGRES_DB:-featcat}}
       - FEATCAT_CATALOG_DB_PATH=/data/catalog.db
       - FEATCAT_LLM_BACKEND=llamacpp
       - FEATCAT_LLAMACPP_URL=http://llm:8080
       - FEATCAT_LLM_MODEL=${FEATCAT_LLM_MODEL:-gemma-4-E2B-it}
       - FEATCAT_SERVER_AUTH_TOKEN=${SERVER_AUTH:-}
-      - NO_PROXY=llm,localhost,127.0.0.1
-      - no_proxy=llm,localhost,127.0.0.1
+      - NO_PROXY=llm,postgres,localhost,127.0.0.1
+      - no_proxy=llm,postgres,localhost,127.0.0.1
     depends_on:
-      - llm
+      llm:
+        condition: service_started
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:
   featcat_data:
+  featcat-postgres-data:

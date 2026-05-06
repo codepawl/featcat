@@ -1,0 +1,260 @@
+"""SQLAlchemy ORM models — schema source of truth for the catalog DB.
+
+Each model mirrors the legacy SCHEMA_SQL + ALTER TABLE migrations in
+``featcat/catalog/local.py`` so a fresh-DB ``Base.metadata.create_all()`` produces
+the same effective schema as the historical bootstrap.
+
+Notes on column types:
+- ``TIMESTAMP`` (not ``DATETIME``) is used everywhere because the legacy code
+  registers ``sqlite3.register_converter("TIMESTAMP", ...)`` to parse ISO strings
+  back into ``datetime`` objects. Renaming the declared type would silently
+  break every caller that does ``row["created_at"].isoformat()``.
+- ``Integer`` is used for boolean-ish columns (``enabled``, ``auto_refresh``)
+  because the legacy schema declares them as ``INTEGER DEFAULT 0/1``.
+- JSON-typed columns stay as ``Text`` because the application serializes JSON
+  manually via ``json.dumps``/``json.loads``. Switching to ``JSON`` here would
+  require touching every callsite — that belongs in Phase 2.
+"""
+
+from __future__ import annotations
+
+# datetime is intentionally a runtime import (not TYPE_CHECKING-gated): SQLAlchemy
+# resolves Mapped[datetime] dynamically when building the mapper, so the symbol
+# must exist in the module namespace.
+from datetime import datetime  # noqa: TC003
+
+from sqlalchemy import (
+    TIMESTAMP,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    PrimaryKeyConstraint,
+    Text,
+    UniqueConstraint,
+)
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class DataSource(Base):
+    __tablename__ = "data_sources"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    name: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+    path: Mapped[str] = mapped_column(Text, nullable=False)
+    storage_type: Mapped[str] = mapped_column(Text, nullable=False, default="local", server_default="local")
+    format: Mapped[str] = mapped_column(Text, nullable=False, default="parquet", server_default="parquet")
+    description: Mapped[str] = mapped_column(Text, default="", server_default="")
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    auto_refresh: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+
+
+class Feature(Base):
+    __tablename__ = "features"
+    __table_args__ = (
+        UniqueConstraint("data_source_id", "column_name", name="uq_features_source_column"),
+        Index("idx_features_source", "data_source_id"),
+        Index("idx_features_name", "name"),
+        Index("idx_features_created_at", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    data_source_id: Mapped[str] = mapped_column(Text, ForeignKey("data_sources.id"), nullable=False)
+    column_name: Mapped[str] = mapped_column(Text, nullable=False)
+    dtype: Mapped[str] = mapped_column(Text, default="", server_default="")
+    description: Mapped[str] = mapped_column(Text, default="", server_default="")
+    tags: Mapped[str] = mapped_column(Text, default="[]", server_default="[]")
+    owner: Mapped[str] = mapped_column(Text, default="", server_default="")
+    stats: Mapped[str] = mapped_column(Text, default="{}", server_default="{}")
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    definition: Mapped[str | None] = mapped_column(Text)
+    definition_type: Mapped[str | None] = mapped_column(Text)
+    definition_updated_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    generation_hints: Mapped[str | None] = mapped_column(Text)
+
+
+class FeatureDoc(Base):
+    __tablename__ = "feature_docs"
+    # Legacy schema had no primary key; save_feature_doc enforces uniqueness via
+    # DELETE-then-INSERT. We materialize feature_id as the PK here so SQLAlchemy's
+    # ORM can map the table; this is a strict refinement of existing semantics.
+    __table_args__ = (PrimaryKeyConstraint("feature_id", name="pk_feature_docs"),)
+
+    feature_id: Mapped[str] = mapped_column(Text, ForeignKey("features.id"), nullable=False)
+    short_description: Mapped[str] = mapped_column(Text, default="", server_default="")
+    long_description: Mapped[str] = mapped_column(Text, default="", server_default="")
+    expected_range: Mapped[str] = mapped_column(Text, default="", server_default="")
+    potential_issues: Mapped[str] = mapped_column(Text, default="", server_default="")
+    generated_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    model_used: Mapped[str] = mapped_column(Text, default="", server_default="")
+    hints_used: Mapped[str | None] = mapped_column(Text)
+    context_features: Mapped[str | None] = mapped_column(Text)
+
+
+class MonitoringBaseline(Base):
+    __tablename__ = "monitoring_baselines"
+    # Same PK rationale as feature_docs.
+    __table_args__ = (PrimaryKeyConstraint("feature_id", name="pk_monitoring_baselines"),)
+
+    feature_id: Mapped[str] = mapped_column(Text, ForeignKey("features.id"), nullable=False)
+    baseline_stats: Mapped[str] = mapped_column(Text, default="{}", server_default="{}")
+    computed_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+
+
+class JobSchedule(Base):
+    __tablename__ = "job_schedules"
+
+    job_name: Mapped[str] = mapped_column(Text, primary_key=True)
+    cron_expression: Mapped[str] = mapped_column(Text, nullable=False)
+    enabled: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    last_run_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    next_run_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    description: Mapped[str] = mapped_column(Text, default="", server_default="")
+    max_log_retention_days: Mapped[int] = mapped_column(Integer, default=30, server_default="30")
+
+
+class JobLog(Base):
+    __tablename__ = "job_logs"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    job_name: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    started_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    duration_seconds: Mapped[float | None] = mapped_column(Float)
+    result_summary: Mapped[str] = mapped_column(Text, default="{}", server_default="{}")
+    error_message: Mapped[str | None] = mapped_column(Text)
+    triggered_by: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class FeatureVersion(Base):
+    __tablename__ = "feature_versions"
+    __table_args__ = (UniqueConstraint("feature_id", "version", name="uq_feature_versions_fid_ver"),)
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    feature_id: Mapped[str] = mapped_column(Text, ForeignKey("features.id", ondelete="CASCADE"), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    snapshot: Mapped[str] = mapped_column(Text, nullable=False)
+    change_summary: Mapped[str] = mapped_column(Text, default="", server_default="")
+    changed_by: Mapped[str] = mapped_column(Text, default="", server_default="")
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    change_type: Mapped[str] = mapped_column(Text, default="metadata", server_default="metadata")
+    previous_value: Mapped[str | None] = mapped_column(Text)
+    new_value: Mapped[str | None] = mapped_column(Text)
+
+
+class FeatureGroup(Base):
+    __tablename__ = "feature_groups"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    name: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+    description: Mapped[str] = mapped_column(Text, default="", server_default="")
+    project: Mapped[str] = mapped_column(Text, default="", server_default="")
+    owner: Mapped[str] = mapped_column(Text, default="", server_default="")
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+
+
+class FeatureGroupMember(Base):
+    __tablename__ = "feature_group_members"
+    __table_args__ = (
+        PrimaryKeyConstraint("group_id", "feature_id", name="pk_feature_group_members"),
+        Index("idx_group_members_group_feature", "group_id", "feature_id"),
+    )
+
+    group_id: Mapped[str] = mapped_column(Text, ForeignKey("feature_groups.id", ondelete="CASCADE"), nullable=False)
+    feature_id: Mapped[str] = mapped_column(Text, ForeignKey("features.id", ondelete="CASCADE"), nullable=False)
+    added_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+
+
+class UsageLog(Base):
+    __tablename__ = "usage_log"
+    __table_args__ = (
+        Index("idx_usage_log_feature", "feature_id"),
+        Index("idx_usage_log_created", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    feature_id: Mapped[str] = mapped_column(Text, ForeignKey("features.id"), nullable=False)
+    action: Mapped[str] = mapped_column(Text, nullable=False)
+    user: Mapped[str] = mapped_column(Text, default="", server_default="")
+    context: Mapped[str] = mapped_column(Text, default="", server_default="")
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+
+
+class MonitoringCheck(Base):
+    __tablename__ = "monitoring_checks"
+    __table_args__ = (
+        Index("idx_monitoring_checks_feature", "feature_name"),
+        Index("idx_monitoring_checks_date", "checked_at"),
+    )
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    feature_id: Mapped[str] = mapped_column(Text, ForeignKey("features.id"), nullable=False)
+    feature_name: Mapped[str] = mapped_column(Text, nullable=False)
+    psi: Mapped[float | None] = mapped_column(Float)
+    severity: Mapped[str] = mapped_column(Text, nullable=False)
+    checked_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    llm_analysis_json: Mapped[str | None] = mapped_column(Text)
+
+
+class FeatureLineage(Base):
+    __tablename__ = "feature_lineage"
+    __table_args__ = (
+        UniqueConstraint("child_feature_id", "parent_feature_id", name="uq_feature_lineage_pair"),
+        Index("idx_lineage_child", "child_feature_id"),
+        Index("idx_lineage_parent", "parent_feature_id"),
+    )
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    child_feature_id: Mapped[str] = mapped_column(Text, ForeignKey("features.id", ondelete="CASCADE"), nullable=False)
+    parent_feature_id: Mapped[str] = mapped_column(Text, ForeignKey("features.id", ondelete="CASCADE"), nullable=False)
+    transform: Mapped[str] = mapped_column(Text, default="", server_default="")
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+
+
+class ActionItem(Base):
+    __tablename__ = "action_items"
+    __table_args__ = (
+        Index("idx_action_items_feature", "feature_id", "status"),
+        Index("idx_action_items_status", "status", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    feature_id: Mapped[str] = mapped_column(Text, ForeignKey("features.id", ondelete="CASCADE"), nullable=False)
+    source: Mapped[str] = mapped_column(Text, nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    recommendation: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="pending", server_default="pending")
+    created_by: Mapped[str] = mapped_column(Text, default="", server_default="")
+    applied_by: Mapped[str] = mapped_column(Text, default="", server_default="")
+    applied_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    change_summary: Mapped[str] = mapped_column(Text, default="", server_default="")
+    context_json: Mapped[str] = mapped_column(Text, default="{}", server_default="{}")
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+
+
+__all__ = [
+    "ActionItem",
+    "Base",
+    "DataSource",
+    "Feature",
+    "FeatureDoc",
+    "FeatureGroup",
+    "FeatureGroupMember",
+    "FeatureLineage",
+    "FeatureVersion",
+    "JobLog",
+    "JobSchedule",
+    "MonitoringBaseline",
+    "MonitoringCheck",
+    "UsageLog",
+]
