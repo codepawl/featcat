@@ -68,6 +68,78 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # T1.5a — Celery + Redis worker stack. Activated only with the ``tasks``
+  # profile (``docker compose --profile tasks up -d``) so default deploys
+  # don't pull Redis/workers/Flower until the operator opts in. Until T1.5c
+  # the API server still runs jobs through APScheduler in-process; this
+  # stack runs alongside, not in place of, that path.
+
+  redis:
+    image: redis:7-alpine
+    container_name: featcat-redis
+    profiles: ["tasks"]
+    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - featcat-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  featcat-worker:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: featcat-worker
+    profiles: ["tasks"]
+    command: ["sh", "-c", "uv pip install --system celery[redis]>=5.3 flower>=2.0 && celery -A featcat.tasks.app worker --loglevel=info --concurrency=2"]
+    environment:
+      - FEATCAT_REDIS_URL=${FEATCAT_REDIS_URL:-redis://redis:6379/0}
+      - FEATCAT_DB_BACKEND=${FEATCAT_DB_BACKEND:-postgres}
+      - FEATCAT_DB_URL=${FEATCAT_DB_URL:-postgresql+psycopg2://${POSTGRES_USER:-featcat}:${POSTGRES_PASSWORD:-featcat_local_only}@postgres:5432/${POSTGRES_DB:-featcat}}
+      - FEATCAT_CATALOG_DB_PATH=/data/catalog.db
+      - FEATCAT_LLAMACPP_URL=http://llm:8080
+      - FEATCAT_LLM_MODEL=${FEATCAT_LLM_MODEL:-gemma-4-E2B-it}
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  featcat-beat:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: featcat-beat
+    profiles: ["tasks"]
+    command: ["sh", "-c", "uv pip install --system celery[redis]>=5.3 && celery -A featcat.tasks.app beat --loglevel=info"]
+    environment:
+      - FEATCAT_REDIS_URL=${FEATCAT_REDIS_URL:-redis://redis:6379/0}
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  featcat-flower:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: featcat-flower
+    profiles: ["tasks"]
+    command: ["sh", "-c", "uv pip install --system celery[redis]>=5.3 flower>=2.0 && celery -A featcat.tasks.app flower --port=5555"]
+    ports:
+      - "${FEATCAT_FLOWER_PORT:-5555}:5555"
+    environment:
+      - FEATCAT_REDIS_URL=${FEATCAT_REDIS_URL:-redis://redis:6379/0}
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   featcat_data:
   featcat-postgres-data:
+  featcat-redis-data:
