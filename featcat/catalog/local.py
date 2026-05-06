@@ -1,31 +1,37 @@
-"""Local SQLite (and, in postgres mode, PostgreSQL) catalog backend.
+"""Catalog backend — SQLAlchemy-based, dual SQLite/PostgreSQL.
 
-Phases 1+2 of the migration:
+Phase history:
 
-- Phase 1 introduced SQLAlchemy + Alembic for engine/schema management while
-  keeping the legacy ``self.conn`` (raw ``sqlite3.Connection``) for the ~30
-  callsites in scheduler, routes, and CLI that issue ``?``-parameterized SQL.
-- Phase 2 wires the engine to support PostgreSQL via
-  ``FEATCAT_DB_BACKEND=postgres``. The catalog *schema* operates against either
-  backend (Alembic + ORM); the per-method query layer below has not yet been
-  ported off the raw connection (see Phase 2.5/3 below). To make the
-  unsupported path loud rather than mysterious, postgres mode replaces
-  ``self.conn`` with a sentinel that raises ``NotImplementedError`` on any
-  attribute access, naming the phase that fixes it.
+- Phase 1 added SQLAlchemy + Alembic for engine and schema management.
+- Phase 2 wired engine support for PostgreSQL via ``FEATCAT_DB_BACKEND=postgres``
+  and added the migration script + Docker compose service.
+- Phase 2.5 (this file) ports the ~60 catalog query methods off the raw
+  ``sqlite3`` connection to portable ``Session.execute(text(...))`` queries.
+  Methods now run on either backend. SQLite-specific syntax has been
+  generalized:
+  - ``?`` placeholders → ``:name`` bind params
+  - ``datetime('now', '-X days')`` → Python-computed ``cutoff`` bound as a parameter
+  - ``INSERT OR IGNORE`` → ``INSERT … ON CONFLICT DO NOTHING``
+  - ``DATE(col)`` (SQLite-specific) → date extraction in Python after read
+- Phase 3 (planned) cleans up the remaining ~30 raw ``self.conn.execute``
+  callsites in scheduler, routes, and CLI.
 
-Phase 2.5 (TBD) ports the LocalBackend methods themselves to portable
-SQLAlchemy queries. Phase 3 migrates the remaining raw-conn callers in
-scheduler/routes/CLI.
+The legacy raw ``self.conn`` is still exposed in ``sqlite`` mode for the
+Phase-3 callers. In ``postgres`` mode, ``self.conn`` is a sentinel that raises
+``NotImplementedError`` with a self-describing message naming the cleanup
+phase.
 """
 
 from __future__ import annotations
 
 import json
 import sqlite3
-import threading
+from collections import defaultdict
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
+
+from sqlalchemy import text
 
 from ..db.connection import make_engine, make_session_factory, resolve_backend
 from ..db.models import Base
@@ -43,9 +49,9 @@ DEFAULT_DB = "catalog.db"
 class _NoRawConnInPostgresMode:
     """Sentinel returned by ``self.conn`` in postgres mode.
 
-    Existing methods/routes/CLI call ``db.conn.execute(...)`` with sqlite-only
-    ``?``-style SQL. Those callsites are scheduled for Phase 2.5/3 cleanup.
-    Until then, raise loudly with a self-describing message rather than a
+    Pre-Phase-3 callsites (scheduler, routes, CLI) still call
+    ``db.conn.execute(...)`` with sqlite-only ``?``-style SQL. Until they're
+    migrated, raise loudly with a self-describing message rather than a
     cryptic ``AttributeError``.
     """
 
@@ -53,7 +59,7 @@ class _NoRawConnInPostgresMode:
         raise NotImplementedError(
             f"LocalBackend.conn.{name} is not available in postgres mode. "
             "This callsite still uses raw sqlite3 SQL and is scheduled for "
-            "Phase 2.5 (LocalBackend method port) / Phase 3 (scheduler+routes+CLI). "
+            "Phase 3 (scheduler+routes+CLI cleanup). "
             "Until then, use FEATCAT_DB_BACKEND=sqlite (the default)."
         )
 
@@ -66,12 +72,21 @@ def _convert_datetime(val: bytes) -> datetime:
     return datetime.fromisoformat(val.decode())
 
 
+# Module-level — applies to ALL sqlite3.Connection instances opened with
+# ``detect_types=PARSE_DECLTYPES``. Used by the legacy ``self.conn`` path; the
+# SQLAlchemy engine deliberately doesn't pass that flag (see db/connection.py)
+# so SA's own datetime conversion runs without double-decoding.
 sqlite3.register_adapter(datetime, _adapt_datetime)
 sqlite3.register_converter("TIMESTAMP", _convert_datetime)
 
 
-def _row_to_feature(row: sqlite3.Row) -> Feature:
-    """Convert a sqlite3.Row to a Feature model, parsing JSON fields."""
+def _row_to_feature(row: Any) -> Feature:
+    """Convert a row to a Feature.
+
+    Accepts ``sqlite3.Row``, SQLAlchemy ``RowMapping``, or plain dict — all
+    support ``dict(row)`` conversion. Typed as ``Any`` to avoid pulling
+    SQLAlchemy types into the public surface.
+    """
     d = dict(row)
     d["tags"] = json.loads(d["tags"]) if isinstance(d.get("tags"), str) else (d.get("tags") or [])
     d["stats"] = json.loads(d["stats"]) if isinstance(d.get("stats"), str) else (d.get("stats") or {})
@@ -95,21 +110,24 @@ def _row_to_feature(row: sqlite3.Row) -> Feature:
     return Feature(**d)
 
 
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
 class LocalBackend(CatalogBackend):
-    """SQLite-backed catalog backend."""
+    """Catalog backend backed by SQLite (default) or PostgreSQL."""
 
     def __init__(self, db_path: str = DEFAULT_DB) -> None:
         self.db_path = db_path
-        self._lock = threading.RLock()
         # Backend resolution — driven by FEATCAT_DB_BACKEND env var. Tests and
         # default dev/CI runs leave it unset → "sqlite". Production deploys set
-        # "postgres" once Phase 2.5 lands.
+        # "postgres" once Phase 3 cleans up the raw-conn callers.
         self.backend = resolve_backend()
         self.engine = make_engine(backend=self.backend, db_path=db_path)
         self.session_factory = make_session_factory(self.engine)
         if self.backend == "sqlite":
-            # Raw sqlite3 connection — kept for the ~30 callsites in scheduler,
-            # routes, and CLI that issue raw SQL. Phase 2.5/3 migrates those off `.conn`.
+            # Raw sqlite3 connection — kept for the ~30 Phase-3 callsites in
+            # scheduler, routes, and CLI that still issue raw SQL.
             self.conn = sqlite3.connect(
                 db_path,
                 detect_types=sqlite3.PARSE_DECLTYPES,
@@ -119,16 +137,14 @@ class LocalBackend(CatalogBackend):
             self.conn.row_factory = sqlite3.Row
             self.conn.execute("PRAGMA foreign_keys = ON")
         else:
-            # Postgres mode: no raw sqlite3 connection. Sentinel surfaces a
-            # clear error if any pre-Phase-3 caller tries to use it.
             self.conn = _NoRawConnInPostgresMode()  # type: ignore[assignment]
 
     @contextmanager
     def session(self) -> Iterator[Session]:
         """Yield a SQLAlchemy Session bound to this backend's engine.
 
-        New code should prefer this over ``self.conn``. Caller is responsible for
-        committing; the context manager closes the session on exit.
+        Caller is responsible for committing; the context manager closes the
+        session on exit. All ported methods below use this internally.
         """
         s = self.session_factory()
         try:
@@ -139,13 +155,10 @@ class LocalBackend(CatalogBackend):
     def init_db(self) -> None:
         import contextlib
 
-        # Fresh DBs: ORM models are the schema source of truth.
-        # Existing DBs: create_all is a no-op (tables already exist), so the
-        # backward-compat ALTER TABLE shims below still upgrade older catalogs.
         Base.metadata.create_all(self.engine, checkfirst=True)
-        # Backward-compat ALTER TABLE migrations for catalogs created before
-        # these columns existed. Sqlite-only — postgres has no legacy schema to
-        # upgrade (operators bring up postgres via Alembic, not via this path).
+        # Backward-compat ALTER TABLE migrations for sqlite catalogs created
+        # before these columns existed. Sqlite-only — postgres has no legacy
+        # schema (operators bring up postgres via Alembic).
         if self.backend != "sqlite":
             return
         with contextlib.suppress(sqlite3.OperationalError):
@@ -180,73 +193,79 @@ class LocalBackend(CatalogBackend):
     # --- Sources ---
 
     def add_source(self, source: DataSource) -> DataSource:
-        with self._lock:
-            self.conn.execute(
-                """INSERT INTO data_sources (id, name, path, storage_type, format, description, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    source.id,
-                    source.name,
-                    source.path,
-                    source.storage_type,
-                    source.format,
-                    source.description,
-                    source.created_at,
-                    source.updated_at,
+        with self.session() as s:
+            s.execute(
+                text(
+                    "INSERT INTO data_sources (id, name, path, storage_type, format, description, "
+                    "created_at, updated_at) "
+                    "VALUES (:id, :name, :path, :storage_type, :format, :description, :created_at, :updated_at)"
                 ),
+                {
+                    "id": source.id,
+                    "name": source.name,
+                    "path": source.path,
+                    "storage_type": source.storage_type,
+                    "format": source.format,
+                    "description": source.description,
+                    "created_at": source.created_at,
+                    "updated_at": source.updated_at,
+                },
             )
-            self.conn.commit()
+            s.commit()
         return source
 
     def get_source_by_name(self, name: str) -> DataSource | None:
-        with self._lock:
-            row = self.conn.execute("SELECT * FROM data_sources WHERE name = ?", (name,)).fetchone()
-            if row is None:
-                return None
-            return DataSource(**dict(row))
+        with self.session() as s:
+            row = s.execute(text("SELECT * FROM data_sources WHERE name = :name"), {"name": name}).mappings().first()
+            return DataSource(**dict(row)) if row else None
 
     def list_sources(self) -> list[DataSource]:
-        with self._lock:
-            rows = self.conn.execute("SELECT * FROM data_sources ORDER BY created_at DESC").fetchall()
+        with self.session() as s:
+            rows = s.execute(text("SELECT * FROM data_sources ORDER BY created_at DESC")).mappings().all()
             return [DataSource(**dict(r)) for r in rows]
+
+    def get_source_by_path(self, path: str) -> DataSource | None:
+        with self.session() as s:
+            row = s.execute(text("SELECT * FROM data_sources WHERE path = :path"), {"path": path}).mappings().first()
+            return DataSource(**dict(row)) if row else None
 
     # --- Features ---
 
     def upsert_feature(self, feature: Feature) -> Feature:
-        with self._lock:
-            # Check if feature already exists to distinguish insert from update
-            existing = self.conn.execute(
-                "SELECT id FROM features WHERE data_source_id = ? AND column_name = ?",
-                (feature.data_source_id, feature.column_name),
-            ).fetchone()
+        with self.session() as s:
+            existing = s.execute(
+                text("SELECT id FROM features WHERE data_source_id = :sid AND column_name = :col"),
+                {"sid": feature.data_source_id, "col": feature.column_name},
+            ).first()
             is_new = existing is None
-
-            self.conn.execute(
-                """INSERT INTO features
-                   (id, name, data_source_id, column_name, dtype, description, tags, owner, stats,
-                    created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                   ON CONFLICT(data_source_id, column_name) DO UPDATE SET
-                       dtype = excluded.dtype,
-                       stats = excluded.stats,
-                       updated_at = excluded.updated_at""",
-                (
-                    feature.id,
-                    feature.name,
-                    feature.data_source_id,
-                    feature.column_name,
-                    feature.dtype,
-                    feature.description,
-                    json.dumps(feature.tags),
-                    feature.owner,
-                    json.dumps(feature.stats),
-                    feature.created_at,
-                    feature.updated_at,
+            s.execute(
+                text(
+                    "INSERT INTO features "
+                    "(id, name, data_source_id, column_name, dtype, description, tags, owner, stats, "
+                    " created_at, updated_at) "
+                    "VALUES (:id, :name, :sid, :col, :dtype, :description, :tags, :owner, :stats, "
+                    "        :created_at, :updated_at) "
+                    "ON CONFLICT(data_source_id, column_name) DO UPDATE SET "
+                    "  dtype = excluded.dtype, "
+                    "  stats = excluded.stats, "
+                    "  updated_at = excluded.updated_at"
                 ),
+                {
+                    "id": feature.id,
+                    "name": feature.name,
+                    "sid": feature.data_source_id,
+                    "col": feature.column_name,
+                    "dtype": feature.dtype,
+                    "description": feature.description,
+                    "tags": json.dumps(feature.tags),
+                    "owner": feature.owner,
+                    "stats": json.dumps(feature.stats),
+                    "created_at": feature.created_at,
+                    "updated_at": feature.updated_at,
+                },
             )
-            self.conn.commit()
+            s.commit()
 
-        # Create initial version entry for new features
         if is_new:
             source_name = feature.name.split(".")[0] if "." in feature.name else ""
             self._snapshot_feature(
@@ -255,36 +274,41 @@ class LocalBackend(CatalogBackend):
                 changed_by=feature.owner or "system",
                 change_type="metadata",
             )
-            # Overwrite auto-generated summary
-            with self._lock:
-                self.conn.execute(
-                    "UPDATE feature_versions SET change_summary = ? WHERE feature_id = ? AND version = 1",
-                    ("Initial registration via scan", feature.id),
+            with self.session() as s:
+                s.execute(
+                    text(
+                        "UPDATE feature_versions SET change_summary = :summary WHERE feature_id = :fid AND version = 1"
+                    ),
+                    {"summary": "Initial registration via scan", "fid": feature.id},
                 )
-                self.conn.commit()
+                s.commit()
 
         return feature
 
     def list_features(self, source_name: str | None = None) -> list[Feature]:
-        with self._lock:
+        with self.session() as s:
             if source_name:
-                rows = self.conn.execute(
-                    """SELECT f.* FROM features f
-                       JOIN data_sources ds ON f.data_source_id = ds.id
-                       WHERE ds.name = ?
-                       ORDER BY f.name""",
-                    (source_name,),
-                ).fetchall()
+                rows = (
+                    s.execute(
+                        text(
+                            "SELECT f.* FROM features f "
+                            "JOIN data_sources ds ON f.data_source_id = ds.id "
+                            "WHERE ds.name = :name "
+                            "ORDER BY f.name"
+                        ),
+                        {"name": source_name},
+                    )
+                    .mappings()
+                    .all()
+                )
             else:
-                rows = self.conn.execute("SELECT * FROM features ORDER BY name").fetchall()
+                rows = s.execute(text("SELECT * FROM features ORDER BY name")).mappings().all()
             return [_row_to_feature(r) for r in rows]
 
     def get_feature_by_name(self, name: str) -> Feature | None:
-        with self._lock:
-            row = self.conn.execute("SELECT * FROM features WHERE name = ?", (name,)).fetchone()
-            if row is None:
-                return None
-            return _row_to_feature(row)
+        with self.session() as s:
+            row = s.execute(text("SELECT * FROM features WHERE name = :name"), {"name": name}).mappings().first()
+            return _row_to_feature(row) if row else None
 
     _VERSIONED_FIELDS = frozenset({"description", "tags", "owner", "dtype", "column_name", "data_source_id"})
 
@@ -295,10 +319,8 @@ class LocalBackend(CatalogBackend):
         changed_by: str = "",
         change_type: str = "metadata",
     ) -> None:
-        from .models import _new_id
-
-        with self._lock:
-            row = self.conn.execute("SELECT * FROM features WHERE id = ?", (feature_id,)).fetchone()
+        with self.session() as s:
+            row = s.execute(text("SELECT * FROM features WHERE id = :id"), {"id": feature_id}).mappings().first()
             if row is None:
                 return
             snapshot = dict(row)
@@ -309,36 +331,39 @@ class LocalBackend(CatalogBackend):
             for k, v in snapshot.items():
                 if isinstance(v, datetime):
                     snapshot[k] = v.isoformat()
-            next_version = self.conn.execute(
-                "SELECT COALESCE(MAX(version), 0) + 1 FROM feature_versions WHERE feature_id = ?",
-                (feature_id,),
-            ).fetchone()[0]
+            next_version = s.execute(
+                text("SELECT COALESCE(MAX(version), 0) + 1 FROM feature_versions WHERE feature_id = :fid"),
+                {"fid": feature_id},
+            ).scalar()
             parts = [f"{field}: {old!r} -> {new!r}" for field, (old, new) in changes.items()]
             prev_val = {field: old for field, (old, _new) in changes.items()}
             new_val = {field: new for field, (_old, new) in changes.items()}
-            now = datetime.now(timezone.utc)
-            self.conn.execute(
-                """INSERT INTO feature_versions
-                   (id, feature_id, version, snapshot, change_summary, changed_by, created_at,
-                    change_type, previous_value, new_value)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    _new_id(),
-                    feature_id,
-                    next_version,
-                    json.dumps(snapshot),
-                    "; ".join(parts),
-                    changed_by,
-                    now,
-                    change_type,
-                    json.dumps(prev_val, default=str),
-                    json.dumps(new_val, default=str),
+            s.execute(
+                text(
+                    "INSERT INTO feature_versions "
+                    "(id, feature_id, version, snapshot, change_summary, changed_by, created_at, "
+                    " change_type, previous_value, new_value) "
+                    "VALUES (:id, :fid, :version, :snapshot, :summary, :changed_by, :created_at, "
+                    "        :change_type, :prev, :new)"
                 ),
+                {
+                    "id": _new_id(),
+                    "fid": feature_id,
+                    "version": next_version,
+                    "snapshot": json.dumps(snapshot),
+                    "summary": "; ".join(parts),
+                    "changed_by": changed_by,
+                    "created_at": _utcnow(),
+                    "change_type": change_type,
+                    "prev": json.dumps(prev_val, default=str),
+                    "new": json.dumps(new_val, default=str),
+                },
             )
+            s.commit()
 
     def update_feature_metadata(self, feature_id: str, _rollback_version: int | None = None, **kwargs) -> None:
-        with self._lock:
-            row = self.conn.execute("SELECT * FROM features WHERE id = ?", (feature_id,)).fetchone()
+        with self.session() as s:
+            row = s.execute(text("SELECT * FROM features WHERE id = :id"), {"id": feature_id}).mappings().first()
             if row is None:
                 return
             current = dict(row)
@@ -354,53 +379,63 @@ class LocalBackend(CatalogBackend):
                     changes[field] = (old_val, new_val)
             if not changes:
                 return
-            # Determine change type from changed fields
-            ct = "tags" if set(changes) == {"tags"} else "metadata"
-            self._snapshot_feature(
-                feature_id,
-                changes,
-                changed_by=kwargs.get("owner") or current.get("owner") or "",
-                change_type=ct,
-            )
+
+        # Snapshot uses its own session; do it before the update so the version
+        # row records the pre-update state.
+        ct = "tags" if set(changes) == {"tags"} else "metadata"
+        self._snapshot_feature(
+            feature_id,
+            changes,
+            changed_by=kwargs.get("owner") or current.get("owner") or "",
+            change_type=ct,
+        )
+
+        with self.session() as s:
             if _rollback_version is not None:
-                self.conn.execute(
-                    "UPDATE feature_versions"
-                    " SET change_summary = 'rollback to v' || ? || ': ' || change_summary"
-                    " WHERE feature_id = ?"
-                    " AND version = (SELECT MAX(version) FROM feature_versions WHERE feature_id = ?)",
-                    (str(_rollback_version), feature_id, feature_id),
+                s.execute(
+                    text(
+                        "UPDATE feature_versions "
+                        "SET change_summary = 'rollback to v' || :ver || ': ' || change_summary "
+                        "WHERE feature_id = :fid "
+                        "  AND version = (SELECT MAX(version) FROM feature_versions WHERE feature_id = :fid)"
+                    ),
+                    {"ver": str(_rollback_version), "fid": feature_id},
                 )
-            now = datetime.now(timezone.utc)
             sets: list[str] = []
-            vals: list[Any] = []
+            params: dict[str, Any] = {"id": feature_id}
             for k, v in kwargs.items():
                 if k.startswith("_"):
                     continue
                 if k == "tags":
-                    sets.append("tags = ?")
-                    vals.append(json.dumps(v))
+                    sets.append("tags = :tags")
+                    params["tags"] = json.dumps(v)
                 elif k in self._VERSIONED_FIELDS:
-                    sets.append(f"{k} = ?")
-                    vals.append(v)
+                    sets.append(f"{k} = :{k}")
+                    params[k] = v
             if sets:
-                sets.append("updated_at = ?")
-                vals.append(now)
-                vals.append(feature_id)
-                self.conn.execute(f"UPDATE features SET {', '.join(sets)} WHERE id = ?", vals)  # noqa: S608
-            self.conn.commit()
+                sets.append("updated_at = :updated_at")
+                params["updated_at"] = _utcnow()
+                s.execute(text(f"UPDATE features SET {', '.join(sets)} WHERE id = :id"), params)  # noqa: S608
+            s.commit()
 
     def update_feature_tags(self, feature_id: str, tags: list[str]) -> None:
         self.update_feature_metadata(feature_id, tags=tags)
 
     def search_features(self, query: str) -> list[Feature]:
-        with self._lock:
-            pattern = f"%{query}%"
-            rows = self.conn.execute(
-                """SELECT * FROM features
-                   WHERE name LIKE ? OR description LIKE ? OR tags LIKE ? OR column_name LIKE ?
-                   ORDER BY name""",
-                (pattern, pattern, pattern, pattern),
-            ).fetchall()
+        pattern = f"%{query}%"
+        with self.session() as s:
+            rows = (
+                s.execute(
+                    text(
+                        "SELECT * FROM features "
+                        "WHERE name LIKE :p OR description LIKE :p OR tags LIKE :p OR column_name LIKE :p "
+                        "ORDER BY name"
+                    ),
+                    {"p": pattern},
+                )
+                .mappings()
+                .all()
+            )
             return [_row_to_feature(r) for r in rows]
 
     @staticmethod
@@ -415,57 +450,72 @@ class LocalBackend(CatalogBackend):
         return d
 
     def list_feature_versions(self, feature_id: str) -> list[dict]:
-        with self._lock:
-            rows = self.conn.execute(
-                "SELECT * FROM feature_versions WHERE feature_id = ? ORDER BY version DESC",
-                (feature_id,),
-            ).fetchall()
+        with self.session() as s:
+            rows = (
+                s.execute(
+                    text("SELECT * FROM feature_versions WHERE feature_id = :fid ORDER BY version DESC"),
+                    {"fid": feature_id},
+                )
+                .mappings()
+                .all()
+            )
             return [self._parse_version_row(dict(r)) for r in rows]
 
     def get_feature_version(self, feature_id: str, version: int) -> dict | None:
-        with self._lock:
-            row = self.conn.execute(
-                "SELECT * FROM feature_versions WHERE feature_id = ? AND version = ?",
-                (feature_id, version),
-            ).fetchone()
-            if row is None:
-                return None
-            return self._parse_version_row(dict(row))
+        with self.session() as s:
+            row = (
+                s.execute(
+                    text("SELECT * FROM feature_versions WHERE feature_id = :fid AND version = :v"),
+                    {"fid": feature_id, "v": version},
+                )
+                .mappings()
+                .first()
+            )
+            return self._parse_version_row(dict(row)) if row else None
 
     def get_recent_versions(self, limit: int = 20, days: int = 7) -> list[dict]:
         """Return recent version changes across all features for audit log."""
-        with self._lock:
-            rows = self.conn.execute(
-                """SELECT fv.*, f.name as feature_name
-                   FROM feature_versions fv
-                   JOIN features f ON fv.feature_id = f.id
-                   WHERE fv.created_at >= datetime('now', ? || ' days')
-                   ORDER BY fv.created_at DESC
-                   LIMIT ?""",
-                (f"-{days}", limit),
-            ).fetchall()
+        cutoff = _utcnow() - timedelta(days=days)
+        with self.session() as s:
+            rows = (
+                s.execute(
+                    text(
+                        "SELECT fv.*, f.name as feature_name "
+                        "FROM feature_versions fv "
+                        "JOIN features f ON fv.feature_id = f.id "
+                        "WHERE fv.created_at >= :cutoff "
+                        "ORDER BY fv.created_at DESC "
+                        "LIMIT :lim"
+                    ),
+                    {"cutoff": cutoff, "lim": limit},
+                )
+                .mappings()
+                .all()
+            )
             return [self._parse_version_row(dict(r)) for r in rows]
 
     def rollback_feature(self, feature_id: str, version: int) -> dict:
-        with self._lock:
-            v = self.get_feature_version(feature_id, version)
-            if v is None:
-                msg = f"Version {version} not found for feature {feature_id}"
-                raise ValueError(msg)
-            snapshot = v["snapshot"]
-            updates = {k: snapshot[k] for k in ("description", "tags", "owner", "dtype") if k in snapshot}
-            self.update_feature_metadata(feature_id, _rollback_version=version, **updates)
-            feature = self.conn.execute("SELECT * FROM features WHERE id = ?", (feature_id,)).fetchone()
-            return dict(feature) if feature else {}
+        v = self.get_feature_version(feature_id, version)
+        if v is None:
+            msg = f"Version {version} not found for feature {feature_id}"
+            raise ValueError(msg)
+        snapshot = v["snapshot"]
+        updates = {k: snapshot[k] for k in ("description", "tags", "owner", "dtype") if k in snapshot}
+        self.update_feature_metadata(feature_id, _rollback_version=version, **updates)
+        with self.session() as s:
+            row = s.execute(text("SELECT * FROM features WHERE id = :id"), {"id": feature_id}).mappings().first()
+            return dict(row) if row else {}
 
     # --- Feature Docs ---
 
     def get_feature_doc(self, feature_id: str) -> dict | None:
-        with self._lock:
-            row = self.conn.execute("SELECT * FROM feature_docs WHERE feature_id = ?", (feature_id,)).fetchone()
-            if row is None:
-                return None
-            return dict(row)
+        with self.session() as s:
+            row = (
+                s.execute(text("SELECT * FROM feature_docs WHERE feature_id = :fid"), {"fid": feature_id})
+                .mappings()
+                .first()
+            )
+            return dict(row) if row else None
 
     def save_feature_doc(
         self,
@@ -480,36 +530,33 @@ class LocalBackend(CatalogBackend):
                 return "; ".join(str(v) for v in val)
             return str(val) if val else ""
 
-        # Capture previous doc for versioning
         old_doc = self.get_feature_doc(feature_id)
         old_short = old_doc.get("short_description", "") if old_doc else ""
         new_short = _str(doc.get("short_description", ""))
 
-        with self._lock:
-            now = datetime.now(timezone.utc)
-            self.conn.execute("DELETE FROM feature_docs WHERE feature_id = ?", (feature_id,))
-            ctx_json = json.dumps(context_features) if context_features else None
-            self.conn.execute(
-                """INSERT INTO feature_docs
-                   (feature_id, short_description, long_description,
-                    expected_range, potential_issues, generated_at, model_used,
-                    hints_used, context_features)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    feature_id,
-                    new_short,
-                    _str(doc.get("long_description", "")),
-                    _str(doc.get("expected_range", "")),
-                    _str(doc.get("potential_issues", "")),
-                    now,
-                    model_used,
-                    hints_used,
-                    ctx_json,
+        with self.session() as s:
+            s.execute(text("DELETE FROM feature_docs WHERE feature_id = :fid"), {"fid": feature_id})
+            s.execute(
+                text(
+                    "INSERT INTO feature_docs "
+                    "(feature_id, short_description, long_description, expected_range, potential_issues, "
+                    " generated_at, model_used, hints_used, context_features) "
+                    "VALUES (:fid, :short, :long, :exp, :issues, :now, :model, :hints, :ctx)"
                 ),
+                {
+                    "fid": feature_id,
+                    "short": new_short,
+                    "long": _str(doc.get("long_description", "")),
+                    "exp": _str(doc.get("expected_range", "")),
+                    "issues": _str(doc.get("potential_issues", "")),
+                    "now": _utcnow(),
+                    "model": model_used,
+                    "hints": hints_used,
+                    "ctx": json.dumps(context_features) if context_features else None,
+                },
             )
-            self.conn.commit()
+            s.commit()
 
-        # Create version entry
         from .usage import resolve_user
 
         changes = {"short_description": (old_short, new_short)}
@@ -520,36 +567,52 @@ class LocalBackend(CatalogBackend):
             changed_by=resolve_user(),
             change_type="doc",
         )
-        # Overwrite auto-generated summary with more descriptive one
-        with self._lock:
-            self.conn.execute(
-                "UPDATE feature_versions SET change_summary = ? "
-                "WHERE feature_id = ? AND version = (SELECT MAX(version) FROM feature_versions WHERE feature_id = ?)",
-                (summary, feature_id, feature_id),
+        with self.session() as s:
+            s.execute(
+                text(
+                    "UPDATE feature_versions SET change_summary = :summary "
+                    "WHERE feature_id = :fid "
+                    "  AND version = (SELECT MAX(version) FROM feature_versions WHERE feature_id = :fid)"
+                ),
+                {"summary": summary, "fid": feature_id},
             )
-            self.conn.commit()
+            s.commit()
 
     def list_undocumented_features(self) -> list[Feature]:
-        with self._lock:
-            rows = self.conn.execute(
-                """SELECT f.* FROM features f
-                   LEFT JOIN feature_docs fd ON f.id = fd.feature_id
-                   WHERE fd.feature_id IS NULL
-                     OR (fd.short_description IS NULL OR fd.short_description = '')
-                     OR f.updated_at > fd.generated_at"""
-            ).fetchall()
+        with self.session() as s:
+            rows = (
+                s.execute(
+                    text(
+                        "SELECT f.* FROM features f "
+                        "LEFT JOIN feature_docs fd ON f.id = fd.feature_id "
+                        "WHERE fd.feature_id IS NULL "
+                        "   OR (fd.short_description IS NULL OR fd.short_description = '') "
+                        "   OR f.updated_at > fd.generated_at"
+                    )
+                )
+                .mappings()
+                .all()
+            )
             return [_row_to_feature(r) for r in rows]
 
     def get_doc_stats(self) -> dict:
-        with self._lock:
-            total = self.conn.execute("SELECT COUNT(*) FROM features").fetchone()[0]
-            documented = self.conn.execute(
-                "SELECT COUNT(DISTINCT feature_id) FROM feature_docs"
-                " WHERE short_description IS NOT NULL AND short_description != ''"
-            ).fetchone()[0]
-            with_hints = self.conn.execute(
-                "SELECT COUNT(*) FROM features WHERE generation_hints IS NOT NULL AND generation_hints != ''"
-            ).fetchone()[0]
+        with self.session() as s:
+            total = s.execute(text("SELECT COUNT(*) FROM features")).scalar() or 0
+            documented = (
+                s.execute(
+                    text(
+                        "SELECT COUNT(DISTINCT feature_id) FROM feature_docs "
+                        "WHERE short_description IS NOT NULL AND short_description != ''"
+                    )
+                ).scalar()
+                or 0
+            )
+            with_hints = (
+                s.execute(
+                    text("SELECT COUNT(*) FROM features WHERE generation_hints IS NOT NULL AND generation_hints != ''")
+                ).scalar()
+                or 0
+            )
             return {
                 "total_features": total,
                 "documented": documented,
@@ -560,34 +623,40 @@ class LocalBackend(CatalogBackend):
             }
 
     def get_all_feature_docs(self) -> dict[str, dict]:
-        with self._lock:
-            rows = self.conn.execute(
-                "SELECT * FROM feature_docs WHERE short_description IS NOT NULL AND short_description != ''"
-            ).fetchall()
+        with self.session() as s:
+            rows = (
+                s.execute(
+                    text("SELECT * FROM feature_docs WHERE short_description IS NOT NULL AND short_description != ''")
+                )
+                .mappings()
+                .all()
+            )
             return {row["feature_id"]: dict(row) for row in rows}
 
     # --- Monitoring Baselines ---
 
     def get_baseline(self, feature_id: str) -> dict | None:
-        with self._lock:
-            row = self.conn.execute(
-                "SELECT baseline_stats FROM monitoring_baselines WHERE feature_id = ?",
-                (feature_id,),
-            ).fetchone()
+        with self.session() as s:
+            row = s.execute(
+                text("SELECT baseline_stats FROM monitoring_baselines WHERE feature_id = :fid"),
+                {"fid": feature_id},
+            ).first()
             if row is None:
                 return None
             stats = row[0]
             return json.loads(stats) if isinstance(stats, str) else stats
 
     def save_baseline(self, feature_id: str, stats: dict) -> None:
-        with self._lock:
-            now = datetime.now(timezone.utc)
-            self.conn.execute("DELETE FROM monitoring_baselines WHERE feature_id = ?", (feature_id,))
-            self.conn.execute(
-                "INSERT INTO monitoring_baselines (feature_id, baseline_stats, computed_at) VALUES (?, ?, ?)",
-                (feature_id, json.dumps(stats), now),
+        with self.session() as s:
+            s.execute(text("DELETE FROM monitoring_baselines WHERE feature_id = :fid"), {"fid": feature_id})
+            s.execute(
+                text(
+                    "INSERT INTO monitoring_baselines (feature_id, baseline_stats, computed_at) "
+                    "VALUES (:fid, :stats, :now)"
+                ),
+                {"fid": feature_id, "stats": json.dumps(stats), "now": _utcnow()},
             )
-            self.conn.commit()
+            s.commit()
 
     # --- Stats ---
 
@@ -595,143 +664,145 @@ class LocalBackend(CatalogBackend):
         sources = len(self.list_sources())
         features = len(self.list_features())
         doc_stats = self.get_doc_stats()
-        return {
-            "sources": sources,
-            "features": features,
-            **doc_stats,
-        }
-
-    # --- Source lookup by path ---
-
-    def get_source_by_path(self, path: str) -> DataSource | None:
-        """Look up a data source by its file path."""
-        with self._lock:
-            row = self.conn.execute("SELECT * FROM data_sources WHERE path = ?", (path,)).fetchone()
-            if row is None:
-                return None
-            return DataSource(**dict(row))
+        return {"sources": sources, "features": features, **doc_stats}
 
     # --- Feature Groups ---
 
     def create_group(self, group: FeatureGroup) -> FeatureGroup:
-        """Create a new feature group."""
-        with self._lock:
-            self.conn.execute(
-                """INSERT INTO feature_groups (id, name, description, project, owner, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    group.id,
-                    group.name,
-                    group.description,
-                    group.project,
-                    group.owner,
-                    group.created_at,
-                    group.updated_at,
+        with self.session() as s:
+            s.execute(
+                text(
+                    "INSERT INTO feature_groups (id, name, description, project, owner, created_at, updated_at) "
+                    "VALUES (:id, :name, :description, :project, :owner, :created_at, :updated_at)"
                 ),
+                {
+                    "id": group.id,
+                    "name": group.name,
+                    "description": group.description,
+                    "project": group.project,
+                    "owner": group.owner,
+                    "created_at": group.created_at,
+                    "updated_at": group.updated_at,
+                },
             )
-            self.conn.commit()
+            s.commit()
         return group
 
     def get_group_by_name(self, name: str) -> FeatureGroup | None:
-        """Get a feature group by name."""
-        with self._lock:
-            row = self.conn.execute("SELECT * FROM feature_groups WHERE name = ?", (name,)).fetchone()
-            if row is None:
-                return None
-            return FeatureGroup(**dict(row))
+        with self.session() as s:
+            row = s.execute(text("SELECT * FROM feature_groups WHERE name = :name"), {"name": name}).mappings().first()
+            return FeatureGroup(**dict(row)) if row else None
 
     def list_groups(self, project: str | None = None) -> list[FeatureGroup]:
-        """List all feature groups, optionally filtered by project."""
-        with self._lock:
+        with self.session() as s:
             if project:
-                rows = self.conn.execute(
-                    "SELECT * FROM feature_groups WHERE project = ? ORDER BY name", (project,)
-                ).fetchall()
+                rows = (
+                    s.execute(
+                        text("SELECT * FROM feature_groups WHERE project = :p ORDER BY name"),
+                        {"p": project},
+                    )
+                    .mappings()
+                    .all()
+                )
             else:
-                rows = self.conn.execute("SELECT * FROM feature_groups ORDER BY name").fetchall()
+                rows = s.execute(text("SELECT * FROM feature_groups ORDER BY name")).mappings().all()
             return [FeatureGroup(**dict(r)) for r in rows]
 
     def update_group(self, group_id: str, **kwargs: object) -> None:
-        """Update group fields (description, project, owner)."""
         allowed = {"description", "project", "owner"}
         updates = {k: v for k, v in kwargs.items() if k in allowed}
         if not updates:
             return
-        with self._lock:
-            sets = [f"{k} = ?" for k in updates]
-            sets.append("updated_at = ?")
-            vals = list(updates.values())
-            vals.append(datetime.now(timezone.utc))
-            vals.append(group_id)
-            self.conn.execute(f"UPDATE feature_groups SET {', '.join(sets)} WHERE id = ?", vals)  # noqa: S608
-            self.conn.commit()
+        sets = [f"{k} = :{k}" for k in updates]
+        sets.append("updated_at = :updated_at")
+        params: dict[str, Any] = dict(updates)
+        params["updated_at"] = _utcnow()
+        params["id"] = group_id
+        with self.session() as s:
+            s.execute(text(f"UPDATE feature_groups SET {', '.join(sets)} WHERE id = :id"), params)  # noqa: S608
+            s.commit()
 
     def delete_group(self, group_id: str) -> None:
-        """Delete a feature group (CASCADE removes members)."""
-        with self._lock:
-            self.conn.execute("DELETE FROM feature_groups WHERE id = ?", (group_id,))
-            self.conn.commit()
+        with self.session() as s:
+            s.execute(text("DELETE FROM feature_groups WHERE id = :id"), {"id": group_id})
+            s.commit()
 
     def add_group_members(self, group_id: str, feature_ids: list[str]) -> int:
-        """Add features to a group. Returns count of newly added members."""
+        """Add features to a group. Returns count of newly added members.
+
+        Uses ``ON CONFLICT DO NOTHING`` so duplicate inserts are silently
+        skipped — portable across SQLite (3.24+) and PostgreSQL.
+        """
+        if not feature_ids:
+            return 0
         added = 0
-        now = datetime.now(timezone.utc)
-        with self._lock:
+        now = _utcnow()
+        with self.session() as s:
             for fid in feature_ids:
-                try:
-                    self.conn.execute(
-                        "INSERT INTO feature_group_members (group_id, feature_id, added_at) VALUES (?, ?, ?)",
-                        (group_id, fid, now),
-                    )
+                result = s.execute(
+                    text(
+                        "INSERT INTO feature_group_members (group_id, feature_id, added_at) "
+                        "VALUES (:gid, :fid, :now) "
+                        "ON CONFLICT (group_id, feature_id) DO NOTHING"
+                    ),
+                    {"gid": group_id, "fid": fid, "now": now},
+                )
+                if result.rowcount > 0:  # type: ignore[attr-defined]
                     added += 1
-                except sqlite3.IntegrityError:
-                    pass  # already a member
-            self.conn.commit()
+            s.commit()
         return added
 
     def remove_group_member(self, group_id: str, feature_id: str) -> None:
-        """Remove a feature from a group."""
-        with self._lock:
-            self.conn.execute(
-                "DELETE FROM feature_group_members WHERE group_id = ? AND feature_id = ?",
-                (group_id, feature_id),
+        with self.session() as s:
+            s.execute(
+                text("DELETE FROM feature_group_members WHERE group_id = :gid AND feature_id = :fid"),
+                {"gid": group_id, "fid": feature_id},
             )
-            self.conn.commit()
+            s.commit()
 
     def list_group_members(self, group_id: str) -> list[Feature]:
-        """List all features in a group."""
-        with self._lock:
-            rows = self.conn.execute(
-                """SELECT f.* FROM features f
-                   JOIN feature_group_members gm ON f.id = gm.feature_id
-                   WHERE gm.group_id = ?
-                   ORDER BY f.name""",
-                (group_id,),
-            ).fetchall()
+        with self.session() as s:
+            rows = (
+                s.execute(
+                    text(
+                        "SELECT f.* FROM features f "
+                        "JOIN feature_group_members gm ON f.id = gm.feature_id "
+                        "WHERE gm.group_id = :gid "
+                        "ORDER BY f.name"
+                    ),
+                    {"gid": group_id},
+                )
+                .mappings()
+                .all()
+            )
             return [_row_to_feature(r) for r in rows]
 
     def count_group_members(self, group_id: str) -> int:
-        """Count members in a group."""
-        with self._lock:
-            return self.conn.execute(
-                "SELECT COUNT(*) FROM feature_group_members WHERE group_id = ?", (group_id,)
-            ).fetchone()[0]
+        with self.session() as s:
+            return int(
+                s.execute(
+                    text("SELECT COUNT(*) FROM feature_group_members WHERE group_id = :gid"),
+                    {"gid": group_id},
+                ).scalar()
+                or 0
+            )
 
     # --- Feature Definitions ---
 
     def set_feature_definition(self, feature_id: str, definition: str, definition_type: str) -> None:
-        """Set or update a feature's definition."""
         from .usage import resolve_user
 
         old_def = self.get_feature_definition(feature_id)
-        with self._lock:
-            now = datetime.now(timezone.utc)
-            self.conn.execute(
-                "UPDATE features SET definition = ?, definition_type = ?,"
-                " definition_updated_at = ?, updated_at = ? WHERE id = ?",
-                (definition, definition_type, now, now, feature_id),
+        with self.session() as s:
+            now = _utcnow()
+            s.execute(
+                text(
+                    "UPDATE features SET definition = :def, definition_type = :dt, "
+                    "  definition_updated_at = :now, updated_at = :now WHERE id = :id"
+                ),
+                {"def": definition, "dt": definition_type, "now": now, "id": feature_id},
             )
-            self.conn.commit()
+            s.commit()
         old_val = old_def.get("definition") if old_def else None
         old_dtype = old_def.get("definition_type") if old_def else None
         self._snapshot_feature(
@@ -742,29 +813,33 @@ class LocalBackend(CatalogBackend):
         )
 
     def get_feature_definition(self, feature_id: str) -> dict | None:
-        """Get a feature's definition. Returns None if not set."""
-        with self._lock:
-            row = self.conn.execute(
-                "SELECT definition, definition_type, definition_updated_at FROM features WHERE id = ?",
-                (feature_id,),
-            ).fetchone()
+        with self.session() as s:
+            row = (
+                s.execute(
+                    text("SELECT definition, definition_type, definition_updated_at FROM features WHERE id = :id"),
+                    {"id": feature_id},
+                )
+                .mappings()
+                .first()
+            )
             if row is None or row["definition"] is None:
                 return None
             return dict(row)
 
     def clear_feature_definition(self, feature_id: str) -> None:
-        """Remove a feature's definition."""
         from .usage import resolve_user
 
         old_def = self.get_feature_definition(feature_id)
-        with self._lock:
-            now = datetime.now(timezone.utc)
-            self.conn.execute(
-                "UPDATE features SET definition = NULL, definition_type = NULL,"
-                " definition_updated_at = NULL, updated_at = ? WHERE id = ?",
-                (now, feature_id),
+        with self.session() as s:
+            now = _utcnow()
+            s.execute(
+                text(
+                    "UPDATE features SET definition = NULL, definition_type = NULL, "
+                    "  definition_updated_at = NULL, updated_at = :now WHERE id = :id"
+                ),
+                {"now": now, "id": feature_id},
             )
-            self.conn.commit()
+            s.commit()
         if old_def and old_def.get("definition"):
             self._snapshot_feature(
                 feature_id,
@@ -776,112 +851,173 @@ class LocalBackend(CatalogBackend):
     # --- Usage Tracking ---
 
     def log_usage(self, feature_id: str, action: str, user: str = "", context: str = "") -> None:
-        """Log a usage event for a feature."""
-        with self._lock:
-            now = datetime.now(timezone.utc)
-            self.conn.execute(
-                "INSERT INTO usage_log (id, feature_id, action, user, context, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                (_new_id(), feature_id, action, user, context, now),
+        with self.session() as s:
+            s.execute(
+                text(
+                    # "user" is a reserved keyword in PostgreSQL — must be double-quoted.
+                    # SQLite tolerates the quotes, so this is portable.
+                    'INSERT INTO usage_log (id, feature_id, action, "user", context, created_at) '
+                    "VALUES (:id, :fid, :action, :user, :ctx, :now)"
+                ),
+                {
+                    "id": _new_id(),
+                    "fid": feature_id,
+                    "action": action,
+                    "user": user,
+                    "ctx": context,
+                    "now": _utcnow(),
+                },
             )
-            self.conn.commit()
+            s.commit()
 
     def get_top_features(self, limit: int = 10, days: int = 30) -> list[dict]:
-        """Get most-used features by action counts."""
-        with self._lock:
-            rows = self.conn.execute(
-                """SELECT f.name,
-                       SUM(CASE WHEN ul.action = 'view' THEN 1 ELSE 0 END) as view_count,
-                       SUM(CASE WHEN ul.action = 'query' THEN 1 ELSE 0 END) as query_count,
-                       COUNT(*) as total_count,
-                       MAX(ul.created_at) as last_seen,
-                       f.created_at,
-                       ds.name as source
-                   FROM usage_log ul
-                   JOIN features f ON ul.feature_id = f.id
-                   JOIN data_sources ds ON f.data_source_id = ds.id
-                   WHERE ul.created_at >= datetime('now', ? || ' days')
-                   GROUP BY ul.feature_id
-                   ORDER BY total_count DESC
-                   LIMIT ?""",
-                (f"-{days}", limit),
-            ).fetchall()
+        cutoff = _utcnow() - timedelta(days=days)
+        with self.session() as s:
+            rows = (
+                s.execute(
+                    text(
+                        "SELECT f.name, "
+                        "  SUM(CASE WHEN ul.action = 'view' THEN 1 ELSE 0 END) as view_count, "
+                        "  SUM(CASE WHEN ul.action = 'query' THEN 1 ELSE 0 END) as query_count, "
+                        "  COUNT(*) as total_count, "
+                        "  MAX(ul.created_at) as last_seen, "
+                        "  f.created_at, "
+                        "  ds.name as source "
+                        "FROM usage_log ul "
+                        "JOIN features f ON ul.feature_id = f.id "
+                        "JOIN data_sources ds ON f.data_source_id = ds.id "
+                        "WHERE ul.created_at >= :cutoff "
+                        "GROUP BY ul.feature_id, f.name, f.created_at, ds.name "
+                        "ORDER BY total_count DESC "
+                        "LIMIT :lim"
+                    ),
+                    {"cutoff": cutoff, "lim": limit},
+                )
+                .mappings()
+                .all()
+            )
             return [dict(r) for r in rows]
 
     def get_orphaned_features(self, days: int = 30) -> list[dict]:
-        """Get features with zero usage in the given period."""
-        with self._lock:
-            rows = self.conn.execute(
-                """SELECT f.name,
-                       (SELECT MAX(ul2.created_at) FROM usage_log ul2 WHERE ul2.feature_id = f.id) as last_seen
-                   FROM features f
-                   LEFT JOIN usage_log ul ON f.id = ul.feature_id
-                       AND ul.created_at >= datetime('now', ? || ' days')
-                   WHERE ul.id IS NULL
-                   ORDER BY f.name""",
-                (f"-{days}",),
-            ).fetchall()
+        cutoff = _utcnow() - timedelta(days=days)
+        with self.session() as s:
+            rows = (
+                s.execute(
+                    text(
+                        "SELECT f.name, "
+                        "  (SELECT MAX(ul2.created_at) FROM usage_log ul2 WHERE ul2.feature_id = f.id) as last_seen "
+                        "FROM features f "
+                        "LEFT JOIN usage_log ul ON f.id = ul.feature_id AND ul.created_at >= :cutoff "
+                        "WHERE ul.id IS NULL "
+                        "ORDER BY f.name"
+                    ),
+                    {"cutoff": cutoff},
+                )
+                .mappings()
+                .all()
+            )
             return [dict(r) for r in rows]
 
     def get_usage_activity(self, days: int = 7) -> list[dict]:
-        """Get per-day usage activity summary."""
-        with self._lock:
-            rows = self.conn.execute(
-                """SELECT DATE(created_at) as date,
-                       SUM(CASE WHEN action = 'view' THEN 1 ELSE 0 END) as view_count,
-                       SUM(CASE WHEN action = 'query' THEN 1 ELSE 0 END) as query_count,
-                       COUNT(DISTINCT feature_id) as unique_features,
-                       COUNT(*) as total
-                   FROM usage_log
-                   WHERE created_at >= datetime('now', ? || ' days')
-                   GROUP BY DATE(created_at)
-                   ORDER BY date DESC""",
-                (f"-{days}",),
-            ).fetchall()
-            return [dict(r) for r in rows]
+        """Per-day usage activity. Aggregation done in Python for portability —
+        SQLite's ``DATE(col)`` and Postgres' ``col::date`` aren't a clean
+        cross-dialect equivalent.
+        """
+        cutoff = _utcnow() - timedelta(days=days)
+        with self.session() as s:
+            rows = (
+                s.execute(
+                    text("SELECT created_at, action, feature_id FROM usage_log WHERE created_at >= :cutoff"),
+                    {"cutoff": cutoff},
+                )
+                .mappings()
+                .all()
+            )
+
+        buckets: dict[str, dict[str, Any]] = defaultdict(
+            lambda: {"view_count": 0, "query_count": 0, "_features": set(), "total": 0}
+        )
+        for r in rows:
+            ts = r["created_at"]
+            day = ts.date().isoformat() if hasattr(ts, "date") else str(ts)[:10]
+            b = buckets[day]
+            if r["action"] == "view":
+                b["view_count"] += 1
+            elif r["action"] == "query":
+                b["query_count"] += 1
+            b["_features"].add(r["feature_id"])
+            b["total"] += 1
+        result = []
+        for day in sorted(buckets.keys(), reverse=True):
+            b = buckets[day]
+            result.append(
+                {
+                    "date": day,
+                    "view_count": b["view_count"],
+                    "query_count": b["query_count"],
+                    "unique_features": len(b["_features"]),
+                    "total": b["total"],
+                }
+            )
+        return result
 
     def get_feature_usage(self, feature_id: str, days: int = 30) -> dict:
-        """Get usage summary for a single feature."""
-        with self._lock:
-            row = self.conn.execute(
-                """SELECT
-                       SUM(CASE WHEN action = 'view' THEN 1 ELSE 0 END) as views,
-                       SUM(CASE WHEN action = 'query' THEN 1 ELSE 0 END) as queries,
-                       COUNT(*) as total,
-                       MAX(created_at) as last_seen
-                   FROM usage_log
-                   WHERE feature_id = ? AND created_at >= datetime('now', ? || ' days')""",
-                (feature_id, f"-{days}"),
-            ).fetchone()
-            daily = self.conn.execute(
-                """SELECT DATE(created_at) as date, COUNT(*) as count
-                   FROM usage_log
-                   WHERE feature_id = ? AND created_at >= datetime('now', '-7 days')
-                   GROUP BY DATE(created_at)
-                   ORDER BY date""",
-                (feature_id,),
-            ).fetchall()
-            return {
-                "views": row["views"] or 0,
-                "queries": row["queries"] or 0,
-                "total": row["total"] or 0,
-                "last_seen": row["last_seen"],
-                "daily": [dict(d) for d in daily],
-            }
+        cutoff = _utcnow() - timedelta(days=days)
+        cutoff_7 = _utcnow() - timedelta(days=7)
+        with self.session() as s:
+            row = (
+                s.execute(
+                    text(
+                        "SELECT "
+                        "  SUM(CASE WHEN action = 'view' THEN 1 ELSE 0 END) as views, "
+                        "  SUM(CASE WHEN action = 'query' THEN 1 ELSE 0 END) as queries, "
+                        "  COUNT(*) as total, "
+                        "  MAX(created_at) as last_seen "
+                        "FROM usage_log "
+                        "WHERE feature_id = :fid AND created_at >= :cutoff"
+                    ),
+                    {"fid": feature_id, "cutoff": cutoff},
+                )
+                .mappings()
+                .first()
+            )
+            daily_rows = (
+                s.execute(
+                    text("SELECT created_at FROM usage_log WHERE feature_id = :fid AND created_at >= :cutoff7"),
+                    {"fid": feature_id, "cutoff7": cutoff_7},
+                )
+                .mappings()
+                .all()
+            )
+
+        # Aggregate daily counts in Python (portable across sqlite/postgres).
+        daily_counts: dict[str, int] = defaultdict(int)
+        for r in daily_rows:
+            ts = r["created_at"]
+            day = ts.date().isoformat() if hasattr(ts, "date") else str(ts)[:10]
+            daily_counts[day] += 1
+        daily = [{"date": d, "count": daily_counts[d]} for d in sorted(daily_counts.keys())]
+        return {
+            "views": (row["views"] if row else 0) or 0,
+            "queries": (row["queries"] if row else 0) or 0,
+            "total": (row["total"] if row else 0) or 0,
+            "last_seen": row["last_seen"] if row else None,
+            "daily": daily,
+        }
 
     # --- Generation Hints ---
 
     def set_feature_hint(self, feature_id: str, hint: str) -> None:
-        """Set generation hints for a feature."""
         from .usage import resolve_user
 
         old_hint = self.get_feature_hint(feature_id)
-        with self._lock:
-            now = datetime.now(timezone.utc)
-            self.conn.execute(
-                "UPDATE features SET generation_hints = ?, updated_at = ? WHERE id = ?",
-                (hint, now, feature_id),
+        with self.session() as s:
+            now = _utcnow()
+            s.execute(
+                text("UPDATE features SET generation_hints = :hint, updated_at = :now WHERE id = :id"),
+                {"hint": hint, "now": now, "id": feature_id},
             )
-            self.conn.commit()
+            s.commit()
         self._snapshot_feature(
             feature_id,
             {"generation_hints": (old_hint, hint)},
@@ -890,28 +1026,21 @@ class LocalBackend(CatalogBackend):
         )
 
     def get_feature_hint(self, feature_id: str) -> str | None:
-        """Get generation hints for a feature."""
-        with self._lock:
-            row = self.conn.execute(
-                "SELECT generation_hints FROM features WHERE id = ?",
-                (feature_id,),
-            ).fetchone()
-            if row is None:
-                return None
-            return row["generation_hints"]
+        with self.session() as s:
+            row = s.execute(text("SELECT generation_hints FROM features WHERE id = :id"), {"id": feature_id}).first()
+            return row[0] if row else None
 
     def clear_feature_hint(self, feature_id: str) -> None:
-        """Remove generation hints for a feature."""
         from .usage import resolve_user
 
         old_hint = self.get_feature_hint(feature_id)
-        with self._lock:
-            now = datetime.now(timezone.utc)
-            self.conn.execute(
-                "UPDATE features SET generation_hints = NULL, updated_at = ? WHERE id = ?",
-                (now, feature_id),
+        with self.session() as s:
+            now = _utcnow()
+            s.execute(
+                text("UPDATE features SET generation_hints = NULL, updated_at = :now WHERE id = :id"),
+                {"now": now, "id": feature_id},
             )
-            self.conn.commit()
+            s.commit()
         if old_hint:
             self._snapshot_feature(
                 feature_id,
@@ -923,171 +1052,213 @@ class LocalBackend(CatalogBackend):
     # --- Visualization Queries ---
 
     def get_doc_debt(self) -> list[dict]:
-        """Return doc debt grouped by owner and data source."""
-        with self._lock:
-            rows = self.conn.execute(
-                """SELECT
-                       COALESCE(NULLIF(f.owner, ''), 'unassigned') as owner,
-                       ds.name as source,
-                       COUNT(*) as total,
-                       COUNT(*) - COUNT(
-                           CASE WHEN fd.short_description IS NOT NULL AND fd.short_description != ''
-                                THEN fd.feature_id END
-                       ) as undocumented
-                   FROM features f
-                   JOIN data_sources ds ON f.data_source_id = ds.id
-                   LEFT JOIN feature_docs fd ON f.id = fd.feature_id
-                   GROUP BY f.owner, ds.name
-                   ORDER BY undocumented DESC"""
-            ).fetchall()
-            result = []
-            for r in rows:
-                d = dict(r)
-                d["pct_undocumented"] = round(d["undocumented"] / d["total"] * 100, 1) if d["total"] > 0 else 0.0
-                result.append(d)
-            return result
+        with self.session() as s:
+            rows = (
+                s.execute(
+                    text(
+                        "SELECT "
+                        "  COALESCE(NULLIF(f.owner, ''), 'unassigned') as owner, "
+                        "  ds.name as source, "
+                        "  COUNT(*) as total, "
+                        "  COUNT(*) - COUNT( "
+                        "    CASE WHEN fd.short_description IS NOT NULL AND fd.short_description != '' "
+                        "         THEN fd.feature_id END "
+                        "  ) as undocumented "
+                        "FROM features f "
+                        "JOIN data_sources ds ON f.data_source_id = ds.id "
+                        "LEFT JOIN feature_docs fd ON f.id = fd.feature_id "
+                        "GROUP BY f.owner, ds.name "
+                        "ORDER BY undocumented DESC"
+                    )
+                )
+                .mappings()
+                .all()
+            )
+        result = []
+        for r in rows:
+            d = dict(r)
+            d["pct_undocumented"] = round(d["undocumented"] / d["total"] * 100, 1) if d["total"] > 0 else 0.0
+            result.append(d)
+        return result
 
     def get_monitoring_history(self, feature_name: str, days: int = 30) -> list[dict]:
-        """Return PSI check history for a feature."""
-        with self._lock:
-            rows = self.conn.execute(
-                """SELECT checked_at, psi, severity
-                   FROM monitoring_checks
-                   WHERE feature_name = ?
-                     AND checked_at >= datetime('now', ? || ' days')
-                   ORDER BY checked_at ASC""",
-                (feature_name, f"-{days}"),
-            ).fetchall()
+        cutoff = _utcnow() - timedelta(days=days)
+        with self.session() as s:
+            rows = (
+                s.execute(
+                    text(
+                        "SELECT checked_at, psi, severity FROM monitoring_checks "
+                        "WHERE feature_name = :name AND checked_at >= :cutoff "
+                        "ORDER BY checked_at ASC"
+                    ),
+                    {"name": feature_name, "cutoff": cutoff},
+                )
+                .mappings()
+                .all()
+            )
             return [dict(r) for r in rows]
 
     def save_monitoring_result(self, feature_id: str, feature_name: str, psi: float | None, severity: str) -> None:
-        """Save a monitoring check result for history tracking."""
-        with self._lock:
-            now = datetime.now(timezone.utc)
-            self.conn.execute(
-                """INSERT INTO monitoring_checks (id, feature_id, feature_name, psi, severity, checked_at)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                (_new_id(), feature_id, feature_name, psi, severity, now),
+        with self.session() as s:
+            s.execute(
+                text(
+                    "INSERT INTO monitoring_checks "
+                    "(id, feature_id, feature_name, psi, severity, checked_at) "
+                    "VALUES (:id, :fid, :name, :psi, :sev, :now)"
+                ),
+                {
+                    "id": _new_id(),
+                    "fid": feature_id,
+                    "name": feature_name,
+                    "psi": psi,
+                    "sev": severity,
+                    "now": _utcnow(),
+                },
             )
-            self.conn.commit()
+            s.commit()
 
     def get_baseline_for_feature(self, feature_name: str) -> dict | None:
-        """Retrieve baseline stats for a feature by name, including metadata."""
-        with self._lock:
-            row = self.conn.execute(
-                """SELECT mb.baseline_stats, mb.computed_at, f.name as feature_spec
-                   FROM monitoring_baselines mb
-                   JOIN features f ON mb.feature_id = f.id
-                   WHERE f.name = ?""",
-                (feature_name,),
-            ).fetchone()
+        with self.session() as s:
+            row = (
+                s.execute(
+                    text(
+                        "SELECT mb.baseline_stats, mb.computed_at, f.name as feature_spec "
+                        "FROM monitoring_baselines mb "
+                        "JOIN features f ON mb.feature_id = f.id "
+                        "WHERE f.name = :name"
+                    ),
+                    {"name": feature_name},
+                )
+                .mappings()
+                .first()
+            )
             if row is None:
                 return None
             stats = row["baseline_stats"]
+            computed_at = row["computed_at"]
             return {
                 "feature_spec": row["feature_spec"],
                 "baseline_stats": json.loads(stats) if isinstance(stats, str) else stats,
-                "computed_at": row["computed_at"].isoformat() if row["computed_at"] else None,
+                "computed_at": computed_at.isoformat() if computed_at else None,
             }
 
     def get_stats_by_source(self) -> list[dict]:
-        """Return per-source stats for dashboard visualization."""
-        with self._lock:
-            rows = self.conn.execute(
-                """SELECT
-                       ds.name as source_name,
-                       ds.path,
-                       COUNT(DISTINCT f.id) as feature_count,
-                       COUNT(DISTINCT
-                           CASE WHEN fd.short_description IS NOT NULL AND fd.short_description != ''
-                                THEN f.id END
-                       ) as documented_count,
-                       ds.updated_at as last_scanned
-                   FROM data_sources ds
-                   LEFT JOIN features f ON f.data_source_id = ds.id
-                   LEFT JOIN feature_docs fd ON f.id = fd.feature_id
-                   GROUP BY ds.id, ds.name, ds.path, ds.updated_at
-                   ORDER BY ds.name"""
-            ).fetchall()
-
-            # Get latest monitoring check per feature for alert counts
-            latest_checks = self.conn.execute(
-                """SELECT mc.feature_name, mc.severity, mc.psi
-                   FROM monitoring_checks mc
-                   INNER JOIN (
-                       SELECT feature_name, MAX(checked_at) as max_checked
-                       FROM monitoring_checks
-                       GROUP BY feature_name
-                   ) latest ON mc.feature_name = latest.feature_name
-                       AND mc.checked_at = latest.max_checked"""
-            ).fetchall()
-
-            # Index checks by source (feature_name format is "source.column")
-            source_alerts: dict[str, list[dict]] = {}
-            for c in latest_checks:
-                src = c["feature_name"].split(".")[0] if "." in c["feature_name"] else ""
-                source_alerts.setdefault(src, []).append(dict(c))
-
-            result = []
-            for r in rows:
-                src = r["source_name"]
-                checks = source_alerts.get(src, [])
-                drift = [c for c in checks if c["severity"] not in ("healthy",)]
-                critical = [c for c in checks if c["severity"] in ("critical", "error")]
-                top_drift = max(checks, key=lambda c: c["psi"] or 0, default=None)
-                ls = r["last_scanned"]
-                result.append(
-                    {
-                        "source_name": src,
-                        "path": r["path"],
-                        "feature_count": r["feature_count"],
-                        "documented_count": r["documented_count"],
-                        "drift_alerts": len(drift),
-                        "critical_alerts": len(critical),
-                        "last_scanned": ls.isoformat() if hasattr(ls, "isoformat") else ls,
-                        "top_drifting_feature": (
-                            top_drift["feature_name"] if top_drift and (top_drift["psi"] or 0) > 0.1 else None
-                        ),
-                    }
+        with self.session() as s:
+            rows = (
+                s.execute(
+                    text(
+                        "SELECT "
+                        "  ds.name as source_name, "
+                        "  ds.path, "
+                        "  COUNT(DISTINCT f.id) as feature_count, "
+                        "  COUNT(DISTINCT "
+                        "    CASE WHEN fd.short_description IS NOT NULL AND fd.short_description != '' "
+                        "         THEN f.id END "
+                        "  ) as documented_count, "
+                        "  ds.updated_at as last_scanned "
+                        "FROM data_sources ds "
+                        "LEFT JOIN features f ON f.data_source_id = ds.id "
+                        "LEFT JOIN feature_docs fd ON f.id = fd.feature_id "
+                        "GROUP BY ds.id, ds.name, ds.path, ds.updated_at "
+                        "ORDER BY ds.name"
+                    )
                 )
-            return result
+                .mappings()
+                .all()
+            )
+
+            latest_checks = (
+                s.execute(
+                    text(
+                        "SELECT mc.feature_name, mc.severity, mc.psi "
+                        "FROM monitoring_checks mc "
+                        "INNER JOIN ( "
+                        "  SELECT feature_name, MAX(checked_at) as max_checked "
+                        "  FROM monitoring_checks GROUP BY feature_name "
+                        ") latest ON mc.feature_name = latest.feature_name "
+                        "       AND mc.checked_at = latest.max_checked"
+                    )
+                )
+                .mappings()
+                .all()
+            )
+
+        source_alerts: dict[str, list[dict]] = {}
+        for c in latest_checks:
+            src = c["feature_name"].split(".")[0] if "." in c["feature_name"] else ""
+            source_alerts.setdefault(src, []).append(dict(c))
+
+        result = []
+        for r in rows:
+            src = r["source_name"]
+            checks = source_alerts.get(src, [])
+            drift = [c for c in checks if c["severity"] not in ("healthy",)]
+            critical = [c for c in checks if c["severity"] in ("critical", "error")]
+            top_drift = max(checks, key=lambda c: c["psi"] or 0, default=None)
+            ls = r["last_scanned"]
+            result.append(
+                {
+                    "source_name": src,
+                    "path": r["path"],
+                    "feature_count": r["feature_count"],
+                    "documented_count": r["documented_count"],
+                    "drift_alerts": len(drift),
+                    "critical_alerts": len(critical),
+                    "last_scanned": ls.isoformat() if hasattr(ls, "isoformat") else ls,
+                    "top_drifting_feature": (
+                        top_drift["feature_name"] if top_drift and (top_drift["psi"] or 0) > 0.1 else None
+                    ),
+                }
+            )
+        return result
 
     # --- Lineage ---
 
     def add_lineage(self, child_feature_id: str, parent_feature_id: str, transform: str = "") -> None:
-        with self._lock:
-            now = datetime.now(timezone.utc)
-            self.conn.execute(
-                """INSERT OR IGNORE INTO feature_lineage
-                   (id, child_feature_id, parent_feature_id, transform, created_at)
-                   VALUES (?, ?, ?, ?, ?)""",
-                (_new_id(), child_feature_id, parent_feature_id, transform, now),
+        with self.session() as s:
+            s.execute(
+                text(
+                    "INSERT INTO feature_lineage (id, child_feature_id, parent_feature_id, transform, created_at) "
+                    "VALUES (:id, :cid, :pid, :transform, :now) "
+                    "ON CONFLICT (child_feature_id, parent_feature_id) DO NOTHING"
+                ),
+                {
+                    "id": _new_id(),
+                    "cid": child_feature_id,
+                    "pid": parent_feature_id,
+                    "transform": transform,
+                    "now": _utcnow(),
+                },
             )
-            self.conn.commit()
+            s.commit()
 
     def remove_lineage(self, child_feature_id: str, parent_feature_id: str) -> None:
-        with self._lock:
-            self.conn.execute(
-                "DELETE FROM feature_lineage WHERE child_feature_id = ? AND parent_feature_id = ?",
-                (child_feature_id, parent_feature_id),
+        with self.session() as s:
+            s.execute(
+                text("DELETE FROM feature_lineage WHERE child_feature_id = :cid AND parent_feature_id = :pid"),
+                {"cid": child_feature_id, "pid": parent_feature_id},
             )
-            self.conn.commit()
+            s.commit()
 
     def get_lineage_graph(self) -> dict:
-        """Return full lineage graph as {nodes, edges}."""
-        with self._lock:
-            edges_rows = self.conn.execute(
-                """SELECT fl.child_feature_id, fl.parent_feature_id, fl.transform, fl.created_at,
-                          fc.name as child_name, fp.name as parent_name
-                   FROM feature_lineage fl
-                   JOIN features fc ON fl.child_feature_id = fc.id
-                   JOIN features fp ON fl.parent_feature_id = fp.id"""
-            ).fetchall()
+        with self.session() as s:
+            edges_rows = (
+                s.execute(
+                    text(
+                        "SELECT fl.child_feature_id, fl.parent_feature_id, fl.transform, fl.created_at, "
+                        "       fc.name as child_name, fp.name as parent_name "
+                        "FROM feature_lineage fl "
+                        "JOIN features fc ON fl.child_feature_id = fc.id "
+                        "JOIN features fp ON fl.parent_feature_id = fp.id"
+                    )
+                )
+                .mappings()
+                .all()
+            )
 
             if not edges_rows:
                 return {"nodes": [], "edges": []}
 
-            # Collect unique feature IDs involved in lineage
             feature_ids: set[str] = set()
             edges = []
             for r in edges_rows:
@@ -1103,51 +1274,63 @@ class LocalBackend(CatalogBackend):
                     }
                 )
 
-            # Fetch feature details and doc/drift status
-            placeholders = ",".join("?" for _ in feature_ids)
-            feat_rows = self.conn.execute(
-                f"SELECT * FROM features WHERE id IN ({placeholders})",  # noqa: S608
-                list(feature_ids),
-            ).fetchall()
+            # IN clauses with named param expansion: SA 2.x supports
+            # ``WHERE x IN :ids`` + ``bindparams(bindparam('ids', expanding=True))``.
+            # Equivalent to building a placeholder list, but portable across dialects.
+            from sqlalchemy import bindparam
 
-            doc_ids = {
-                r["feature_id"]
-                for r in self.conn.execute(
-                    f"SELECT feature_id FROM feature_docs WHERE feature_id IN ({placeholders})"  # noqa: S608
-                    " AND short_description IS NOT NULL AND short_description != ''",
-                    list(feature_ids),
-                ).fetchall()
-            }
+            feat_rows = (
+                s.execute(
+                    text("SELECT * FROM features WHERE id IN :ids").bindparams(bindparam("ids", expanding=True)),
+                    {"ids": list(feature_ids)},
+                )
+                .mappings()
+                .all()
+            )
 
-            # Latest drift severity per feature
+            doc_id_rows = (
+                s.execute(
+                    text(
+                        "SELECT feature_id FROM feature_docs WHERE feature_id IN :ids "
+                        "AND short_description IS NOT NULL AND short_description != ''"
+                    ).bindparams(bindparam("ids", expanding=True)),
+                    {"ids": list(feature_ids)},
+                )
+                .mappings()
+                .all()
+            )
+            doc_ids = {r["feature_id"] for r in doc_id_rows}
+
             drift_map: dict[str, str] = {}
             for fid in feature_ids:
-                row = self.conn.execute(
-                    "SELECT severity FROM monitoring_checks WHERE feature_id = ? ORDER BY checked_at DESC LIMIT 1",
-                    (fid,),
-                ).fetchone()
+                row = s.execute(
+                    text(
+                        "SELECT severity FROM monitoring_checks "
+                        "WHERE feature_id = :fid ORDER BY checked_at DESC LIMIT 1"
+                    ),
+                    {"fid": fid},
+                ).first()
                 if row:
-                    drift_map[fid] = row["severity"]
+                    drift_map[fid] = row[0]
 
-            nodes = []
-            for r in feat_rows:
-                f = _row_to_feature(r)
-                src = f.name.split(".")[0] if "." in f.name else ""
-                nodes.append(
-                    {
-                        "id": f.name,
-                        "spec": f.name,
-                        "source": src,
-                        "dtype": f.dtype,
-                        "has_doc": f.id in doc_ids,
-                        "drift_status": drift_map.get(f.id, "healthy"),
-                    }
-                )
+        nodes = []
+        for r in feat_rows:
+            f = _row_to_feature(r)
+            src = f.name.split(".")[0] if "." in f.name else ""
+            nodes.append(
+                {
+                    "id": f.name,
+                    "spec": f.name,
+                    "source": src,
+                    "dtype": f.dtype,
+                    "has_doc": f.id in doc_ids,
+                    "drift_status": drift_map.get(f.id, "healthy"),
+                }
+            )
 
-            return {"nodes": nodes, "edges": edges}
+        return {"nodes": nodes, "edges": edges}
 
     def get_feature_lineage(self, feature_name: str, direction: str = "both", depth: int = 3) -> dict:
-        """Return lineage tree for a single feature."""
         feature = self.get_feature_by_name(feature_name)
         if feature is None:
             return {"feature": None, "parents": [], "children": []}
@@ -1161,58 +1344,65 @@ class LocalBackend(CatalogBackend):
         def _get_parents(fid: str, d: int) -> list[dict]:
             if d <= 0:
                 return []
-            with self._lock:
-                rows = self.conn.execute(
-                    """SELECT fp.id, fp.name, fp.dtype, fl.transform
-                       FROM feature_lineage fl
-                       JOIN features fp ON fl.parent_feature_id = fp.id
-                       WHERE fl.child_feature_id = ?""",
-                    (fid,),
-                ).fetchall()
-            result = []
-            for r in rows:
-                result.append(
-                    {
-                        "spec": r["name"],
-                        "transform": r["transform"] or "",
-                        "dtype": r["dtype"],
-                        "parents": _get_parents(r["id"], d - 1),
-                    }
+            with self.session() as s:
+                rows = (
+                    s.execute(
+                        text(
+                            "SELECT fp.id, fp.name, fp.dtype, fl.transform "
+                            "FROM feature_lineage fl "
+                            "JOIN features fp ON fl.parent_feature_id = fp.id "
+                            "WHERE fl.child_feature_id = :fid"
+                        ),
+                        {"fid": fid},
+                    )
+                    .mappings()
+                    .all()
                 )
-            return result
+            return [
+                {
+                    "spec": r["name"],
+                    "transform": r["transform"] or "",
+                    "dtype": r["dtype"],
+                    "parents": _get_parents(r["id"], d - 1),
+                }
+                for r in rows
+            ]
 
         def _get_children(fid: str, d: int) -> list[dict]:
             if d <= 0:
                 return []
-            with self._lock:
-                rows = self.conn.execute(
-                    """SELECT fc.id, fc.name, fc.dtype, fl.transform
-                       FROM feature_lineage fl
-                       JOIN features fc ON fl.child_feature_id = fc.id
-                       WHERE fl.parent_feature_id = ?""",
-                    (fid,),
-                ).fetchall()
-            result = []
-            for r in rows:
-                result.append(
-                    {
-                        "spec": r["name"],
-                        "transform": r["transform"] or "",
-                        "dtype": r["dtype"],
-                        "children": _get_children(r["id"], d - 1),
-                    }
+            with self.session() as s:
+                rows = (
+                    s.execute(
+                        text(
+                            "SELECT fc.id, fc.name, fc.dtype, fl.transform "
+                            "FROM feature_lineage fl "
+                            "JOIN features fc ON fl.child_feature_id = fc.id "
+                            "WHERE fl.parent_feature_id = :fid"
+                        ),
+                        {"fid": fid},
+                    )
+                    .mappings()
+                    .all()
                 )
-            return result
+            return [
+                {
+                    "spec": r["name"],
+                    "transform": r["transform"] or "",
+                    "dtype": r["dtype"],
+                    "children": _get_children(r["id"], d - 1),
+                }
+                for r in rows
+            ]
 
         parents = _get_parents(feature.id, depth) if direction in ("both", "up") else []
         children = _get_children(feature.id, depth) if direction in ("both", "down") else []
-
         return {"feature": root, "parents": parents, "children": children}
 
-    # --- Action Items (lifecycle loop) ---
+    # --- Action Items ---
 
     @staticmethod
-    def _row_to_action_item(row: sqlite3.Row | dict) -> dict:
+    def _row_to_action_item(row: Any) -> dict:
         d = dict(row)
         ctx = d.get("context_json")
         d["context"] = json.loads(ctx) if isinstance(ctx, str) and ctx else {}
@@ -1233,42 +1423,45 @@ class LocalBackend(CatalogBackend):
         created_by: str = "",
     ) -> str:
         item_id = _new_id()
-        now = datetime.now(timezone.utc)
-        with self._lock:
-            self.conn.execute(
-                """INSERT INTO action_items
-                   (id, feature_id, source, title, recommendation, status,
-                    created_by, applied_by, change_summary, context_json,
-                    created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, 'pending', ?, '', '', ?, ?, ?)""",
-                (
-                    item_id,
-                    feature_id,
-                    source,
-                    title,
-                    recommendation,
-                    created_by,
-                    json.dumps(context or {}, default=str),
-                    now,
-                    now,
+        now = _utcnow()
+        with self.session() as s:
+            s.execute(
+                text(
+                    "INSERT INTO action_items "
+                    "(id, feature_id, source, title, recommendation, status, "
+                    " created_by, applied_by, change_summary, context_json, "
+                    " created_at, updated_at) "
+                    "VALUES (:id, :fid, :src, :title, :rec, 'pending', "
+                    "        :created_by, '', '', :ctx, :now, :now)"
                 ),
+                {
+                    "id": item_id,
+                    "fid": feature_id,
+                    "src": source,
+                    "title": title,
+                    "rec": recommendation,
+                    "created_by": created_by,
+                    "ctx": json.dumps(context or {}, default=str),
+                    "now": now,
+                },
             )
-            self.conn.commit()
+            s.commit()
         return item_id
 
-    def find_pending_action(
-        self,
-        feature_id: str,
-        source: str,
-        title: str,
-    ) -> dict | None:
-        with self._lock:
-            row = self.conn.execute(
-                """SELECT * FROM action_items
-                   WHERE feature_id = ? AND source = ? AND title = ? AND status = 'pending'
-                   ORDER BY created_at DESC LIMIT 1""",
-                (feature_id, source, title),
-            ).fetchone()
+    def find_pending_action(self, feature_id: str, source: str, title: str) -> dict | None:
+        with self.session() as s:
+            row = (
+                s.execute(
+                    text(
+                        "SELECT * FROM action_items "
+                        "WHERE feature_id = :fid AND source = :src AND title = :title AND status = 'pending' "
+                        "ORDER BY created_at DESC LIMIT 1"
+                    ),
+                    {"fid": feature_id, "src": source, "title": title},
+                )
+                .mappings()
+                .first()
+            )
             return self._row_to_action_item(row) if row else None
 
     def list_action_items(
@@ -1280,35 +1473,40 @@ class LocalBackend(CatalogBackend):
         offset: int = 0,
     ) -> list[dict]:
         clauses: list[str] = []
-        params: list[Any] = []
+        params: dict[str, Any] = {"lim": limit, "off": offset}
         if feature_id:
-            clauses.append("feature_id = ?")
-            params.append(feature_id)
+            clauses.append("feature_id = :fid")
+            params["fid"] = feature_id
         if status:
-            clauses.append("status = ?")
-            params.append(status)
+            clauses.append("status = :status")
+            params["status"] = status
         if source:
-            clauses.append("source = ?")
-            params.append(source)
+            clauses.append("source = :src")
+            params["src"] = source
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         sql = (
             f"SELECT a.*, f.name AS feature_name FROM action_items a "  # noqa: S608
             f"JOIN features f ON a.feature_id = f.id {where} "
-            f"ORDER BY a.created_at DESC LIMIT ? OFFSET ?"
+            f"ORDER BY a.created_at DESC LIMIT :lim OFFSET :off"
         )
-        params.extend([limit, offset])
-        with self._lock:
-            rows = self.conn.execute(sql, params).fetchall()
+        with self.session() as s:
+            rows = s.execute(text(sql), params).mappings().all()
             return [self._row_to_action_item(r) for r in rows]
 
     def get_action_item(self, item_id: str) -> dict | None:
-        with self._lock:
-            row = self.conn.execute(
-                """SELECT a.*, f.name AS feature_name FROM action_items a
-                   JOIN features f ON a.feature_id = f.id
-                   WHERE a.id = ?""",
-                (item_id,),
-            ).fetchone()
+        with self.session() as s:
+            row = (
+                s.execute(
+                    text(
+                        "SELECT a.*, f.name AS feature_name FROM action_items a "
+                        "JOIN features f ON a.feature_id = f.id "
+                        "WHERE a.id = :id"
+                    ),
+                    {"id": item_id},
+                )
+                .mappings()
+                .first()
+            )
             return self._row_to_action_item(row) if row else None
 
     def update_action_item_status(
@@ -1321,42 +1519,50 @@ class LocalBackend(CatalogBackend):
         valid = {"pending", "applied", "dismissed", "snoozed"}
         if status not in valid:
             raise ValueError(f"Invalid status: {status}. Must be one of {valid}.")
-        now = datetime.now(timezone.utc)
+        now = _utcnow()
         applied_at = now if status == "applied" else None
-        with self._lock:
-            cur = self.conn.execute(
-                """UPDATE action_items
-                   SET status = ?, applied_by = ?, change_summary = ?,
-                       applied_at = ?, updated_at = ?
-                   WHERE id = ?""",
-                (status, applied_by, change_summary, applied_at, now, item_id),
+        with self.session() as s:
+            result = s.execute(
+                text(
+                    "UPDATE action_items "
+                    "SET status = :status, applied_by = :applied_by, change_summary = :summary, "
+                    "    applied_at = :applied_at, updated_at = :now "
+                    "WHERE id = :id"
+                ),
+                {
+                    "status": status,
+                    "applied_by": applied_by,
+                    "summary": change_summary,
+                    "applied_at": applied_at,
+                    "now": now,
+                    "id": item_id,
+                },
             )
-            self.conn.commit()
-            return cur.rowcount > 0
+            s.commit()
+            return result.rowcount > 0  # type: ignore[attr-defined]
 
     def count_action_items(self, status: str | None = None) -> int:
-        with self._lock:
+        with self.session() as s:
             if status:
-                row = self.conn.execute(
-                    "SELECT COUNT(*) AS n FROM action_items WHERE status = ?",
-                    (status,),
-                ).fetchone()
+                row = s.execute(
+                    text("SELECT COUNT(*) AS n FROM action_items WHERE status = :status"),
+                    {"status": status},
+                ).first()
             else:
-                row = self.conn.execute("SELECT COUNT(*) AS n FROM action_items").fetchone()
-            return int(row["n"]) if row else 0
+                row = s.execute(text("SELECT COUNT(*) AS n FROM action_items")).first()
+            return int(row[0]) if row else 0
 
     def save_monitoring_llm_analysis(self, feature_id: str, analysis: dict) -> None:
-        """Persist LLM analysis JSON onto the latest monitoring_checks row for this feature."""
-        with self._lock:
-            row = self.conn.execute(
-                """SELECT id FROM monitoring_checks
-                   WHERE feature_id = ? ORDER BY checked_at DESC LIMIT 1""",
-                (feature_id,),
-            ).fetchone()
+        """Persist LLM analysis JSON onto the latest monitoring_checks row."""
+        with self.session() as s:
+            row = s.execute(
+                text("SELECT id FROM monitoring_checks WHERE feature_id = :fid ORDER BY checked_at DESC LIMIT 1"),
+                {"fid": feature_id},
+            ).first()
             if row is None:
                 return
-            self.conn.execute(
-                "UPDATE monitoring_checks SET llm_analysis_json = ? WHERE id = ?",
-                (json.dumps(analysis, default=str), row["id"]),
+            s.execute(
+                text("UPDATE monitoring_checks SET llm_analysis_json = :payload WHERE id = :id"),
+                {"payload": json.dumps(analysis, default=str), "id": row[0]},
             )
-            self.conn.commit()
+            s.commit()
