@@ -249,3 +249,54 @@ class CatalogBackend(ABC):
     @abstractmethod
     def get_feature_lineage(self, feature_name: str, direction: str = "both", depth: int = 3) -> dict:
         """Return lineage tree for a single feature."""
+
+    # --- Action Items (lifecycle loop) ---
+
+    @abstractmethod
+    def create_action_item(
+        self,
+        feature_id: str,
+        source: str,
+        title: str,
+        recommendation: str,
+        context: dict | None = None,
+        created_by: str = "",
+    ) -> str:
+        """Create a recommended-action record. Returns the new item id."""
+
+    @abstractmethod
+    def find_pending_action(self, feature_id: str, source: str, title: str) -> dict | None:
+        """Return the latest pending action with matching (feature_id, source, title) — for de-dup."""
+
+    @abstractmethod
+    def list_action_items(
+        self,
+        feature_id: str | None = None,
+        status: str | None = None,
+        source: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict]:
+        """List action items with optional filters."""
+
+    @abstractmethod
+    def get_action_item(self, item_id: str) -> dict | None:
+        """Get a single action item by id."""
+
+    @abstractmethod
+    def update_action_item_status(
+        self,
+        item_id: str,
+        status: str,
+        applied_by: str = "",
+        change_summary: str = "",
+    ) -> bool:
+        """Update status to one of: pending|applied|dismissed|snoozed. Returns True if updated."""
+
+    @abstractmethod
+    def count_action_items(self, status: str | None = None) -> int:
+        """Count action items, optionally filtered by status."""
+
+    @abstractmethod
+    def save_monitoring_llm_analysis(self, feature_id: str, analysis: dict) -> None:
+        """Persist LLM analysis JSON onto the latest monitoring_checks row for this feature."""

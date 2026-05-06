@@ -141,6 +141,25 @@ CREATE TABLE IF NOT EXISTS feature_lineage (
 
 CREATE INDEX IF NOT EXISTS idx_lineage_child ON feature_lineage(child_feature_id);
 CREATE INDEX IF NOT EXISTS idx_lineage_parent ON feature_lineage(parent_feature_id);
+
+CREATE TABLE IF NOT EXISTS action_items (
+    id TEXT PRIMARY KEY,
+    feature_id TEXT NOT NULL REFERENCES features(id) ON DELETE CASCADE,
+    source TEXT NOT NULL,
+    title TEXT NOT NULL,
+    recommendation TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_by TEXT DEFAULT '',
+    applied_by TEXT DEFAULT '',
+    applied_at TIMESTAMP,
+    change_summary TEXT DEFAULT '',
+    context_json TEXT DEFAULT '{}',
+    created_at TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_action_items_feature ON action_items(feature_id, status);
+CREATE INDEX IF NOT EXISTS idx_action_items_status ON action_items(status, created_at);
 """
 
 
@@ -225,6 +244,9 @@ class LocalBackend(CatalogBackend):
             self.conn.execute("ALTER TABLE feature_versions ADD COLUMN previous_value TEXT")
         with contextlib.suppress(sqlite3.OperationalError):
             self.conn.execute("ALTER TABLE feature_versions ADD COLUMN new_value TEXT")
+        # Persist LLM analysis snapshot on monitoring checks (lifecycle loop)
+        with contextlib.suppress(sqlite3.OperationalError):
+            self.conn.execute("ALTER TABLE monitoring_checks ADD COLUMN llm_analysis_json TEXT")
         self.conn.commit()
 
     def close(self) -> None:
@@ -1261,3 +1283,155 @@ class LocalBackend(CatalogBackend):
         children = _get_children(feature.id, depth) if direction in ("both", "down") else []
 
         return {"feature": root, "parents": parents, "children": children}
+
+    # --- Action Items (lifecycle loop) ---
+
+    @staticmethod
+    def _row_to_action_item(row: sqlite3.Row | dict) -> dict:
+        d = dict(row)
+        ctx = d.get("context_json")
+        d["context"] = json.loads(ctx) if isinstance(ctx, str) and ctx else {}
+        d.pop("context_json", None)
+        for k in ("created_at", "updated_at", "applied_at"):
+            v = d.get(k)
+            if isinstance(v, datetime):
+                d[k] = v.isoformat()
+        return d
+
+    def create_action_item(
+        self,
+        feature_id: str,
+        source: str,
+        title: str,
+        recommendation: str,
+        context: dict | None = None,
+        created_by: str = "",
+    ) -> str:
+        item_id = _new_id()
+        now = datetime.now(timezone.utc)
+        with self._lock:
+            self.conn.execute(
+                """INSERT INTO action_items
+                   (id, feature_id, source, title, recommendation, status,
+                    created_by, applied_by, change_summary, context_json,
+                    created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, 'pending', ?, '', '', ?, ?, ?)""",
+                (
+                    item_id,
+                    feature_id,
+                    source,
+                    title,
+                    recommendation,
+                    created_by,
+                    json.dumps(context or {}, default=str),
+                    now,
+                    now,
+                ),
+            )
+            self.conn.commit()
+        return item_id
+
+    def find_pending_action(
+        self,
+        feature_id: str,
+        source: str,
+        title: str,
+    ) -> dict | None:
+        with self._lock:
+            row = self.conn.execute(
+                """SELECT * FROM action_items
+                   WHERE feature_id = ? AND source = ? AND title = ? AND status = 'pending'
+                   ORDER BY created_at DESC LIMIT 1""",
+                (feature_id, source, title),
+            ).fetchone()
+            return self._row_to_action_item(row) if row else None
+
+    def list_action_items(
+        self,
+        feature_id: str | None = None,
+        status: str | None = None,
+        source: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict]:
+        clauses: list[str] = []
+        params: list[Any] = []
+        if feature_id:
+            clauses.append("feature_id = ?")
+            params.append(feature_id)
+        if status:
+            clauses.append("status = ?")
+            params.append(status)
+        if source:
+            clauses.append("source = ?")
+            params.append(source)
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        sql = (
+            f"SELECT a.*, f.name AS feature_name FROM action_items a "  # noqa: S608
+            f"JOIN features f ON a.feature_id = f.id {where} "
+            f"ORDER BY a.created_at DESC LIMIT ? OFFSET ?"
+        )
+        params.extend([limit, offset])
+        with self._lock:
+            rows = self.conn.execute(sql, params).fetchall()
+            return [self._row_to_action_item(r) for r in rows]
+
+    def get_action_item(self, item_id: str) -> dict | None:
+        with self._lock:
+            row = self.conn.execute(
+                """SELECT a.*, f.name AS feature_name FROM action_items a
+                   JOIN features f ON a.feature_id = f.id
+                   WHERE a.id = ?""",
+                (item_id,),
+            ).fetchone()
+            return self._row_to_action_item(row) if row else None
+
+    def update_action_item_status(
+        self,
+        item_id: str,
+        status: str,
+        applied_by: str = "",
+        change_summary: str = "",
+    ) -> bool:
+        valid = {"pending", "applied", "dismissed", "snoozed"}
+        if status not in valid:
+            raise ValueError(f"Invalid status: {status}. Must be one of {valid}.")
+        now = datetime.now(timezone.utc)
+        applied_at = now if status == "applied" else None
+        with self._lock:
+            cur = self.conn.execute(
+                """UPDATE action_items
+                   SET status = ?, applied_by = ?, change_summary = ?,
+                       applied_at = ?, updated_at = ?
+                   WHERE id = ?""",
+                (status, applied_by, change_summary, applied_at, now, item_id),
+            )
+            self.conn.commit()
+            return cur.rowcount > 0
+
+    def count_action_items(self, status: str | None = None) -> int:
+        with self._lock:
+            if status:
+                row = self.conn.execute(
+                    "SELECT COUNT(*) AS n FROM action_items WHERE status = ?",
+                    (status,),
+                ).fetchone()
+            else:
+                row = self.conn.execute("SELECT COUNT(*) AS n FROM action_items").fetchone()
+            return int(row["n"]) if row else 0
+
+    def save_monitoring_llm_analysis(self, feature_id: str, analysis: dict) -> None:
+        """Persist LLM analysis JSON onto the latest monitoring_checks row for this feature."""
+        with self._lock:
+            row = self.conn.execute(
+                """SELECT id FROM monitoring_checks
+                   WHERE feature_id = ? ORDER BY checked_at DESC LIMIT 1""",
+                (feature_id,),
+            ).fetchone()
+            if row is None:
+                return
+            self.conn.execute(
+                "UPDATE monitoring_checks SET llm_analysis_json = ? WHERE id = ?",
+                (json.dumps(analysis, default=str), row["id"]),
+            )
+            self.conn.commit()

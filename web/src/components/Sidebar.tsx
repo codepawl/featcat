@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom'
 import { useEffect, useState } from 'react'
-import { LayoutDashboard, Database, Activity, Clock, MessageSquare, FolderKanban, GitBranch, History } from 'lucide-react'
+import { LayoutDashboard, Database, Activity, Clock, MessageSquare, FolderKanban, GitBranch, History, ListChecks } from 'lucide-react'
 import { api } from '../api'
 import { ThemeToggle } from './ThemeToggle'
 
@@ -8,9 +8,10 @@ const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/features', label: 'Features', icon: Database },
   { to: '/groups', label: 'Groups', icon: FolderKanban },
+  { to: '/monitoring', label: 'Monitoring', icon: Activity },
+  { to: '/actions', label: 'Actions', icon: ListChecks },
   { to: '/similarity', label: 'Similarity', icon: GitBranch },
   { to: '/audit', label: 'Audit', icon: History },
-  { to: '/monitoring', label: 'Monitoring', icon: Activity },
   { to: '/jobs', label: 'Jobs', icon: Clock },
   { to: '/chat', label: 'AI Chat', icon: MessageSquare },
 ]
@@ -18,6 +19,7 @@ const NAV = [
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const [llm, setLlm] = useState<{ ok: boolean; model: string }>({ ok: false, model: 'checking...' })
   const [serverOk, setServerOk] = useState(false)
+  const [pendingActions, setPendingActions] = useState<number>(0)
 
   useEffect(() => {
     api.health()
@@ -26,6 +28,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         setLlm({ ok: !!d.llm, model: d.model || (d.llm ? 'connected' : 'offline') })
       })
       .catch(() => setServerOk(false))
+    api.actions.count('pending').then(d => setPendingActions(d.count)).catch(() => {})
   }, [])
 
   return (
@@ -53,7 +56,12 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           }
         >
           <n.icon size={16} strokeWidth={1.8} />
-          {n.label}
+          <span className="flex-1">{n.label}</span>
+          {n.to === '/actions' && pendingActions > 0 && (
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-accent text-[var(--bg-primary)]">
+              {pendingActions > 99 ? '99+' : pendingActions}
+            </span>
+          )}
         </NavLink>
       ))}
 
