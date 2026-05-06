@@ -1,4 +1,11 @@
-"""LLM response caching with SQLite backend."""
+"""LLM response caching with SQLite backend.
+
+Intentionally NOT migrated to SQLAlchemy / PostgreSQL alongside the catalog DB:
+this is a local-only cache with no concurrency requirements, and the catalog
+migration's goals (concurrent writes, 10k+ feature scale) don't apply here.
+Keeping it on raw sqlite3 avoids dragging the cache into the same migration
+surface area for zero benefit.
+"""
 
 from __future__ import annotations
 
