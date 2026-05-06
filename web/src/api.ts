@@ -198,6 +198,11 @@ export const api = {
     run: (name: string) => request<any>(`/jobs/${encodeURIComponent(name)}/run`, { method: 'POST' }),
     update: (name: string, data: any) => request<any>(`/jobs/${encodeURIComponent(name)}`, { method: 'PATCH', body: JSON.stringify(data) }),
   },
+  admin: {
+    cacheStats: () => cachedRequest<{ total: number; active: number; expired: number }>('/admin/cache/stats'),
+    cacheClear: () => request<{ deleted: number }>('/admin/cache/clear', { method: 'POST' }),
+    cacheClearExpired: () => request<{ deleted: number }>('/admin/cache/clear-expired', { method: 'POST' }),
+  },
   actions: {
     list: (params?: { feature_name?: string; status?: string; source?: string; limit?: number }) => {
       const qs = new URLSearchParams()

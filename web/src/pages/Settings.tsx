@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Sun, Moon } from 'lucide-react'
+import { Sun, Moon, Trash2, RefreshCw } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { SUPPORTED_LANGS, type SupportedLang } from '../i18n/config'
+import { api, invalidateCache } from '../api'
 
 type Theme = 'light' | 'dark'
 
@@ -69,6 +70,8 @@ export function Settings() {
         </div>
       </div>
 
+      <LLMCacheCard />
+
       <div className={CARD}>
         <h2 className="text-sm font-semibold mb-1">{t('theme.title')}</h2>
         <p className="text-xs text-[var(--text-tertiary)] mb-4">{t('theme.description')}</p>
@@ -106,6 +109,97 @@ export function Settings() {
           })}
         </div>
       </div>
+    </div>
+  )
+}
+
+
+function LLMCacheCard() {
+  const { t } = useTranslation('settings')
+  const [stats, setStats] = useState<{ total: number; active: number; expired: number } | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState<'clear' | 'expired' | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const load = () => {
+    setLoading(true)
+    invalidateCache('/admin/cache')
+    api.admin.cacheStats().then(setStats).catch((e) => setError(String(e))).finally(() => setLoading(false))
+  }
+
+  useEffect(() => { load() }, [])
+
+  const clear = async () => {
+    if (!window.confirm(t('llm_cache.confirm_clear', { defaultValue: 'Drop ALL cached LLM responses?' }))) return
+    setBusy('clear')
+    try {
+      await api.admin.cacheClear()
+      load()
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const clearExpired = async () => {
+    setBusy('expired')
+    try {
+      await api.admin.cacheClearExpired()
+      load()
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5 hover:border-[var(--border-muted)] transition-colors">
+      <div className="flex items-start justify-between mb-3">
+        <div>
+          <h2 className="text-sm font-semibold mb-1">{t('llm_cache.title', { defaultValue: 'LLM Response Cache' })}</h2>
+          <p className="text-xs text-[var(--text-tertiary)]">{t('llm_cache.description', { defaultValue: 'Cached AI responses keyed by prompt + system. Clearing forces a fresh LLM call next time.' })}</p>
+        </div>
+        <button onClick={load} className="text-[var(--text-tertiary)] hover:text-accent" aria-label="Refresh">
+          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+        </button>
+      </div>
+
+      {error && <p className="text-[12px] text-[var(--danger)] mb-3">{error}</p>}
+
+      <div className="grid grid-cols-3 gap-3 mb-4">
+        <Stat label={t('llm_cache.total', { defaultValue: 'Total' })} value={stats?.total ?? '—'} />
+        <Stat label={t('llm_cache.active', { defaultValue: 'Active' })} value={stats?.active ?? '—'} />
+        <Stat label={t('llm_cache.expired', { defaultValue: 'Expired' })} value={stats?.expired ?? '—'} />
+      </div>
+
+      <div className="flex gap-2">
+        <button
+          onClick={clearExpired}
+          disabled={busy !== null}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium border border-[var(--border-default)] rounded-lg hover:bg-[var(--bg-secondary)] disabled:opacity-50"
+        >
+          <Trash2 size={12} /> {busy === 'expired' ? '…' : t('llm_cache.clear_expired', { defaultValue: 'Clear expired' })}
+        </button>
+        <button
+          onClick={clear}
+          disabled={busy !== null}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium border border-[var(--danger-subtle-bg)] text-[var(--danger)] rounded-lg hover:bg-[var(--danger-subtle-bg)] disabled:opacity-50"
+        >
+          <Trash2 size={12} /> {busy === 'clear' ? '…' : t('llm_cache.clear_all', { defaultValue: 'Clear all' })}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+
+function Stat({ label, value }: { label: string; value: number | string }) {
+  return (
+    <div className="border border-[var(--border-subtle)] rounded-lg p-3">
+      <div className="text-[10px] uppercase text-[var(--text-tertiary)] tracking-wide mb-1">{label}</div>
+      <div className="text-xl font-semibold font-mono">{value}</div>
     </div>
   )
 }

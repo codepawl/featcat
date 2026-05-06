@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -601,28 +602,99 @@ def source_scan(
 @feature_app.command("list")
 def feature_list(
     source: str | None = typer.Option(None, "--source", "-s", help="Filter by source name"),
+    health_grade: str | None = typer.Option(None, "--health-grade", help="Filter by health grade (A/B/C/D)"),
+    drift_status: str | None = typer.Option(
+        None, "--drift-status", help="Filter by drift status (healthy/warning/critical)"
+    ),
+    has_doc: bool | None = typer.Option(None, "--has-doc/--no-doc", help="Only show features with/without docs"),
+    owner: str | None = typer.Option(None, "--owner", help="Filter by owner"),
+    tag: str | None = typer.Option(None, "--tag", help="Filter by tag"),
+    dtype: str | None = typer.Option(None, "--dtype", help="Filter by dtype"),
 ) -> None:
-    """List all features."""
+    """List features with rich filtering matching the API."""
+    from .catalog.health import compute_health_score
+    from .server.routes.features import _bulk_health_data
+
     db = _get_db()
     features = db.list_features(source_name=source)
+
+    enriched: list[dict] = []
+    needs_health = any([health_grade, drift_status, has_doc is not None])
+    if needs_health:
+        all_docs, drift_map, usage_map = _bulk_health_data(db)
+    else:
+        all_docs, drift_map, usage_map = {}, {}, {}
+
+    for f in features:
+        d: dict = {
+            "name": f.name,
+            "column": f.column_name,
+            "dtype": f.dtype,
+            "tags": f.tags or [],
+            "owner": f.owner or "",
+            "stats": f.stats or {},
+        }
+        if needs_health:
+            usage = usage_map.get(f.id, {"views": 0, "queries": 0})
+            h = compute_health_score(
+                has_doc=f.id in all_docs,
+                has_hints=bool(f.generation_hints),
+                drift_status=drift_map.get(f.id),
+                views_30d=usage["views"],
+                queries_30d=usage["queries"],
+            )
+            d["health_grade"] = h["grade"]
+            d["health_score"] = h["score"]
+            d["has_doc"] = f.id in all_docs
+            d["drift_status"] = drift_map.get(f.id, "healthy")
+        enriched.append(d)
     db.close()
 
-    if not features:
-        console.print("[dim]No features found. Use 'featcat source scan' first.[/dim]")
+    if owner:
+        enriched = [d for d in enriched if d["owner"] == owner]
+    if tag:
+        enriched = [d for d in enriched if tag in (d["tags"] or [])]
+    if dtype:
+        enriched = [d for d in enriched if d["dtype"] == dtype]
+    if health_grade:
+        enriched = [d for d in enriched if d.get("health_grade") == health_grade]
+    if drift_status:
+        enriched = [d for d in enriched if d.get("drift_status") == drift_status]
+    if has_doc is True:
+        enriched = [d for d in enriched if d.get("has_doc")]
+    elif has_doc is False:
+        enriched = [d for d in enriched if not d.get("has_doc")]
+
+    if not enriched:
+        console.print("[dim]No features match these filters[/dim]")
         return
 
-    table = Table(title="Features")
+    table = Table(title=f"Features ({len(enriched)})")
     table.add_column("Name", style="cyan")
     table.add_column("Column")
     table.add_column("Dtype")
+    show_health = "health_grade" in enriched[0]
+    if show_health:
+        table.add_column("Grade")
+        table.add_column("Drift")
+        table.add_column("Doc", justify="center")
+    table.add_column("Owner")
     table.add_column("Tags")
     table.add_column("Nulls", justify="right")
 
-    for f in features:
-        null_ratio = f.stats.get("null_ratio", "")
+    for d in enriched:
+        null_ratio = d["stats"].get("null_ratio", "")
         null_str = f"{null_ratio:.1%}" if isinstance(null_ratio, (int, float)) else str(null_ratio)
-        tags_str = ", ".join(f.tags) if f.tags else ""
-        table.add_row(f.name, f.column_name, f.dtype, tags_str, null_str)
+        tags_str = ", ".join(d["tags"]) if d["tags"] else ""
+        row = [d["name"], d["column"], d["dtype"]]
+        if show_health:
+            row += [
+                d.get("health_grade", "-"),
+                d.get("drift_status", "-"),
+                "yes" if d.get("has_doc") else "-",
+            ]
+        row += [d["owner"] or "-", tags_str, null_str]
+        table.add_row(*row)
 
     console.print(table)
 
@@ -973,6 +1045,79 @@ def ask(
         console.print(f"[dim]Try also: {follow_up}[/dim]")
 
 
+@app.command()
+def chat(
+    server_url: str = typer.Option("", "--server", help="Server URL (defaults to FEATCAT_SERVER_URL or :8000)"),
+) -> None:
+    """Interactive chat with the catalog AI agent (streams via SSE)."""
+    import httpx
+
+    base = server_url or os.environ.get("FEATCAT_SERVER_URL", "http://localhost:8000")
+    history: list[dict[str, str]] = []
+    console.print(f"[dim]Connected to {base}. Type your question (or 'exit' to quit).[/dim]")
+
+    while True:
+        try:
+            query = typer.prompt(">", prompt_suffix=" ")
+        except (EOFError, KeyboardInterrupt):
+            console.print()
+            break
+        if not query.strip():
+            continue
+        if query.strip().lower() in {"exit", "quit", ":q"}:
+            break
+
+        history.append({"role": "user", "content": query})
+        console.print()  # blank line before response
+        full_response = ""
+        try:
+            with httpx.stream(
+                "POST",
+                f"{base}/api/ai/chat",
+                json={"messages": history},
+                timeout=180,
+            ) as response:
+                response.raise_for_status()
+                event_name: str | None = None
+                for line in response.iter_lines():
+                    if not line:
+                        event_name = None
+                        continue
+                    if line.startswith("event:"):
+                        event_name = line[6:].strip()
+                        continue
+                    if not line.startswith("data:"):
+                        continue
+                    data_payload = line[5:].strip()
+                    if not data_payload:
+                        continue
+                    try:
+                        evt = json.loads(data_payload)
+                    except json.JSONDecodeError:
+                        continue
+                    kind = evt.get("type") or event_name
+                    if kind == "token":
+                        token = evt.get("content") or evt.get("token") or ""
+                        console.print(token, end="", soft_wrap=True)
+                        full_response += token
+                    elif kind == "tool_call":
+                        console.print(f"\n[dim italic]→ tool: {evt.get('name', '?')}[/dim italic]")
+                    elif kind == "thinking_start":
+                        console.print("[dim]thinking…[/dim] ", end="")
+                    elif kind == "thinking_end":
+                        console.print()
+                    elif kind == "done":
+                        break
+        except httpx.HTTPError as e:  # noqa: BLE001
+            console.print(f"\n[red]Stream error:[/red] {e}")
+            history.pop()  # don't keep failed turn
+            continue
+
+        console.print()  # newline after stream
+        if full_response:
+            history.append({"role": "assistant", "content": full_response})
+
+
 # =========================================================================
 # Doc commands
 # =========================================================================
@@ -1202,6 +1347,31 @@ def monitor_check(
     else:
         console.print("\n  [dim]No baselines found. Run 'featcat monitor baseline' first.[/dim]")
     console.print()
+
+
+@monitor_app.command("history")
+def monitor_history(
+    feature: str = typer.Argument(help="Feature name (e.g. source.column)"),
+    days: int = typer.Option(30, "--days", "-d", help="History window in days"),
+) -> None:
+    """Show drift check history for a feature."""
+    db = _get_db()
+    rows = db.get_monitoring_history(feature, days=days)
+    db.close()
+    if not rows:
+        console.print(f"[dim]No monitoring history for {feature} in last {days} days[/dim]")
+        return
+
+    table = Table(title=f"Drift history — {feature} (last {days} days)")
+    table.add_column("Checked at")
+    table.add_column("Severity")
+    table.add_column("PSI", justify="right")
+    for r in rows:
+        psi = r.get("psi")
+        psi_str = f"{psi:.4f}" if isinstance(psi, (int, float)) else "-"
+        ts = str(r.get("checked_at", ""))[:19]
+        table.add_row(ts, r.get("severity", "-"), psi_str)
+    console.print(table)
 
 
 @monitor_app.command("report")
@@ -2095,6 +2265,43 @@ def feature_show_hint(
         console.print(f"[dim]No hint set for {spec}[/dim]")
     else:
         console.print(Panel(hint, title=f"{spec} hint", border_style="cyan"))
+
+
+@feature_app.command("similar")
+def feature_similar(
+    name: str = typer.Argument(help="Feature name (e.g. source.column)"),
+    threshold: float = typer.Option(0.3, "--threshold", "-t", help="Similarity threshold (0.1-0.9)"),
+) -> None:
+    """Find features similar to the given one via the server's similarity graph."""
+    import httpx
+
+    server_url = os.environ.get("FEATCAT_SERVER_URL", "http://localhost:8000")
+    try:
+        resp = httpx.get(f"{server_url}/api/features/similarity-graph", params={"threshold": threshold}, timeout=60)
+        resp.raise_for_status()
+    except httpx.HTTPError as e:  # noqa: BLE001
+        console.print(f"[red]Server error:[/red] {e}")
+        raise typer.Exit(1) from None
+
+    data = resp.json()
+    edges = data.get("edges", [])
+    neighbors: list[tuple[str, float]] = []
+    for edge in edges:
+        if edge["source"] == name:
+            neighbors.append((edge["target"], edge["similarity"]))
+        elif edge["target"] == name:
+            neighbors.append((edge["source"], edge["similarity"]))
+    if not neighbors:
+        console.print(f"[dim]No similar features found for {name} at threshold {threshold}[/dim]")
+        return
+
+    neighbors.sort(key=lambda x: -x[1])
+    table = Table(title=f"Similar to {name} (threshold {threshold})")
+    table.add_column("Feature", style="cyan")
+    table.add_column("Similarity", justify="right")
+    for spec, sim in neighbors:
+        table.add_row(spec, f"{sim:.3f}")
+    console.print(table)
 
 
 @feature_app.command("clear-hint")
