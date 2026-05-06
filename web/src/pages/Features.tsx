@@ -11,6 +11,7 @@ import { Tag } from '../components/Tag'
 import { Modal } from '../components/Modal'
 import { SearchInput } from '../components/SearchInput'
 import { Skeleton } from '../components/Skeleton'
+import { ScoreTooltip } from '../components/ScoreTooltip'
 
 interface FeatureRow {
   name: string
@@ -414,7 +415,7 @@ function FeatureDetailModal({ feature, onClose, onDocGenerated }: { feature: Fea
 
       {/* Health Score */}
       {feature.health_score != null && (
-        <Section title={t('sections.health_score')}>
+        <Section title={t('sections.health_score')} glossaryKey="health_score">
           <HealthBreakdown feature={feature} />
         </Section>
       )}
@@ -632,10 +633,13 @@ function FeatureDetailModal({ feature, onClose, onDocGenerated }: { feature: Fea
 }
 
 
-function Section({ title, children, last }: { title: string; children: React.ReactNode; last?: boolean }) {
+function Section({ title, children, last, glossaryKey }: { title: string; children: React.ReactNode; last?: boolean; glossaryKey?: string }) {
   return (
     <div className={last ? '' : 'mb-4 pb-4 border-b border-[var(--border-subtle)]'}>
-      <h4 className="text-xs font-semibold uppercase text-[var(--text-tertiary)] tracking-wide mb-2.5">{title}</h4>
+      <h4 className="text-xs font-semibold uppercase text-[var(--text-tertiary)] tracking-wide mb-2.5 flex items-center gap-1">
+        <span>{title}</span>
+        {glossaryKey && <ScoreTooltip name={glossaryKey} iconOnly />}
+      </h4>
       {children}
     </div>
   )

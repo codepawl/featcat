@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { LayoutDashboard, Database, Activity, Clock, MessageSquare, FolderKanban, GitBranch, History, Settings, ListChecks } from 'lucide-react'
+import { LayoutDashboard, Database, Activity, Clock, MessageSquare, FolderKanban, GitBranch, History, Settings, ListChecks, BookOpen } from 'lucide-react'
 import { api } from '../api'
 
 const NAV = [
@@ -15,6 +15,7 @@ const NAV = [
   { to: '/jobs', key: 'jobs', icon: Clock },
   { to: '/chat', key: 'chat', icon: MessageSquare },
   { to: '/settings', key: 'settings', icon: Settings },
+  { to: '/help', key: 'help', icon: BookOpen },
 ] as const
 
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {

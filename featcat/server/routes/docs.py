@@ -12,9 +12,17 @@ from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
 from ..deps import get_db, get_llm
+from ..glossary import get_glossary
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+@router.get("/glossary")
+def glossary() -> dict:
+    """Return the canonical glossary (scores, severities, metric definitions)."""
+    return get_glossary()
+
 
 LLM_TIMEOUT = 180
 
