@@ -118,6 +118,22 @@ class MonitoringPlugin(BasePlugin):
                 # Save result for history tracking
                 with contextlib.suppress(Exception):
                     db.save_monitoring_result(f.id, f.name, result.get("psi"), severity)
+
+                # T2.1 — emit an in-app notification on warning/critical drift.
+                # Best-effort: a notification-table outage shouldn't fail
+                # the monitoring run.
+                if severity in ("warning", "critical"):
+                    psi = result.get("psi")
+                    psi_str = f", PSI={psi:.3f}" if isinstance(psi, (int, float)) else ""
+                    with contextlib.suppress(Exception):
+                        db.create_notification(
+                            kind="drift",
+                            title=f"{severity.capitalize()} drift on {f.name}",
+                            body=f"Drift detected on {f.name}{psi_str}.",
+                            severity=severity,
+                            feature_id=f.id,
+                            link=f"/features/{f.name}",
+                        )
             except Exception as e:
                 details.append(
                     {
