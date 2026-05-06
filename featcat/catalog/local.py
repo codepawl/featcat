@@ -1640,6 +1640,81 @@ class LocalBackend(CatalogBackend):
                 break
         return result
 
+    # --- In-app notifications (T2.1, in-web only) ---
+
+    def create_notification(
+        self,
+        kind: str,
+        title: str,
+        body: str = "",
+        severity: str = "info",
+        feature_id: str | None = None,
+        link: str | None = None,
+    ) -> str:
+        """Insert an in-app notification. Returns the new id.
+
+        Caller-style: best-effort fire-and-forget. Hook sites (monitoring,
+        action items) wrap this in ``contextlib.suppress(Exception)`` so a
+        notifications-table outage never breaks the parent operation.
+        """
+        nid = _new_id()
+        with self.session() as s:
+            s.execute(
+                text(
+                    "INSERT INTO notifications "
+                    "(id, kind, title, body, severity, feature_id, link, created_at, read_at) "
+                    "VALUES (:id, :kind, :title, :body, :severity, :fid, :link, :now, NULL)"
+                ),
+                {
+                    "id": nid,
+                    "kind": kind,
+                    "title": title,
+                    "body": body,
+                    "severity": severity,
+                    "fid": feature_id,
+                    "link": link,
+                    "now": _utcnow(),
+                },
+            )
+            s.commit()
+        return nid
+
+    def list_notifications(self, *, unread_only: bool = False, limit: int = 50, offset: int = 0) -> list[dict]:
+        clauses = []
+        params: dict[str, Any] = {"lim": limit, "off": offset}
+        if unread_only:
+            clauses.append("read_at IS NULL")
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        sql = (
+            f"SELECT id, kind, title, body, severity, feature_id, link, created_at, read_at "  # noqa: S608
+            f"FROM notifications {where} ORDER BY created_at DESC LIMIT :lim OFFSET :off"
+        )
+        with self.session() as s:
+            rows = s.execute(text(sql), params).mappings().all()
+        return [dict(r) for r in rows]
+
+    def count_unread_notifications(self) -> int:
+        with self.session() as s:
+            return int(s.execute(text("SELECT COUNT(*) FROM notifications WHERE read_at IS NULL")).scalar() or 0)
+
+    def mark_notification_read(self, notification_id: str) -> bool:
+        with self.session() as s:
+            result = s.execute(
+                text("UPDATE notifications SET read_at = :now WHERE id = :id AND read_at IS NULL"),
+                {"now": _utcnow(), "id": notification_id},
+            )
+            s.commit()
+            return result.rowcount > 0  # type: ignore[attr-defined]
+
+    def mark_all_notifications_read(self) -> int:
+        with self.session() as s:
+            result = s.execute(
+                text("UPDATE notifications SET read_at = :now WHERE read_at IS NULL"),
+                {"now": _utcnow()},
+            )
+            s.commit()
+            return int(result.rowcount or 0)  # type: ignore[attr-defined]
+
     # --- Bulk operations (T1.3a) ---
 
     BULK_MAX_IDS = 1000  # spec ceiling — guard a single request from being unbounded
@@ -2161,6 +2236,19 @@ class LocalBackend(CatalogBackend):
                 },
             )
             s.commit()
+        # T2.1 — also emit an in-app notification so the bell icon picks
+        # this up. Fire-and-forget; outages here don't fail the action_item write.
+        import contextlib as _ctx
+
+        with _ctx.suppress(Exception):
+            self.create_notification(
+                kind="action",
+                title=f"New action item: {title}",
+                body=recommendation,
+                severity="info",
+                feature_id=feature_id,
+                link=f"/actions?id={item_id}",
+            )
         return item_id
 
     def find_pending_action(self, feature_id: str, source: str, title: str) -> dict | None:

@@ -286,6 +286,37 @@ class ActionItem(Base):
     updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
 
 
+class Notification(Base):
+    """In-app notification (T2.1 reframed — in-web only, no external integrations).
+
+    The composite index on ``(read_at, created_at DESC)`` accelerates the
+    most common query: ``SELECT … WHERE read_at IS NULL ORDER BY created_at
+    DESC``. ``feature_id`` is nullable because catalog-wide notifications
+    (e.g. "documentation generation finished") have no specific feature.
+    Severity follows the monitoring vocabulary so a critical-drift alert
+    can route through the same channel as a manually-emitted info note.
+    """
+
+    __tablename__ = "notifications"
+    __table_args__ = (
+        Index("idx_notifications_unread", "read_at", "created_at"),
+        Index("idx_notifications_feature", "feature_id"),
+    )
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    kind: Mapped[str] = mapped_column(Text, nullable=False)  # 'drift' | 'doc' | 'action' | 'info'
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    body: Mapped[str] = mapped_column(Text, default="", server_default="")
+    severity: Mapped[str] = mapped_column(Text, default="info", server_default="info")
+    # Optional feature link — set when the notification refers to a specific feature.
+    # ON DELETE SET NULL so deleting a feature doesn't cascade-delete history.
+    feature_id: Mapped[str | None] = mapped_column(Text, ForeignKey("features.id", ondelete="SET NULL"))
+    # Optional URL the UI can navigate to when the notification is clicked.
+    link: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    read_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+
+
 __all__ = [
     "ActionItem",
     "Base",
@@ -300,5 +331,6 @@ __all__ = [
     "JobSchedule",
     "MonitoringBaseline",
     "MonitoringCheck",
+    "Notification",
     "UsageLog",
 ]

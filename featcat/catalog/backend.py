@@ -227,6 +227,38 @@ class CatalogBackend(ABC):
         del query_vec, top_k
         return []
 
+    # --- In-app notifications (T2.1, in-web only) ---
+
+    def create_notification(
+        self,
+        kind: str,
+        title: str,
+        body: str = "",
+        severity: str = "info",
+        feature_id: str | None = None,
+        link: str | None = None,
+    ) -> str:
+        """Default no-op — backends without persistence return ``""``.
+        LocalBackend overrides with a real INSERT. ``kind`` is one of
+        ``drift|doc|action|info``; ``severity`` follows the monitoring
+        vocabulary (``info|warning|critical``)."""
+        del kind, title, body, severity, feature_id, link
+        return ""
+
+    def list_notifications(self, *, unread_only: bool = False, limit: int = 50, offset: int = 0) -> list:
+        del unread_only, limit, offset
+        return []
+
+    def count_unread_notifications(self) -> int:
+        return 0
+
+    def mark_notification_read(self, notification_id: str) -> bool:
+        del notification_id
+        return False
+
+    def mark_all_notifications_read(self) -> int:
+        return 0
+
     # --- Stats ---
 
     @abstractmethod
