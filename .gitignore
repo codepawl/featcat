@@ -68,3 +68,4 @@ featcat/server/static/
 # OpenPawl
 .openpawl/
 CLAUDE.local.md
+site/
