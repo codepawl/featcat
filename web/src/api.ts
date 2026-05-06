@@ -57,6 +57,18 @@ export const api = {
       const qs = params ? '?' + new URLSearchParams(params).toString() : ''
       return cachedRequest<any[]>(`/features${qs}`)
     },
+    /**
+     * Paginated variant. Server returns `{items, total, limit, offset}` envelope
+     * when `?limit` is set. Use this for the Features page (5000+ row scale);
+     * `list()` stays for callers that want the unbounded enriched list (they
+     * accept the O(N) cost — health-grade filter, exporter, etc.).
+     */
+    listPaginated: (params: Record<string, string | number>) => {
+      const qs = '?' + new URLSearchParams(
+        Object.entries(params).map(([k, v]) => [k, String(v)])
+      ).toString()
+      return cachedRequest<{ items: any[]; total: number; limit: number; offset: number }>(`/features${qs}`)
+    },
     get: (name: string) => cachedRequest<any>(`/features/by-name?name=${encodeURIComponent(name)}`),
     update: (name: string, data: any) => request<any>(`/features/by-name?name=${encodeURIComponent(name)}`, { method: 'PATCH', body: JSON.stringify(data) }),
     delete: (name: string) => request<any>(`/features/by-name?name=${encodeURIComponent(name)}`, { method: 'DELETE' }),

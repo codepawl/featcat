@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Plus, RefreshCw, Check, AlertTriangle, Shield, FileText, FolderSearch, X, ChevronDown, ChevronRight, Pencil, Download } from 'lucide-react'
 import { api, invalidateCache, timeAgo } from '../api'
 import { DataTable } from '../components/DataTable'
+import { VirtualizedTable } from '../components/VirtualizedTable'
 import { Badge } from '../components/Badge'
 import { ExportModal } from '../components/ExportModal'
 import { FeatureSelector, toFeatureItems } from '../components/FeatureSelector'
@@ -12,6 +13,9 @@ import { Modal } from '../components/Modal'
 import { SearchInput } from '../components/SearchInput'
 import { Skeleton } from '../components/Skeleton'
 import { ScoreTooltip } from '../components/ScoreTooltip'
+import { useDebouncedValue } from '../hooks/useDebouncedValue'
+
+const PAGE_LIMIT = 50
 
 interface FeatureRow {
   name: string
@@ -67,6 +71,22 @@ export function Features() {
   const [genProgress, setGenProgress] = useState<string | null>(null)
   const [batchJob, setBatchJob] = useState<{ jobId: string; total: number } | null>(null)
 
+  // Pagination state — only consulted in paginated mode (see isPaginated below).
+  // pageTotal carries the server's reported total count for "1-50 of 5234".
+  const [pageOffset, setPageOffset] = useState(0)
+  const [pageTotal, setPageTotal] = useState(0)
+
+  // SearchInput already debounces 300ms internally before firing onSearch, so
+  // searchQuery is the post-debounce value — no second debounce needed here.
+  // The useDebouncedValue hook stays available for non-debouncing inputs that
+  // might want it later.
+  void useDebouncedValue  // imported for re-export reference; tree-shaken if unused
+
+  // Paginated mode is the default. The "needs attention" filter (grades C/D)
+  // requires full-set health enrichment to filter, which the server's
+  // paginated path doesn't do — fall back to the legacy unbounded list there.
+  const isPaginated = healthFilter !== 'attention'
+
   const load = useCallback(() => {
     setLoading(true)
     invalidateCache('/features')
@@ -74,29 +94,49 @@ export function Features() {
     if (sourceFilter) params.source = sourceFilter
     if (searchQuery) params.search = searchQuery
     if (dtypeFilter) params.dtype = dtypeFilter
-    if (healthFilter === 'attention') params.health_grade = ''  // handled client-side
     if (healthFilter === 'A') params.health_grade = 'A'
     if (docFilter) params.has_doc = 'false'
     if (tagFilter) params.tag = tagFilter
-    if (searchQuery) {
-      params.sort = 'name'  // server returns by relevance when search present
+
+    const sourcesPromise = api.sources.list().catch(() => [])
+
+    if (isPaginated) {
+      const pagedParams: Record<string, string | number> = { ...params, limit: PAGE_LIMIT, offset: pageOffset }
+      Promise.all([api.features.listPaginated(pagedParams), sourcesPromise])
+        .then(([res, s]) => {
+          const items = (res?.items ?? []) as FeatureRow[]
+          setFeatures(items)
+          setFiltered(items)
+          setPageTotal(res?.total ?? items.length)
+          setSources(Array.isArray(s) ? s : [])
+        })
+        .finally(() => setLoading(false))
+      return
     }
 
-    Promise.all([api.features.list(Object.keys(params).length > 0 ? params : undefined), api.sources.list().catch(() => [])])
+    // Legacy unbounded path — used by the "needs attention" filter.
+    Promise.all([
+      api.features.list(Object.keys(params).length > 0 ? params : undefined),
+      sourcesPromise,
+    ])
       .then(([f, s]) => {
-        let list = Array.isArray(f) ? f as FeatureRow[] : []
-        // Client-side health filter for "attention" (C or D)
-        if (healthFilter === 'attention') {
-          list = list.filter(r => r.health_grade === 'C' || r.health_grade === 'D')
-        }
+        let list = Array.isArray(f) ? (f as FeatureRow[]) : []
+        list = list.filter((r) => r.health_grade === 'C' || r.health_grade === 'D')
         setFeatures(list)
         setFiltered(list)
+        setPageTotal(list.length)
         setSources(Array.isArray(s) ? s : [])
       })
       .finally(() => setLoading(false))
-  }, [sourceFilter, searchQuery, dtypeFilter, healthFilter, docFilter, tagFilter])
+  }, [sourceFilter, searchQuery, dtypeFilter, healthFilter, docFilter, tagFilter, isPaginated, pageOffset])
 
   useEffect(() => { load() }, [load])
+
+  // Whenever any filter changes, reset to page 1 — otherwise a filter that
+  // returns fewer rows than the current offset would render an empty page.
+  useEffect(() => {
+    setPageOffset(0)
+  }, [sourceFilter, searchQuery, dtypeFilter, healthFilter, docFilter, tagFilter])
 
   // Poll batch job progress
   useEffect(() => {
@@ -228,7 +268,7 @@ export function Features() {
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-semibold">{t('page.title')}</h1>
         <div className="flex items-center gap-3">
-          <span className="text-xs text-[var(--text-tertiary)]">{t('count_label', { count: filtered.length })}</span>
+          <span className="text-xs text-[var(--text-tertiary)]">{t('count_label', { count: pageTotal })}</span>
           <button onClick={load} disabled={loading} className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium border border-[var(--border-default)] rounded-lg bg-[var(--bg-primary)] hover:bg-[var(--bg-secondary)] disabled:opacity-50">
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             {t('actions.refresh', { ns: 'common' })}
@@ -290,8 +330,24 @@ export function Features() {
         </button>
       </div>
 
-      <div className="bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-xl overflow-hidden">
-        {loading ? <div className="p-5"><Skeleton className="h-48" /></div> : (
+      <div className="bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-xl overflow-hidden p-3">
+        {loading && features.length === 0 ? (
+          <Skeleton className="h-48" />
+        ) : isPaginated ? (
+          <VirtualizedTable
+            columns={columns}
+            data={filtered}
+            onRowClick={selectFeature}
+            total={pageTotal}
+            limit={PAGE_LIMIT}
+            offset={pageOffset}
+            onPageChange={setPageOffset}
+            loading={loading}
+          />
+        ) : (
+          // "Needs attention" filter — falls back to client-side pagination
+          // because health-grade filtering needs full-set enrichment that the
+          // server's paginated path doesn't compute.
           <DataTable columns={columns} data={filtered} onRowClick={selectFeature} />
         )}
       </div>
