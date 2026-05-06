@@ -111,6 +111,7 @@ def build_app() -> FastAPI:
     from .routes.monitor import router as monitor_router
     from .routes.notifications import router as notifications_router
     from .routes.scan import router as scan_router
+    from .routes.search import router as search_router
     from .routes.sources import router as sources_router
     from .routes.usage import router as usage_router
     from .routes.versions import router as versions_router
@@ -131,6 +132,7 @@ def build_app() -> FastAPI:
     app.include_router(versions_router, prefix="/api/versions", tags=["versions"])
     app.include_router(lineage_router, prefix="/api/lineage", tags=["lineage"])
     app.include_router(bulk_router, prefix="/api/features/bulk", tags=["bulk"])
+    app.include_router(search_router, prefix="/api/search", tags=["search"])
     app.include_router(notifications_router, prefix="/api/notifications", tags=["notifications"])
 
     # Mount static assets (js, css) under /assets if present
