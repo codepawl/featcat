@@ -1342,6 +1342,45 @@ class LocalBackend(CatalogBackend):
             for r in rows
         ]
 
+    def search_by_embedding(self, query_vec: list[float], top_k: int = 50) -> list[dict]:
+        """pgvector top-K cosine search by an arbitrary query vector (T1.2c).
+
+        Used by the NL query embeds-first path: caller embeds the user's
+        natural-language query, then this returns the closest features for
+        the LLM to rerank/explain. Postgres-only — sqlite has no pgvector
+        operator. Returns ``[]`` on non-postgres backends so callers can
+        fall through to a different retrieval path without branching.
+
+        Each result: ``{id, name, dtype, similarity}`` — same shape as
+        ``find_similar_features`` for consistency.
+        """
+        if self.backend != "postgres":
+            return []
+        from sqlalchemy import bindparam
+
+        from ..db.embedding_type import Embedding
+        from ..db.models import EMBEDDING_DIM
+
+        stmt = text(
+            "SELECT id, name, dtype, "
+            "       1 - (embedding <=> :vec) AS similarity "
+            "FROM features "
+            "WHERE embedding IS NOT NULL "
+            "ORDER BY embedding <=> :vec "
+            "LIMIT :k"
+        ).bindparams(bindparam("vec", type_=Embedding(EMBEDDING_DIM)))
+        with self.session() as s:
+            rows = s.execute(stmt, {"vec": query_vec, "k": top_k}).mappings().all()
+        return [
+            {
+                "id": r["id"],
+                "name": r["name"],
+                "dtype": r["dtype"],
+                "similarity": float(r["similarity"]) if r["similarity"] is not None else 0.0,
+            }
+            for r in rows
+        ]
+
     def _find_similar_tfidf(self, feature_id: str, top_k: int) -> list[dict]:
         """Fallback: TF-IDF cosine over the catalog when embeddings aren't usable.
 

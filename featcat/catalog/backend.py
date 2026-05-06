@@ -185,6 +185,16 @@ class CatalogBackend(ABC):
         del feature_id, top_k
         return []
 
+    def search_by_embedding(self, query_vec: list[float], top_k: int = 50) -> list:
+        """Return up to ``top_k`` features closest to a given query embedding.
+
+        Postgres-only at the LocalBackend layer (uses pgvector ``<=>``);
+        default empty so callers can fall through to alternate retrieval.
+        Each item: ``{id, name, dtype, similarity}``.
+        """
+        del query_vec, top_k
+        return []
+
     # --- Stats ---
 
     @abstractmethod
