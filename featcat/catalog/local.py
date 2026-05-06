@@ -1,10 +1,21 @@
-"""Local SQLite backend for the feature catalog.
+"""Local SQLite (and, in postgres mode, PostgreSQL) catalog backend.
 
-Phase 1 of the SQLite -> Postgres migration uses SQLAlchemy for engine and schema
-management (see ``featcat.db.models``). The per-method query layer still uses the
-raw ``sqlite3`` connection exposed as ``self.conn`` so the ~30 callsites in
-scheduler/routes/CLI keep working unchanged. Phase 2/3 migrate those callsites
-and add Postgres support.
+Phases 1+2 of the migration:
+
+- Phase 1 introduced SQLAlchemy + Alembic for engine/schema management while
+  keeping the legacy ``self.conn`` (raw ``sqlite3.Connection``) for the ~30
+  callsites in scheduler, routes, and CLI that issue ``?``-parameterized SQL.
+- Phase 2 wires the engine to support PostgreSQL via
+  ``FEATCAT_DB_BACKEND=postgres``. The catalog *schema* operates against either
+  backend (Alembic + ORM); the per-method query layer below has not yet been
+  ported off the raw connection (see Phase 2.5/3 below). To make the
+  unsupported path loud rather than mysterious, postgres mode replaces
+  ``self.conn`` with a sentinel that raises ``NotImplementedError`` on any
+  attribute access, naming the phase that fixes it.
+
+Phase 2.5 (TBD) ports the LocalBackend methods themselves to portable
+SQLAlchemy queries. Phase 3 migrates the remaining raw-conn callers in
+scheduler/routes/CLI.
 """
 
 from __future__ import annotations
@@ -16,7 +27,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
-from ..db.connection import make_engine, make_session_factory
+from ..db.connection import make_engine, make_session_factory, resolve_backend
 from ..db.models import Base
 from .backend import CatalogBackend
 from .models import DataSource, Feature, FeatureGroup, _new_id
@@ -27,6 +38,24 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 DEFAULT_DB = "catalog.db"
+
+
+class _NoRawConnInPostgresMode:
+    """Sentinel returned by ``self.conn`` in postgres mode.
+
+    Existing methods/routes/CLI call ``db.conn.execute(...)`` with sqlite-only
+    ``?``-style SQL. Those callsites are scheduled for Phase 2.5/3 cleanup.
+    Until then, raise loudly with a self-describing message rather than a
+    cryptic ``AttributeError``.
+    """
+
+    def __getattr__(self, name: str) -> Any:
+        raise NotImplementedError(
+            f"LocalBackend.conn.{name} is not available in postgres mode. "
+            "This callsite still uses raw sqlite3 SQL and is scheduled for "
+            "Phase 2.5 (LocalBackend method port) / Phase 3 (scheduler+routes+CLI). "
+            "Until then, use FEATCAT_DB_BACKEND=sqlite (the default)."
+        )
 
 
 def _adapt_datetime(val: datetime) -> str:
@@ -72,20 +101,27 @@ class LocalBackend(CatalogBackend):
     def __init__(self, db_path: str = DEFAULT_DB) -> None:
         self.db_path = db_path
         self._lock = threading.RLock()
-        # SQLAlchemy engine + sessionmaker — schema source of truth, used by
-        # init_db() and any new code that opts into Session via self.session().
-        self.engine = make_engine(db_path)
+        # Backend resolution — driven by FEATCAT_DB_BACKEND env var. Tests and
+        # default dev/CI runs leave it unset → "sqlite". Production deploys set
+        # "postgres" once Phase 2.5 lands.
+        self.backend = resolve_backend()
+        self.engine = make_engine(backend=self.backend, db_path=db_path)
         self.session_factory = make_session_factory(self.engine)
-        # Raw sqlite3 connection — kept for the ~30 callsites in scheduler,
-        # routes, and CLI that issue raw SQL. Phase 3 migrates those off `.conn`.
-        self.conn = sqlite3.connect(
-            db_path,
-            detect_types=sqlite3.PARSE_DECLTYPES,
-            check_same_thread=False,
-            timeout=30.0,  # 30 second timeout for lock contention
-        )
-        self.conn.row_factory = sqlite3.Row
-        self.conn.execute("PRAGMA foreign_keys = ON")
+        if self.backend == "sqlite":
+            # Raw sqlite3 connection — kept for the ~30 callsites in scheduler,
+            # routes, and CLI that issue raw SQL. Phase 2.5/3 migrates those off `.conn`.
+            self.conn = sqlite3.connect(
+                db_path,
+                detect_types=sqlite3.PARSE_DECLTYPES,
+                check_same_thread=False,
+                timeout=30.0,  # 30 second timeout for lock contention
+            )
+            self.conn.row_factory = sqlite3.Row
+            self.conn.execute("PRAGMA foreign_keys = ON")
+        else:
+            # Postgres mode: no raw sqlite3 connection. Sentinel surfaces a
+            # clear error if any pre-Phase-3 caller tries to use it.
+            self.conn = _NoRawConnInPostgresMode()  # type: ignore[assignment]
 
     @contextmanager
     def session(self) -> Iterator[Session]:
@@ -108,9 +144,10 @@ class LocalBackend(CatalogBackend):
         # backward-compat ALTER TABLE shims below still upgrade older catalogs.
         Base.metadata.create_all(self.engine, checkfirst=True)
         # Backward-compat ALTER TABLE migrations for catalogs created before
-        # these columns existed. Each is idempotent (suppress OperationalError
-        # if the column already exists). When Alembic owns migrations end-to-end
-        # in Phase 2+, these get folded into versioned revisions.
+        # these columns existed. Sqlite-only — postgres has no legacy schema to
+        # upgrade (operators bring up postgres via Alembic, not via this path).
+        if self.backend != "sqlite":
+            return
         with contextlib.suppress(sqlite3.OperationalError):
             self.conn.execute("ALTER TABLE data_sources ADD COLUMN auto_refresh INTEGER DEFAULT 0")
         with contextlib.suppress(sqlite3.OperationalError):
@@ -136,7 +173,8 @@ class LocalBackend(CatalogBackend):
         self.conn.commit()
 
     def close(self) -> None:
-        self.conn.close()
+        if self.backend == "sqlite" and isinstance(self.conn, sqlite3.Connection):
+            self.conn.close()
         self.engine.dispose()
 
     # --- Sources ---

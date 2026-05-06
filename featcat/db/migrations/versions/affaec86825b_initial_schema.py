@@ -1,20 +1,21 @@
 """initial schema
 
-Revision ID: dbfa513c59ba
+Revision ID: affaec86825b
 Revises: 
-Create Date: 2026-05-06 05:01:43.307672
+Create Date: 2026-05-06 05:26:54.440346
 
 """
-from collections.abc import Sequence
+from typing import Sequence, Union
 
-import sqlalchemy as sa
 from alembic import op
+import sqlalchemy as sa
+
 
 # revision identifiers, used by Alembic.
-revision: str = 'dbfa513c59ba'
-down_revision: str | Sequence[str] | None = None
-branch_labels: str | Sequence[str] | None = None
-depends_on: str | Sequence[str] | None = None
+revision: str = 'affaec86825b'
+down_revision: Union[str, Sequence[str], None] = None
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
@@ -27,8 +28,8 @@ def upgrade() -> None:
     sa.Column('storage_type', sa.Text(), server_default='local', nullable=False),
     sa.Column('format', sa.Text(), server_default='parquet', nullable=False),
     sa.Column('description', sa.Text(), server_default='', nullable=False),
-    sa.Column('created_at', sa.TIMESTAMP(), nullable=False),
-    sa.Column('updated_at', sa.TIMESTAMP(), nullable=False),
+    sa.Column('created_at', sa.TIMESTAMP(timezone=True), nullable=False),
+    sa.Column('updated_at', sa.TIMESTAMP(timezone=True), nullable=False),
     sa.Column('auto_refresh', sa.Integer(), server_default='0', nullable=False),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('name')
@@ -39,8 +40,8 @@ def upgrade() -> None:
     sa.Column('description', sa.Text(), server_default='', nullable=False),
     sa.Column('project', sa.Text(), server_default='', nullable=False),
     sa.Column('owner', sa.Text(), server_default='', nullable=False),
-    sa.Column('created_at', sa.TIMESTAMP(), nullable=False),
-    sa.Column('updated_at', sa.TIMESTAMP(), nullable=False),
+    sa.Column('created_at', sa.TIMESTAMP(timezone=True), nullable=False),
+    sa.Column('updated_at', sa.TIMESTAMP(timezone=True), nullable=False),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('name')
     )
@@ -48,8 +49,8 @@ def upgrade() -> None:
     sa.Column('id', sa.Text(), nullable=False),
     sa.Column('job_name', sa.Text(), nullable=False),
     sa.Column('status', sa.Text(), nullable=False),
-    sa.Column('started_at', sa.TIMESTAMP(), nullable=False),
-    sa.Column('finished_at', sa.TIMESTAMP(), nullable=True),
+    sa.Column('started_at', sa.TIMESTAMP(timezone=True), nullable=False),
+    sa.Column('finished_at', sa.TIMESTAMP(timezone=True), nullable=True),
     sa.Column('duration_seconds', sa.Float(), nullable=True),
     sa.Column('result_summary', sa.Text(), server_default='{}', nullable=False),
     sa.Column('error_message', sa.Text(), nullable=True),
@@ -60,8 +61,8 @@ def upgrade() -> None:
     sa.Column('job_name', sa.Text(), nullable=False),
     sa.Column('cron_expression', sa.Text(), nullable=False),
     sa.Column('enabled', sa.Integer(), server_default='1', nullable=False),
-    sa.Column('last_run_at', sa.TIMESTAMP(), nullable=True),
-    sa.Column('next_run_at', sa.TIMESTAMP(), nullable=True),
+    sa.Column('last_run_at', sa.TIMESTAMP(timezone=True), nullable=True),
+    sa.Column('next_run_at', sa.TIMESTAMP(timezone=True), nullable=True),
     sa.Column('description', sa.Text(), server_default='', nullable=False),
     sa.Column('max_log_retention_days', sa.Integer(), server_default='30', nullable=False),
     sa.PrimaryKeyConstraint('job_name')
@@ -76,11 +77,11 @@ def upgrade() -> None:
     sa.Column('tags', sa.Text(), server_default='[]', nullable=False),
     sa.Column('owner', sa.Text(), server_default='', nullable=False),
     sa.Column('stats', sa.Text(), server_default='{}', nullable=False),
-    sa.Column('created_at', sa.TIMESTAMP(), nullable=False),
-    sa.Column('updated_at', sa.TIMESTAMP(), nullable=False),
+    sa.Column('created_at', sa.TIMESTAMP(timezone=True), nullable=False),
+    sa.Column('updated_at', sa.TIMESTAMP(timezone=True), nullable=False),
     sa.Column('definition', sa.Text(), nullable=True),
     sa.Column('definition_type', sa.Text(), nullable=True),
-    sa.Column('definition_updated_at', sa.TIMESTAMP(), nullable=True),
+    sa.Column('definition_updated_at', sa.TIMESTAMP(timezone=True), nullable=True),
     sa.Column('generation_hints', sa.Text(), nullable=True),
     sa.ForeignKeyConstraint(['data_source_id'], ['data_sources.id'], ),
     sa.PrimaryKeyConstraint('id'),
@@ -100,11 +101,11 @@ def upgrade() -> None:
     sa.Column('status', sa.Text(), server_default='pending', nullable=False),
     sa.Column('created_by', sa.Text(), server_default='', nullable=False),
     sa.Column('applied_by', sa.Text(), server_default='', nullable=False),
-    sa.Column('applied_at', sa.TIMESTAMP(), nullable=True),
+    sa.Column('applied_at', sa.TIMESTAMP(timezone=True), nullable=True),
     sa.Column('change_summary', sa.Text(), server_default='', nullable=False),
     sa.Column('context_json', sa.Text(), server_default='{}', nullable=False),
-    sa.Column('created_at', sa.TIMESTAMP(), nullable=False),
-    sa.Column('updated_at', sa.TIMESTAMP(), nullable=False),
+    sa.Column('created_at', sa.TIMESTAMP(timezone=True), nullable=False),
+    sa.Column('updated_at', sa.TIMESTAMP(timezone=True), nullable=False),
     sa.ForeignKeyConstraint(['feature_id'], ['features.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
@@ -118,7 +119,7 @@ def upgrade() -> None:
     sa.Column('long_description', sa.Text(), server_default='', nullable=False),
     sa.Column('expected_range', sa.Text(), server_default='', nullable=False),
     sa.Column('potential_issues', sa.Text(), server_default='', nullable=False),
-    sa.Column('generated_at', sa.TIMESTAMP(), nullable=True),
+    sa.Column('generated_at', sa.TIMESTAMP(timezone=True), nullable=True),
     sa.Column('model_used', sa.Text(), server_default='', nullable=False),
     sa.Column('hints_used', sa.Text(), nullable=True),
     sa.Column('context_features', sa.Text(), nullable=True),
@@ -128,7 +129,7 @@ def upgrade() -> None:
     op.create_table('feature_group_members',
     sa.Column('group_id', sa.Text(), nullable=False),
     sa.Column('feature_id', sa.Text(), nullable=False),
-    sa.Column('added_at', sa.TIMESTAMP(), nullable=False),
+    sa.Column('added_at', sa.TIMESTAMP(timezone=True), nullable=False),
     sa.ForeignKeyConstraint(['feature_id'], ['features.id'], ondelete='CASCADE'),
     sa.ForeignKeyConstraint(['group_id'], ['feature_groups.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('group_id', 'feature_id', name='pk_feature_group_members')
@@ -141,7 +142,7 @@ def upgrade() -> None:
     sa.Column('child_feature_id', sa.Text(), nullable=False),
     sa.Column('parent_feature_id', sa.Text(), nullable=False),
     sa.Column('transform', sa.Text(), server_default='', nullable=False),
-    sa.Column('created_at', sa.TIMESTAMP(), nullable=False),
+    sa.Column('created_at', sa.TIMESTAMP(timezone=True), nullable=False),
     sa.ForeignKeyConstraint(['child_feature_id'], ['features.id'], ondelete='CASCADE'),
     sa.ForeignKeyConstraint(['parent_feature_id'], ['features.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id'),
@@ -158,7 +159,7 @@ def upgrade() -> None:
     sa.Column('snapshot', sa.Text(), nullable=False),
     sa.Column('change_summary', sa.Text(), server_default='', nullable=False),
     sa.Column('changed_by', sa.Text(), server_default='', nullable=False),
-    sa.Column('created_at', sa.TIMESTAMP(), nullable=False),
+    sa.Column('created_at', sa.TIMESTAMP(timezone=True), nullable=False),
     sa.Column('change_type', sa.Text(), server_default='metadata', nullable=False),
     sa.Column('previous_value', sa.Text(), nullable=True),
     sa.Column('new_value', sa.Text(), nullable=True),
@@ -169,7 +170,7 @@ def upgrade() -> None:
     op.create_table('monitoring_baselines',
     sa.Column('feature_id', sa.Text(), nullable=False),
     sa.Column('baseline_stats', sa.Text(), server_default='{}', nullable=False),
-    sa.Column('computed_at', sa.TIMESTAMP(), nullable=True),
+    sa.Column('computed_at', sa.TIMESTAMP(timezone=True), nullable=True),
     sa.ForeignKeyConstraint(['feature_id'], ['features.id'], ),
     sa.PrimaryKeyConstraint('feature_id', name='pk_monitoring_baselines')
     )
@@ -179,7 +180,7 @@ def upgrade() -> None:
     sa.Column('feature_name', sa.Text(), nullable=False),
     sa.Column('psi', sa.Float(), nullable=True),
     sa.Column('severity', sa.Text(), nullable=False),
-    sa.Column('checked_at', sa.TIMESTAMP(), nullable=False),
+    sa.Column('checked_at', sa.TIMESTAMP(timezone=True), nullable=False),
     sa.Column('llm_analysis_json', sa.Text(), nullable=True),
     sa.ForeignKeyConstraint(['feature_id'], ['features.id'], ),
     sa.PrimaryKeyConstraint('id')
@@ -194,7 +195,7 @@ def upgrade() -> None:
     sa.Column('action', sa.Text(), nullable=False),
     sa.Column('user', sa.Text(), server_default='', nullable=False),
     sa.Column('context', sa.Text(), server_default='', nullable=False),
-    sa.Column('created_at', sa.TIMESTAMP(), nullable=False),
+    sa.Column('created_at', sa.TIMESTAMP(timezone=True), nullable=False),
     sa.ForeignKeyConstraint(['feature_id'], ['features.id'], ),
     sa.PrimaryKeyConstraint('id')
     )

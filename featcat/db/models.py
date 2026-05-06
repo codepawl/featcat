@@ -49,8 +49,8 @@ class DataSource(Base):
     storage_type: Mapped[str] = mapped_column(Text, nullable=False, default="local", server_default="local")
     format: Mapped[str] = mapped_column(Text, nullable=False, default="parquet", server_default="parquet")
     description: Mapped[str] = mapped_column(Text, default="", server_default="")
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
     auto_refresh: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
 
@@ -72,11 +72,11 @@ class Feature(Base):
     tags: Mapped[str] = mapped_column(Text, default="[]", server_default="[]")
     owner: Mapped[str] = mapped_column(Text, default="", server_default="")
     stats: Mapped[str] = mapped_column(Text, default="{}", server_default="{}")
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
     definition: Mapped[str | None] = mapped_column(Text)
     definition_type: Mapped[str | None] = mapped_column(Text)
-    definition_updated_at: Mapped[datetime | None] = mapped_column(TIMESTAMP)
+    definition_updated_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
     generation_hints: Mapped[str | None] = mapped_column(Text)
 
 
@@ -92,7 +92,7 @@ class FeatureDoc(Base):
     long_description: Mapped[str] = mapped_column(Text, default="", server_default="")
     expected_range: Mapped[str] = mapped_column(Text, default="", server_default="")
     potential_issues: Mapped[str] = mapped_column(Text, default="", server_default="")
-    generated_at: Mapped[datetime | None] = mapped_column(TIMESTAMP)
+    generated_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
     model_used: Mapped[str] = mapped_column(Text, default="", server_default="")
     hints_used: Mapped[str | None] = mapped_column(Text)
     context_features: Mapped[str | None] = mapped_column(Text)
@@ -105,7 +105,7 @@ class MonitoringBaseline(Base):
 
     feature_id: Mapped[str] = mapped_column(Text, ForeignKey("features.id"), nullable=False)
     baseline_stats: Mapped[str] = mapped_column(Text, default="{}", server_default="{}")
-    computed_at: Mapped[datetime | None] = mapped_column(TIMESTAMP)
+    computed_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
 
 
 class JobSchedule(Base):
@@ -114,8 +114,8 @@ class JobSchedule(Base):
     job_name: Mapped[str] = mapped_column(Text, primary_key=True)
     cron_expression: Mapped[str] = mapped_column(Text, nullable=False)
     enabled: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
-    last_run_at: Mapped[datetime | None] = mapped_column(TIMESTAMP)
-    next_run_at: Mapped[datetime | None] = mapped_column(TIMESTAMP)
+    last_run_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    next_run_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
     description: Mapped[str] = mapped_column(Text, default="", server_default="")
     max_log_retention_days: Mapped[int] = mapped_column(Integer, default=30, server_default="30")
 
@@ -126,8 +126,8 @@ class JobLog(Base):
     id: Mapped[str] = mapped_column(Text, primary_key=True)
     job_name: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False)
-    started_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False)
-    finished_at: Mapped[datetime | None] = mapped_column(TIMESTAMP)
+    started_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
     duration_seconds: Mapped[float | None] = mapped_column(Float)
     result_summary: Mapped[str] = mapped_column(Text, default="{}", server_default="{}")
     error_message: Mapped[str | None] = mapped_column(Text)
@@ -144,7 +144,7 @@ class FeatureVersion(Base):
     snapshot: Mapped[str] = mapped_column(Text, nullable=False)
     change_summary: Mapped[str] = mapped_column(Text, default="", server_default="")
     changed_by: Mapped[str] = mapped_column(Text, default="", server_default="")
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
     change_type: Mapped[str] = mapped_column(Text, default="metadata", server_default="metadata")
     previous_value: Mapped[str | None] = mapped_column(Text)
     new_value: Mapped[str | None] = mapped_column(Text)
@@ -158,8 +158,8 @@ class FeatureGroup(Base):
     description: Mapped[str] = mapped_column(Text, default="", server_default="")
     project: Mapped[str] = mapped_column(Text, default="", server_default="")
     owner: Mapped[str] = mapped_column(Text, default="", server_default="")
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
 
 
 class FeatureGroupMember(Base):
@@ -171,7 +171,7 @@ class FeatureGroupMember(Base):
 
     group_id: Mapped[str] = mapped_column(Text, ForeignKey("feature_groups.id", ondelete="CASCADE"), nullable=False)
     feature_id: Mapped[str] = mapped_column(Text, ForeignKey("features.id", ondelete="CASCADE"), nullable=False)
-    added_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False)
+    added_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
 
 
 class UsageLog(Base):
@@ -186,7 +186,7 @@ class UsageLog(Base):
     action: Mapped[str] = mapped_column(Text, nullable=False)
     user: Mapped[str] = mapped_column(Text, default="", server_default="")
     context: Mapped[str] = mapped_column(Text, default="", server_default="")
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
 
 
 class MonitoringCheck(Base):
@@ -201,7 +201,7 @@ class MonitoringCheck(Base):
     feature_name: Mapped[str] = mapped_column(Text, nullable=False)
     psi: Mapped[float | None] = mapped_column(Float)
     severity: Mapped[str] = mapped_column(Text, nullable=False)
-    checked_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False)
+    checked_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
     llm_analysis_json: Mapped[str | None] = mapped_column(Text)
 
 
@@ -217,7 +217,7 @@ class FeatureLineage(Base):
     child_feature_id: Mapped[str] = mapped_column(Text, ForeignKey("features.id", ondelete="CASCADE"), nullable=False)
     parent_feature_id: Mapped[str] = mapped_column(Text, ForeignKey("features.id", ondelete="CASCADE"), nullable=False)
     transform: Mapped[str] = mapped_column(Text, default="", server_default="")
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
 
 
 class ActionItem(Base):
@@ -235,11 +235,11 @@ class ActionItem(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False, default="pending", server_default="pending")
     created_by: Mapped[str] = mapped_column(Text, default="", server_default="")
     applied_by: Mapped[str] = mapped_column(Text, default="", server_default="")
-    applied_at: Mapped[datetime | None] = mapped_column(TIMESTAMP)
+    applied_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
     change_summary: Mapped[str] = mapped_column(Text, default="", server_default="")
     context_json: Mapped[str] = mapped_column(Text, default="{}", server_default="{}")
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
 
 
 __all__ = [
