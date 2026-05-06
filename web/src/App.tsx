@@ -8,6 +8,7 @@ import { Monitoring } from './pages/Monitoring'
 import { Jobs } from './pages/Jobs'
 import { Audit } from './pages/Audit'
 import { Chat } from './pages/Chat'
+import { Actions } from './pages/Actions'
 
 export default function App() {
   return (
@@ -21,6 +22,7 @@ export default function App() {
           <Route path="/similarity" element={<Similarity />} />
           <Route path="/audit" element={<Audit />} />
           <Route path="/monitoring" element={<Monitoring />} />
+          <Route path="/actions" element={<Actions />} />
           <Route path="/jobs" element={<Jobs />} />
           <Route path="/chat" element={<Chat />} />
         </Routes>

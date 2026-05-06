@@ -175,6 +175,49 @@ export const api = {
     run: (name: string) => request<any>(`/jobs/${encodeURIComponent(name)}/run`, { method: 'POST' }),
     update: (name: string, data: any) => request<any>(`/jobs/${encodeURIComponent(name)}`, { method: 'PATCH', body: JSON.stringify(data) }),
   },
+  actions: {
+    list: (params?: { feature_name?: string; status?: string; source?: string; limit?: number }) => {
+      const qs = new URLSearchParams()
+      if (params?.feature_name) qs.set('feature_name', params.feature_name)
+      if (params?.status) qs.set('status', params.status)
+      if (params?.source) qs.set('source', params.source)
+      if (params?.limit) qs.set('limit', String(params.limit))
+      const suffix = qs.toString() ? `?${qs.toString()}` : ''
+      return cachedRequest<ActionItem[]>(`/actions${suffix}`)
+    },
+    count: (status = 'pending') =>
+      cachedRequest<{ count: number }>(`/actions/count?status=${encodeURIComponent(status)}`),
+    get: (id: string) => cachedRequest<ActionItem>(`/actions/${encodeURIComponent(id)}`),
+    create: (data: {
+      feature_name: string
+      source: string
+      title: string
+      recommendation: string
+      context?: Record<string, unknown>
+    }) => request<ActionItem>('/actions', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: { status: string; applied_by?: string; change_summary?: string }) =>
+      request<ActionItem>(`/actions/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }),
+  },
+}
+
+export type ActionItem = {
+  id: string
+  feature_id: string
+  feature_name: string
+  source: 'drift_alert' | 'chat' | 'autodoc' | 'manual'
+  title: string
+  recommendation: string
+  status: 'pending' | 'applied' | 'dismissed' | 'snoozed'
+  created_by: string
+  applied_by: string
+  applied_at: string | null
+  change_summary: string
+  context: Record<string, unknown>
+  created_at: string
+  updated_at: string
 }
 
 export function timeAgo(dateStr: string | null | undefined): string {

@@ -28,6 +28,7 @@ config_app = typer.Typer(help="Configuration management")
 job_app = typer.Typer(help="Scheduled job management")
 group_app = typer.Typer(help="Feature groups management")
 usage_app = typer.Typer(help="Feature usage analytics")
+actions_app = typer.Typer(help="Recommended actions (lifecycle loop)")
 app.add_typer(source_app, name="source")
 app.add_typer(feature_app, name="feature")
 app.add_typer(doc_app, name="doc")
@@ -37,6 +38,7 @@ app.add_typer(config_app, name="config")
 app.add_typer(job_app, name="job")
 app.add_typer(group_app, name="group")
 app.add_typer(usage_app, name="usage")
+app.add_typer(actions_app, name="actions")
 
 console = Console()
 
@@ -2236,6 +2238,130 @@ def usage_activity(
         )
 
     console.print(table)
+
+
+# =========================================================================
+# Action items (lifecycle loop)
+# =========================================================================
+
+
+@actions_app.command("list")
+def actions_list(
+    feature: str = typer.Option("", "--feature", "-f", help="Filter by feature name"),
+    status: str = typer.Option("pending", "--status", "-s", help="pending|applied|dismissed|snoozed|all"),
+    source: str = typer.Option("", "--source", help="Filter by source: drift_alert|chat|autodoc|manual"),
+    limit: int = typer.Option(50, "--limit", "-n", help="Max rows"),
+) -> None:
+    """List action items pending or completed."""
+    db = _get_db()
+    feature_id = None
+    if feature:
+        feat = db.get_feature_by_name(feature)
+        if feat is None:
+            db.close()
+            console.print(f"[red]Feature not found:[/red] {feature}")
+            raise typer.Exit(1)
+        feature_id = feat.id
+
+    items = db.list_action_items(
+        feature_id=feature_id,
+        status=None if status == "all" else status,
+        source=source or None,
+        limit=limit,
+    )
+    db.close()
+
+    if not items:
+        console.print("[dim]No action items[/dim]")
+        return
+
+    table = Table(title=f"Action Items ({status})")
+    table.add_column("ID", style="dim", overflow="fold")
+    table.add_column("Feature", style="cyan")
+    table.add_column("Source")
+    table.add_column("Title")
+    table.add_column("Status")
+    table.add_column("Created")
+    for it in items:
+        table.add_row(
+            str(it.get("id", ""))[:8],
+            it.get("feature_name", ""),
+            it.get("source", ""),
+            (it.get("title") or "")[:60],
+            it.get("status", ""),
+            (it.get("created_at") or "")[:19],
+        )
+    console.print(table)
+
+
+@actions_app.command("show")
+def actions_show(
+    item_id: str = typer.Argument(help="Action item id (full or 8-char prefix)"),
+) -> None:
+    """Show full detail of an action item."""
+    db = _get_db()
+    item = _resolve_action(db, item_id)
+    db.close()
+    if item is None:
+        console.print(f"[red]Action item not found:[/red] {item_id}")
+        raise typer.Exit(1)
+    console.print(f"\n[bold cyan]Action {item['id']}[/bold cyan]")
+    console.print(f"  Feature:        {item.get('feature_name', '')}")
+    console.print(f"  Source:         {item.get('source', '')}")
+    console.print(f"  Status:         {item.get('status', '')}")
+    console.print(f"  Title:          {item.get('title', '')}")
+    console.print(f"  Recommendation: {item.get('recommendation', '')}")
+    if item.get("change_summary"):
+        console.print(f"  Change summary: {item['change_summary']}")
+    if item.get("applied_by"):
+        console.print(f"  Applied by:     {item['applied_by']}  at  {item.get('applied_at', '')}")
+    ctx = item.get("context") or {}
+    if ctx:
+        console.print(f"  Context:        {json.dumps(ctx, indent=2)}")
+
+
+@actions_app.command("apply")
+def actions_apply(
+    item_id: str = typer.Argument(help="Action item id"),
+    summary: str = typer.Option("", "--summary", "-m", help="Change summary describing what was done"),
+    user: str = typer.Option("", "--user", "-u", help="Actor name (defaults to $USER)"),
+) -> None:
+    """Mark an action item as applied."""
+    _set_action_status(item_id, "applied", summary=summary, user=user)
+
+
+@actions_app.command("dismiss")
+def actions_dismiss(
+    item_id: str = typer.Argument(help="Action item id"),
+    reason: str = typer.Option("", "--reason", "-m", help="Why dismissed"),
+    user: str = typer.Option("", "--user", "-u", help="Actor name (defaults to $USER)"),
+) -> None:
+    """Dismiss an action item."""
+    _set_action_status(item_id, "dismissed", summary=reason, user=user)
+
+
+def _resolve_action(db, item_id: str) -> dict | None:
+    item = db.get_action_item(item_id)
+    if item is not None:
+        return item
+    # Allow 8-char prefix lookup (purely a convenience for CLI)
+    matches = [it for it in db.list_action_items(status=None, limit=500) if str(it.get("id", "")).startswith(item_id)]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _set_action_status(item_id: str, status: str, summary: str, user: str) -> None:
+    import os as _os
+
+    db = _get_db()
+    item = _resolve_action(db, item_id)
+    if item is None:
+        db.close()
+        console.print(f"[red]Action item not found:[/red] {item_id}")
+        raise typer.Exit(1)
+    actor = user or _os.environ.get("USER", "")
+    db.update_action_item_status(item["id"], status=status, applied_by=actor, change_summary=summary)
+    db.close()
+    console.print(f"[green]Action {item['id'][:8]} -> {status}[/green]")
 
 
 # =========================================================================

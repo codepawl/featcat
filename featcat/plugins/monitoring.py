@@ -211,9 +211,57 @@ class MonitoringPlugin(BasePlugin):
                 for issue in issues:
                     if issue["feature"] == fname:
                         issue["llm_analysis"] = a
+                        self._persist_llm_outcome(db, issue, a)
                         break
         except Exception:
             pass
+
+    def _persist_llm_outcome(self, db: CatalogBackend, issue: dict, analysis: dict) -> None:
+        """Save LLM analysis to monitoring_checks and auto-create pending action_items."""
+        feat = db.get_feature_by_name(issue["feature"])
+        if feat is None:
+            return
+
+        with contextlib.suppress(Exception):
+            db.save_monitoring_llm_analysis(feat.id, analysis)
+
+        actions = analysis.get("recommended_actions") or []
+        ctx_base = {
+            "severity": issue.get("severity"),
+            "psi": issue.get("psi"),
+            "likely_cause": analysis.get("likely_cause"),
+            "issues": issue.get("issues", []),
+        }
+        for raw in actions:
+            title, recommendation = self._normalize_action_text(raw)
+            if not title:
+                continue
+            with contextlib.suppress(Exception):
+                if db.find_pending_action(feat.id, "drift_alert", title) is not None:
+                    continue
+                db.create_action_item(
+                    feature_id=feat.id,
+                    source="drift_alert",
+                    title=title,
+                    recommendation=recommendation,
+                    context=ctx_base,
+                    created_by="monitoring_plugin",
+                )
+
+    @staticmethod
+    def _normalize_action_text(raw: Any) -> tuple[str, str]:
+        """Return (title, recommendation) from a recommended_action entry (str or dict)."""
+        if isinstance(raw, dict):
+            title = str(raw.get("title") or raw.get("action") or raw.get("summary") or "").strip()
+            rec = raw.get("description") or raw.get("detail") or raw.get("recommendation") or title
+            recommendation = str(rec).strip()
+            return title, recommendation or title
+        text = str(raw).strip()
+        if not text:
+            return "", ""
+        first_line = text.splitlines()[0].strip()
+        title = first_line[:120]
+        return title, text
 
 
 def export_monitoring_report(report: dict) -> str:

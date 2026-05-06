@@ -97,6 +97,7 @@ def build_app() -> FastAPI:
             return await call_next(request)
 
     # Register API routes
+    from .routes.actions import router as actions_router
     from .routes.ai import router as ai_router
     from .routes.docs import router as docs_router
     from .routes.export import router as export_router
@@ -118,6 +119,7 @@ def build_app() -> FastAPI:
     app.include_router(ai_router, prefix="/api/ai", tags=["ai"])
     app.include_router(jobs_router, prefix="/api/jobs", tags=["jobs"])
     app.include_router(groups_router, prefix="/api/groups", tags=["groups"])
+    app.include_router(actions_router, prefix="/api/actions", tags=["actions"])
     app.include_router(usage_router, prefix="/api/usage", tags=["usage"])
     app.include_router(scan_router, prefix="/api/scan-bulk", tags=["scan"])
     app.include_router(export_router, prefix="/api/export", tags=["export"])

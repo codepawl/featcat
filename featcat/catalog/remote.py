@@ -294,6 +294,92 @@ class RemoteBackend(CatalogBackend):
             params={"direction": direction, "depth": depth},
         )
 
+    # --- Action Items (lifecycle loop) ---
+
+    def create_action_item(
+        self,
+        feature_id: str,
+        source: str,
+        title: str,
+        recommendation: str,
+        context: dict | None = None,
+        created_by: str = "",
+    ) -> str:
+        result = self._request(
+            "POST",
+            "/api/actions",
+            json={
+                "feature_id": feature_id,
+                "source": source,
+                "title": title,
+                "recommendation": recommendation,
+                "context": context or {},
+                "created_by": created_by,
+            },
+        )
+        return result.get("id", "")
+
+    def find_pending_action(self, feature_id: str, source: str, title: str) -> dict | None:
+        items = self.list_action_items(feature_id=feature_id, status="pending", source=source, limit=10)
+        for item in items:
+            if item.get("title") == title:
+                return item
+        return None
+
+    def list_action_items(
+        self,
+        feature_id: str | None = None,
+        status: str | None = None,
+        source: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict]:
+        params: dict[str, Any] = {"limit": limit, "offset": offset}
+        if feature_id:
+            params["feature_id"] = feature_id
+        if status:
+            params["status"] = status
+        if source:
+            params["source"] = source
+        return self._request("GET", "/api/actions", params=params)
+
+    def get_action_item(self, item_id: str) -> dict | None:
+        try:
+            return self._request("GET", f"/api/actions/{item_id}")
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                return None
+            raise
+
+    def update_action_item_status(
+        self,
+        item_id: str,
+        status: str,
+        applied_by: str = "",
+        change_summary: str = "",
+    ) -> bool:
+        try:
+            self._request(
+                "PATCH",
+                f"/api/actions/{item_id}",
+                json={"status": status, "applied_by": applied_by, "change_summary": change_summary},
+            )
+            return True
+        except httpx.HTTPStatusError:
+            return False
+
+    def count_action_items(self, status: str | None = None) -> int:
+        params: dict[str, Any] = {"limit": 1, "offset": 0, "count_only": "true"}
+        if status:
+            params["status"] = status
+        result = self._request("GET", "/api/actions", params=params)
+        if isinstance(result, dict):
+            return int(result.get("count", 0))
+        return len(result) if isinstance(result, list) else 0
+
+    def save_monitoring_llm_analysis(self, feature_id: str, analysis: dict) -> None:
+        pass  # Server-side only
+
     # --- Server-side AI/plugin operations (used by CLI in remote mode) ---
 
     def ai_ask(self, query: str) -> dict:
