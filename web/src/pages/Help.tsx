@@ -1,19 +1,21 @@
 import { useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useGlossary } from '../hooks/useGlossary'
 import { Skeleton } from '../components/Skeleton'
 
-const SECTIONS: { key: string; intro?: string }[] = [
-  { key: 'health_score', intro: 'How "healthy" a feature is — combines docs, drift, usage, and hints.' },
-  { key: 'health_grade' },
-  { key: 'quality_score', intro: 'Discovery-time signal of metadata richness.' },
-  { key: 'completeness' },
-  { key: 'psi', intro: 'Industry-standard distribution shift metric used for drift detection.' },
-  { key: 'drift_severity' },
-  { key: 'monitoring_status' },
-  { key: 'action_item', intro: 'How recommendations turn into trackable outcomes.' },
-]
+const SECTION_KEYS = [
+  'health_score',
+  'health_grade',
+  'quality_score',
+  'completeness',
+  'psi',
+  'drift_severity',
+  'monitoring_status',
+  'action_item',
+] as const
 
 export function Help() {
+  const { t } = useTranslation(['help', 'glossary'])
   const terms = useGlossary()
 
   useEffect(() => {
@@ -27,17 +29,22 @@ export function Help() {
     return <Skeleton className="h-64" />
   }
 
+  const bucketLabel = t('thresholds_columns.bucket', { ns: 'glossary', defaultValue: 'Bucket' })
+  const meaningLabel = t('thresholds_columns.meaning', { ns: 'glossary', defaultValue: 'Meaning' })
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[200px_1fr] gap-8">
       <aside className="lg:sticky lg:top-4 lg:self-start text-[13px]">
-        <h3 className="text-xs font-semibold uppercase text-[var(--text-tertiary)] tracking-wide mb-2">On this page</h3>
+        <h3 className="text-xs font-semibold uppercase text-[var(--text-tertiary)] tracking-wide mb-2">
+          {t('toc.title', { ns: 'help' })}
+        </h3>
         <nav className="flex flex-col gap-1">
-          {SECTIONS.map((s) => {
-            const t = terms[s.key]
-            if (!t) return null
+          {SECTION_KEYS.map((key) => {
+            const term = terms[key]
+            if (!term) return null
             return (
-              <a key={s.key} href={`#${s.key}`} className="text-[var(--text-secondary)] hover:text-accent transition-colors">
-                {t.label}
+              <a key={key} href={`#${key}`} className="text-[var(--text-secondary)] hover:text-accent transition-colors">
+                {term.label}
               </a>
             )
           })}
@@ -46,26 +53,28 @@ export function Help() {
 
       <div className="max-w-2xl space-y-8">
         <header>
-          <h1 className="text-2xl font-semibold">Help & Glossary</h1>
+          <h1 className="text-2xl font-semibold">{t('page.title', { ns: 'help' })}</h1>
           <p className="text-[13px] text-[var(--text-tertiary)] mt-1">
-            Definitions for every score, severity, and metric you'll see in featcat. Hover any{' '}
-            <span className="font-mono text-[11px]">ⓘ</span> icon in the UI to peek at the same content inline.
+            {t('page.subtitle', { ns: 'help' })}
           </p>
         </header>
 
-        {SECTIONS.map((section) => {
-          const term = terms[section.key]
+        {SECTION_KEYS.map((key) => {
+          const term = terms[key]
           if (!term) return null
+          const introKey = `terms.${key}.intro` as 'terms.health_score.intro'
+          const intro = t(introKey, { ns: 'glossary', defaultValue: '' })
           return (
-            <section key={section.key} id={section.key} className="border-t border-[var(--border-subtle)] pt-6 scroll-mt-6">
+            <section key={key} id={key} className="border-t border-[var(--border-subtle)] pt-6 scroll-mt-6">
               <h2 className="text-base font-semibold mb-1">{term.label}</h2>
-              {section.intro && (
-                <p className="text-[12px] text-[var(--text-tertiary)] mb-2 italic">{section.intro}</p>
-              )}
+              {intro && <p className="text-[12px] text-[var(--text-tertiary)] mb-2 italic">{intro}</p>}
               <p className="text-[14px] text-[var(--text-secondary)] leading-relaxed">{term.description}</p>
 
               {term.formula && (
                 <div className="mt-3 px-3 py-2 rounded bg-[var(--bg-secondary)] font-mono text-[12px] text-[var(--text-secondary)]">
+                  <span className="text-[var(--text-tertiary)] mr-2">
+                    {t('common.formula_label', { ns: 'help' })}:
+                  </span>
                   {term.formula}
                 </div>
               )}
@@ -75,16 +84,16 @@ export function Help() {
                   <table className="w-full text-[12px]">
                     <thead className="bg-[var(--bg-secondary)] text-[var(--text-tertiary)]">
                       <tr>
-                        <th className="text-left px-3 py-1.5 font-medium">Bucket</th>
-                        <th className="text-left px-3 py-1.5 font-medium">Meaning</th>
+                        <th className="text-left px-3 py-1.5 font-medium">{bucketLabel}</th>
+                        <th className="text-left px-3 py-1.5 font-medium">{meaningLabel}</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {term.thresholds.map((t, i) => (
+                      {term.thresholds.map((thr, i) => (
                         <tr key={i} className="border-t border-[var(--border-subtle)]">
-                          <td className="px-3 py-1.5 font-mono">{t.grade ?? t.range ?? t.severity}</td>
+                          <td className="px-3 py-1.5 font-mono">{thr.grade ?? thr.range ?? thr.severity}</td>
                           <td className="px-3 py-1.5 text-[var(--text-secondary)]">
-                            {t.label ?? t.meaning ?? (t.min !== undefined ? `≥ ${t.min}` : '')}
+                            {thr.label ?? thr.meaning ?? (thr.min !== undefined ? `≥ ${thr.min}` : '')}
                           </td>
                         </tr>
                       ))}

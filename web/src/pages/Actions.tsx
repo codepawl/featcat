@@ -1,26 +1,24 @@
-import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { CheckCircle2, XCircle, Clock, RefreshCw, AlertTriangle, MessageSquare } from 'lucide-react'
 import { api, invalidateCache, timeAgo, type ActionItem } from '../api'
 import { Skeleton } from '../components/Skeleton'
 import { Modal } from '../components/Modal'
 
-const STATUS_OPTIONS = [
-  { value: 'pending', label: 'Pending' },
-  { value: 'applied', label: 'Applied' },
-  { value: 'dismissed', label: 'Dismissed' },
-  { value: 'snoozed', label: 'Snoozed' },
-  { value: 'all', label: 'All' },
-]
+const STATUS_KEYS = ['pending', 'applied', 'dismissed', 'snoozed', 'all'] as const
 
-const SOURCE_LABELS: Record<string, { label: string; icon: typeof AlertTriangle }> = {
-  drift_alert: { label: 'Drift alert', icon: AlertTriangle },
-  chat: { label: 'Chat', icon: MessageSquare },
-  autodoc: { label: 'Auto-doc', icon: CheckCircle2 },
-  manual: { label: 'Manual', icon: Clock },
+type ActionSource = 'drift_alert' | 'chat' | 'autodoc' | 'manual'
+const SOURCE_KEYS: ActionSource[] = ['drift_alert', 'chat', 'autodoc', 'manual']
+const SOURCE_ICONS: Record<ActionSource, typeof AlertTriangle> = {
+  drift_alert: AlertTriangle,
+  chat: MessageSquare,
+  autodoc: CheckCircle2,
+  manual: Clock,
 }
 
 export function Actions() {
+  const { t } = useTranslation('actions')
   const navigate = useNavigate()
   const [items, setItems] = useState<ActionItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -48,11 +46,6 @@ export function Actions() {
     load()
   }, [load])
 
-  const sources = useMemo(() => {
-    const seen = new Set(items.map((i) => i.source))
-    return Array.from(seen)
-  }, [items])
-
   async function applyMutation() {
     if (!confirm) return
     setBusy(true)
@@ -72,21 +65,34 @@ export function Actions() {
     }
   }
 
+  const itemsLabel = t('filters.items_count', { count: items.length, defaultValue: `${items.length} items` })
+
+  const renderHistory = (it: ActionItem) => {
+    if (it.status === 'pending') return null
+    if (it.status === 'applied') {
+      const when = it.applied_at ? timeAgo(it.applied_at) : ''
+      const by = it.applied_by ? t('history.by_suffix', { user: it.applied_by }) : ''
+      return t('history.applied', { when, by })
+    }
+    const summarySuffix = it.change_summary ? t('history.summary_suffix', { summary: it.change_summary }) : ''
+    const statusKey = it.status as 'pending' | 'applied' | 'dismissed' | 'snoozed'
+    const statusLabel = t(`filters.status.${statusKey}`)
+    return t('history.other_status', { status: statusLabel, summary: summarySuffix })
+  }
+
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-xl font-semibold">Action Items</h1>
-          <p className="text-sm text-[var(--text-tertiary)] mt-0.5">
-            Recommendations from monitoring, AI, and manual entries — close the loop by applying or dismissing.
-          </p>
+          <h1 className="text-xl font-semibold">{t('page.title')}</h1>
+          <p className="text-sm text-[var(--text-tertiary)] mt-0.5">{t('page.subtitle')}</p>
         </div>
         <button
           onClick={load}
           disabled={loading}
           className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium border border-[var(--border-default)] rounded-lg bg-[var(--bg-primary)] hover:bg-[var(--bg-secondary)] disabled:opacity-50"
         >
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
+          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> {t('actions_buttons.refresh')}
         </button>
       </div>
 
@@ -96,9 +102,9 @@ export function Actions() {
           onChange={(e) => setStatus(e.target.value)}
           className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px]"
         >
-          {STATUS_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
+          {STATUS_KEYS.map((key) => (
+            <option key={key} value={key}>
+              {t(`filters.status.${key}`)}
             </option>
           ))}
         </select>
@@ -107,30 +113,30 @@ export function Actions() {
           onChange={(e) => setSource(e.target.value)}
           className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px]"
         >
-          <option value="">All sources</option>
-          {Object.keys(SOURCE_LABELS).map((s) => (
+          <option value="">{t('filters.all_sources')}</option>
+          {SOURCE_KEYS.map((s) => (
             <option key={s} value={s}>
-              {SOURCE_LABELS[s].label}
+              {t(`sources.${s}`)}
             </option>
           ))}
         </select>
-        <span className="text-[12px] text-[var(--text-tertiary)] ml-auto">
-          {items.length} item{items.length === 1 ? '' : 's'}
-        </span>
+        <span className="text-[12px] text-[var(--text-tertiary)] ml-auto">{itemsLabel}</span>
       </div>
 
       {loading ? (
         <Skeleton className="h-40" />
       ) : items.length === 0 ? (
         <div className="border border-dashed border-[var(--border-default)] rounded-2xl p-12 text-center">
-          <p className="text-sm text-[var(--text-tertiary)]">No action items match these filters.</p>
+          <p className="text-sm text-[var(--text-tertiary)]">{t('empty')}</p>
         </div>
       ) : (
         <div className="grid gap-3">
           {items.map((it) => {
-            const meta = SOURCE_LABELS[it.source] ?? SOURCE_LABELS.manual
-            const Icon = meta.icon
+            const sourceKey = (SOURCE_KEYS as string[]).includes(it.source) ? (it.source as ActionSource) : 'manual'
+            const Icon = SOURCE_ICONS[sourceKey]
+            const sourceLabel = t(`sources.${sourceKey}`)
             const isPending = it.status === 'pending'
+            const historyText = renderHistory(it)
             return (
               <div
                 key={it.id}
@@ -140,7 +146,7 @@ export function Actions() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 text-[12px] text-[var(--text-tertiary)] mb-1">
                       <Icon size={12} />
-                      <span>{meta.label}</span>
+                      <span>{sourceLabel}</span>
                       <span>·</span>
                       <button
                         className="font-mono text-accent hover:underline truncate"
@@ -155,12 +161,8 @@ export function Actions() {
                     <p className="text-[13px] text-[var(--text-secondary)] whitespace-pre-wrap">
                       {it.recommendation}
                     </p>
-                    {it.status !== 'pending' && (
-                      <p className="text-[11px] text-[var(--text-tertiary)] mt-2">
-                        {it.status === 'applied'
-                          ? `Applied ${it.applied_at ? timeAgo(it.applied_at) : ''}${it.applied_by ? ` by ${it.applied_by}` : ''}`
-                          : `${it.status[0].toUpperCase()}${it.status.slice(1)}${it.change_summary ? `: ${it.change_summary}` : ''}`}
-                      </p>
+                    {historyText && (
+                      <p className="text-[11px] text-[var(--text-tertiary)] mt-2">{historyText}</p>
                     )}
                   </div>
                   {isPending && (
@@ -169,13 +171,13 @@ export function Actions() {
                         onClick={() => setConfirm({ item: it, mode: 'applied' })}
                         className="flex items-center gap-1 px-3 py-1.5 text-[12px] font-medium border border-green-500/40 text-green-700 dark:text-green-400 rounded-lg hover:bg-green-500/10"
                       >
-                        <CheckCircle2 size={12} /> Apply
+                        <CheckCircle2 size={12} /> {t('actions_buttons.apply')}
                       </button>
                       <button
                         onClick={() => setConfirm({ item: it, mode: 'dismissed' })}
                         className="flex items-center gap-1 px-3 py-1.5 text-[12px] font-medium border border-[var(--border-default)] rounded-lg hover:bg-[var(--bg-secondary)]"
                       >
-                        <XCircle size={12} /> Dismiss
+                        <XCircle size={12} /> {t('actions_buttons.dismiss')}
                       </button>
                     </div>
                   )}
@@ -192,7 +194,7 @@ export function Actions() {
           setConfirm(null)
           setSummary('')
         }}
-        title={confirm?.mode === 'applied' ? 'Apply action' : 'Dismiss action'}
+        title={confirm?.mode === 'applied' ? t('modal.title_apply') : t('modal.title_dismiss')}
         actions={
           <>
             <button
@@ -202,14 +204,14 @@ export function Actions() {
               }}
               className="px-4 py-2 text-[13px] font-medium border border-[var(--border-default)] rounded-lg"
             >
-              Cancel
+              {t('actions_buttons.cancel')}
             </button>
             <button
               onClick={applyMutation}
               disabled={busy}
               className="px-4 py-2 text-[13px] font-medium bg-accent text-[var(--bg-primary)] rounded-lg disabled:opacity-50"
             >
-              {busy ? 'Saving…' : 'Confirm'}
+              {busy ? t('actions_buttons.saving') : t('actions_buttons.confirm')}
             </button>
           </>
         }
@@ -217,22 +219,22 @@ export function Actions() {
         {confirm && (
           <div className="space-y-3">
             <div className="text-[13px]">
-              <span className="text-[var(--text-tertiary)]">Feature:</span>{' '}
+              <span className="text-[var(--text-tertiary)]">{t('modal.feature_label')}:</span>{' '}
               <span className="font-mono text-accent">{confirm.item.feature_name}</span>
             </div>
             <div className="text-[13px]">
-              <span className="text-[var(--text-tertiary)]">Title:</span> {confirm.item.title}
+              <span className="text-[var(--text-tertiary)]">{t('modal.title_label')}:</span> {confirm.item.title}
             </div>
             <label className="block text-[12px] font-medium text-[var(--text-secondary)]">
-              {confirm.mode === 'applied' ? 'Change summary (what did you do?)' : 'Reason'}
+              {confirm.mode === 'applied' ? t('modal.summary_label_apply') : t('modal.summary_label_dismiss')}
               <textarea
                 rows={3}
                 value={summary}
                 onChange={(e) => setSummary(e.target.value)}
                 placeholder={
                   confirm.mode === 'applied'
-                    ? 'e.g. updated transformation in dbt model X, re-baselined the feature'
-                    : 'e.g. expected drift due to seasonality'
+                    ? t('modal.summary_placeholder_apply')
+                    : t('modal.summary_placeholder_dismiss')
                 }
                 className="mt-1 w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-2 text-[13px]"
               />

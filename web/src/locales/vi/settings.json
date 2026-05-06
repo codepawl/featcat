@@ -19,5 +19,15 @@
       "light": "Sáng",
       "dark": "Tối"
     }
+  },
+  "llm_cache": {
+    "title": "Bộ nhớ đệm phản hồi LLM",
+    "description": "Phản hồi AI đã cache theo prompt + system. Xóa cache sẽ buộc gọi LLM mới ở lần sau.",
+    "total": "Tổng",
+    "active": "Còn hiệu lực",
+    "expired": "Hết hạn",
+    "clear_expired": "Xóa mục hết hạn",
+    "clear_all": "Xóa tất cả",
+    "confirm_clear": "Xóa TOÀN BỘ phản hồi LLM đã cache?"
   }
 }

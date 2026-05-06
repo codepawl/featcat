@@ -130,7 +130,7 @@ function LLMCacheCard() {
   useEffect(() => { load() }, [])
 
   const clear = async () => {
-    if (!window.confirm(t('llm_cache.confirm_clear', { defaultValue: 'Drop ALL cached LLM responses?' }))) return
+    if (!window.confirm(t('llm_cache.confirm_clear', { defaultValue: 'Xóa TOÀN BỘ phản hồi LLM đã cache?' }))) return
     setBusy('clear')
     try {
       await api.admin.cacheClear()

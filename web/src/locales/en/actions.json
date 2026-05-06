@@ -1,0 +1,49 @@
+{
+  "page": {
+    "title": "Action Items",
+    "subtitle": "Recommendations from monitoring, AI, and manual entries — close the loop by applying or dismissing."
+  },
+  "filters": {
+    "status": {
+      "pending": "Pending",
+      "applied": "Applied",
+      "dismissed": "Dismissed",
+      "snoozed": "Snoozed",
+      "all": "All"
+    },
+    "all_sources": "All sources",
+    "items_count_one": "{{count}} item",
+    "items_count_other": "{{count}} items"
+  },
+  "sources": {
+    "drift_alert": "Drift alert",
+    "chat": "Chat",
+    "autodoc": "Auto-doc",
+    "manual": "Manual"
+  },
+  "actions_buttons": {
+    "refresh": "Refresh",
+    "apply": "Apply",
+    "dismiss": "Dismiss",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "saving": "Saving…"
+  },
+  "empty": "No action items match these filters.",
+  "history": {
+    "applied": "Applied {{when}}{{by}}",
+    "by_suffix": " by {{user}}",
+    "other_status": "{{status}}{{summary}}",
+    "summary_suffix": ": {{summary}}"
+  },
+  "modal": {
+    "title_apply": "Apply action",
+    "title_dismiss": "Dismiss action",
+    "feature_label": "Feature",
+    "title_label": "Title",
+    "summary_label_apply": "Change summary (what did you do?)",
+    "summary_label_dismiss": "Reason",
+    "summary_placeholder_apply": "e.g. updated transformation in dbt model X, re-baselined the feature",
+    "summary_placeholder_dismiss": "e.g. expected drift due to seasonality"
+  }
+}

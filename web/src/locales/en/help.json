@@ -1,0 +1,12 @@
+{
+  "page": {
+    "title": "Help & Glossary",
+    "subtitle": "Definitions for every score, severity, and metric you'll see in featcat. Hover any ⓘ icon in the UI to peek at the same content inline."
+  },
+  "toc": {
+    "title": "On this page"
+  },
+  "common": {
+    "formula_label": "Formula"
+  }
+}
