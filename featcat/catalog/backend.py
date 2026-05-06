@@ -217,6 +217,23 @@ class CatalogBackend(ABC):
         del feature_id, top_k
         return []
 
+    # --- Feature lifecycle status (T3.1) ---
+
+    def check_certification_readiness(self, feature_id: str) -> dict:
+        """``{ready: bool, missing: list[str]}``. Default is the no-op stub
+        for backends without persistence; LocalBackend overrides."""
+        del feature_id
+        return {"ready": False, "missing": ["not_implemented"]}
+
+    def set_feature_status(self, feature_id: str, status: str, notes: str | None = None) -> dict:
+        """Transition a feature's lifecycle status. Returns ``{ok, status, missing}``."""
+        del feature_id, status, notes
+        return {"ok": False, "status": "draft", "missing": ["not_implemented"]}
+
+    def list_features_by_status(self, status: str) -> list:
+        del status
+        return []
+
     def search_by_embedding(self, query_vec: list[float], top_k: int = 50) -> list:
         """Return up to ``top_k`` features closest to a given query embedding.
 

@@ -1640,6 +1640,104 @@ class LocalBackend(CatalogBackend):
                 break
         return result
 
+    # --- Feature lifecycle status (T3.1) ---
+
+    VALID_STATUSES = frozenset({"draft", "reviewed", "certified", "deprecated"})
+
+    def get_feature_by_name_or_id(self, key: str) -> Feature | None:
+        """Look up by id, fall back to name. Used by status routes/CLI so
+        callers can use whichever feels natural."""
+        with self.session() as s:
+            row = s.execute(text("SELECT * FROM features WHERE id = :k"), {"k": key}).mappings().first()
+            if row is None:
+                row = s.execute(text("SELECT * FROM features WHERE name = :k"), {"k": key}).mappings().first()
+            return _row_to_feature(row) if row else None
+
+    def check_certification_readiness(self, feature_id: str) -> dict:
+        """Return ``{ready: bool, missing: list[str]}`` for a feature.
+
+        Checklist (per spec): doc + source-link + baseline + owner +
+        (group membership OR explicit ``standalone`` tag). ``standalone`` is
+        recorded in ``feature.tags`` since we don't have a dedicated column.
+        """
+        feat = self.get_feature_by_name_or_id(feature_id)
+        if feat is None:
+            return {"ready": False, "missing": ["feature_not_found"]}
+        missing: list[str] = []
+        doc = self.get_feature_doc(feat.id)
+        if not doc or not (doc.get("short_description") or "").strip():
+            missing.append("documentation")
+        if not feat.data_source_id:
+            missing.append("data_source")
+        if self.get_baseline(feat.id) is None:
+            missing.append("baseline")
+        if not (feat.owner or "").strip():
+            missing.append("owner")
+        with self.session() as s:
+            in_group = s.execute(
+                text("SELECT 1 FROM feature_group_members WHERE feature_id = :id LIMIT 1"),
+                {"id": feat.id},
+            ).first()
+        if not in_group and "standalone" not in (feat.tags or []):
+            missing.append("group_membership_or_standalone")
+        return {"ready": not missing, "missing": missing}
+
+    def set_feature_status(self, feature_id: str, status: str, notes: str | None = None) -> dict:
+        """Transition a feature's lifecycle status.
+
+        Only ``certified`` is gated by the readiness checklist; other
+        transitions are unconditional. Snapshots through ``feature_versions``
+        with ``change_type='status'`` so the audit log captures every transition.
+
+        Returns ``{ok, status, missing}``. ``ok=False`` (with the missing
+        items) when the certified gate fails; the feature's status is
+        unchanged in that case.
+        """
+        if status not in self.VALID_STATUSES:
+            raise ValueError(f"status must be one of {sorted(self.VALID_STATUSES)}, got {status!r}")
+        feat = self.get_feature_by_name_or_id(feature_id)
+        if feat is None:
+            raise ValueError(f"Feature not found: {feature_id}")
+        if status == "certified":
+            readiness = self.check_certification_readiness(feat.id)
+            if not readiness["ready"]:
+                return {"ok": False, "status": feat.status, "missing": readiness["missing"]}
+        old_status = feat.status
+        now = _utcnow()
+        with self.session() as s:
+            s.execute(
+                text(
+                    "UPDATE features SET status = :status, status_changed_at = :now, "
+                    "status_notes = :notes, updated_at = :now WHERE id = :id"
+                ),
+                {"status": status, "now": now, "notes": notes, "id": feat.id},
+            )
+            s.commit()
+        if old_status != status:
+            from .usage import resolve_user
+
+            self._snapshot_feature(
+                feat.id,
+                {"status": (old_status, status)},
+                changed_by=resolve_user(),
+                change_type="status",
+            )
+        return {"ok": True, "status": status, "missing": []}
+
+    def list_features_by_status(self, status: str) -> list[Feature]:
+        if status not in self.VALID_STATUSES:
+            raise ValueError(f"status must be one of {sorted(self.VALID_STATUSES)}, got {status!r}")
+        with self.session() as s:
+            rows = (
+                s.execute(
+                    text("SELECT * FROM features WHERE status = :status ORDER BY name"),
+                    {"status": status},
+                )
+                .mappings()
+                .all()
+            )
+        return [_row_to_feature(r) for r in rows]
+
     # --- In-app notifications (T2.1, in-web only) ---
 
     def create_notification(
@@ -2278,13 +2376,15 @@ class LocalBackend(CatalogBackend):
         clauses: list[str] = []
         params: dict[str, Any] = {"lim": limit, "off": offset}
         if feature_id:
-            clauses.append("feature_id = :fid")
+            clauses.append("a.feature_id = :fid")
             params["fid"] = feature_id
         if status:
-            clauses.append("status = :status")
+            # Qualify with ``a.`` to disambiguate from features.status (T3.1
+            # added a status column to features that collides without prefix).
+            clauses.append("a.status = :status")
             params["status"] = status
         if source:
-            clauses.append("source = :src")
+            clauses.append("a.source = :src")
             params["src"] = source
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         sql = (

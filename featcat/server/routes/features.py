@@ -349,6 +349,54 @@ def rollback_feature_endpoint(name: str = Query(...), body: RollbackRequest = ..
     return result
 
 
+@router.get("/by-name/certification-readiness")
+def get_certification_readiness(
+    name: str = Query(..., description="Feature name (source.column)"),
+    db=Depends(get_db),  # noqa: B008
+) -> dict:
+    """Return ``{ready, missing}`` for a feature (T3.1).
+
+    Certified-ready means: has documentation + data source + at least one
+    monitoring baseline + owner + (group membership OR explicit standalone tag).
+    """
+    feat = db.get_feature_by_name(name)
+    if feat is None:
+        raise HTTPException(status_code=404, detail=f"Feature not found: {name}")
+    return db.check_certification_readiness(feat.id)
+
+
+class StatusChangeRequest(BaseModel):
+    status: str
+    notes: str | None = None
+
+
+@router.post("/by-name/status")
+def set_status_by_name(
+    body: StatusChangeRequest,
+    name: str = Query(..., description="Feature name (source.column)"),
+    db=Depends(get_db),  # noqa: B008
+) -> dict:
+    """Transition a feature's lifecycle status.
+
+    422 with ``{missing}`` when target status is ``certified`` and the
+    readiness gate fails. 400 for an unknown status string. 404 if the
+    feature doesn't exist.
+    """
+    feat = db.get_feature_by_name(name)
+    if feat is None:
+        raise HTTPException(status_code=404, detail=f"Feature not found: {name}")
+    try:
+        result = db.set_feature_status(feat.id, body.status, body.notes)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    if not result["ok"]:
+        raise HTTPException(
+            status_code=422,
+            detail={"message": "Feature is not ready for certification.", "missing": result["missing"]},
+        )
+    return {"name": name, "status": result["status"]}
+
+
 @router.get("/by-name/similar")
 def get_similar_by_name(
     name: str = Query(..., description="Feature name (source.column)"),

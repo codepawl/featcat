@@ -2776,6 +2776,92 @@ def embed(
 
 
 # =========================================================================
+# Feature lifecycle status (T3.1)
+# =========================================================================
+
+
+_status_app = typer.Typer(help="Feature lifecycle status: draft → reviewed → certified → deprecated.")
+app.add_typer(_status_app, name="status")
+
+
+@_status_app.command("show")
+def status_show(name: str = typer.Argument(..., help="Feature name")) -> None:
+    """Show a feature's current status + last-change timestamp + notes."""
+    db = _get_db()
+    feat = db.get_feature_by_name(name)
+    if feat is None:
+        console.print(f"[red]Feature not found:[/red] {name}")
+        raise typer.Exit(1)
+    when = feat.status_changed_at.isoformat() if feat.status_changed_at else "-"
+    console.print(
+        f"[bold]{feat.name}[/bold]  status=[cyan]{feat.status}[/cyan]  changed={when}\n"
+        f"  notes: {feat.status_notes or '[dim]—[/dim]'}"
+    )
+
+
+@_status_app.command("set")
+def status_set(
+    name: str = typer.Argument(...),
+    status: str = typer.Argument(..., help="One of draft, reviewed, certified, deprecated"),
+    notes: str | None = typer.Option(None, "--notes", "-n"),
+) -> None:
+    """Set a feature's status. Certified target gates on the readiness checklist."""
+    db = _get_db()
+    feat = db.get_feature_by_name(name)
+    if feat is None:
+        console.print(f"[red]Feature not found:[/red] {name}")
+        raise typer.Exit(1)
+    try:
+        result = db.set_feature_status(feat.id, status, notes)
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1) from e
+    if not result["ok"]:
+        console.print(f"[yellow]Cannot mark [bold]{name}[/bold] as certified — missing:[/yellow]")
+        for m in result["missing"]:
+            console.print(f"  • {m}")
+        raise typer.Exit(2)
+    console.print(f"[green]{name} → {result['status']}[/green]")
+
+
+@_status_app.command("check")
+def status_check(name: str = typer.Argument(...)) -> None:
+    """Check whether a feature meets the certification checklist."""
+    db = _get_db()
+    feat = db.get_feature_by_name(name)
+    if feat is None:
+        console.print(f"[red]Feature not found:[/red] {name}")
+        raise typer.Exit(1)
+    readiness = db.check_certification_readiness(feat.id)
+    if readiness["ready"]:
+        console.print(f"[green]{name} is ready for certification.[/green]")
+    else:
+        console.print(f"[yellow]{name} is not ready. Missing:[/yellow]")
+        for m in readiness["missing"]:
+            console.print(f"  • {m}")
+
+
+@_status_app.command("list")
+def status_list(
+    status: str = typer.Option(..., "--status", "-s", help="Filter by status"),
+) -> None:
+    """List features in a given status."""
+    db = _get_db()
+    try:
+        feats = db.list_features_by_status(status)
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1) from e
+    if not feats:
+        console.print(f"[dim]No features in status={status}.[/dim]")
+        return
+    console.print(f"[bold]{len(feats)} feature(s) in status={status}[/bold]")
+    for f in feats:
+        when = f.status_changed_at.isoformat() if f.status_changed_at else "-"
+        console.print(f"  [cyan]{f.name}[/cyan]  changed={when}")
+
+
+# =========================================================================
 # Lineage / impact analysis (T1.1)
 # =========================================================================
 

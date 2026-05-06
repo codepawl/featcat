@@ -74,6 +74,7 @@ class Feature(Base):
         # updated_at index supports ORDER BY updated_at DESC pagination.
         Index("idx_features_dtype", "dtype"),
         Index("idx_features_updated_at", "updated_at"),
+        Index("idx_features_status", "status"),  # T3.1 — filter-by-status pushdown
     )
 
     id: Mapped[str] = mapped_column(Text, primary_key=True)
@@ -97,6 +98,13 @@ class Feature(Base):
     # embeddings yet (or when sentence-transformers isn't installed) work.
     embedding: Mapped[list | None] = mapped_column(Embedding(EMBEDDING_DIM))
     embedding_updated_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    # T3.1 — lifecycle status. Plain label, NOT a permission gate. Transitions
+    # are loose (any → any allowed); the only gate is for ``certified``, which
+    # ``LocalBackend.set_feature_status`` validates against the checklist in
+    # ``check_certification_readiness``.
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="draft", server_default="draft")
+    status_changed_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    status_notes: Mapped[str | None] = mapped_column(Text)
 
 
 class FeatureDoc(Base):
