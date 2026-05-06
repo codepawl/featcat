@@ -35,6 +35,14 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
+from .embedding_type import Embedding
+
+# Embedding dimension — must match the model in featcat/ai/embeddings.py.
+# all-MiniLM-L6-v2 is 384-dim. Changing this requires re-embedding all
+# features (background job ``embedding_refresh`` will detect dimension
+# mismatch and rebuild).
+EMBEDDING_DIM = 384
+
 
 class Base(DeclarativeBase):
     pass
@@ -83,6 +91,12 @@ class Feature(Base):
     definition_type: Mapped[str | None] = mapped_column(Text)
     definition_updated_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
     generation_hints: Mapped[str | None] = mapped_column(Text)
+    # T1.2 — embedding for vector similarity search. ``vector(384)`` on postgres
+    # (HNSW-indexed via Alembic migration), JSON-encoded TEXT on sqlite.
+    # Populated by featcat/ai/embeddings.py; nullable so features without
+    # embeddings yet (or when sentence-transformers isn't installed) work.
+    embedding: Mapped[list | None] = mapped_column(Embedding(EMBEDDING_DIM))
+    embedding_updated_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
 
 
 class FeatureDoc(Base):
