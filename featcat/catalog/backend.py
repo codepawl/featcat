@@ -174,6 +174,17 @@ class CatalogBackend(ABC):
         del source_name, column, max_depth
         return []
 
+    def find_similar_features(self, feature_id: str, top_k: int = 10) -> list:
+        """Return up to ``top_k`` features most similar to ``feature_id``.
+
+        Each item: ``{id, name, dtype, similarity}`` (cosine in [0, 1]).
+        Default returns empty so backends without the similarity surface
+        still satisfy the interface; LocalBackend overrides with
+        pgvector + TF-IDF fallback.
+        """
+        del feature_id, top_k
+        return []
+
     # --- Stats ---
 
     @abstractmethod
