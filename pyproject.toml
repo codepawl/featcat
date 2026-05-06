@@ -36,13 +36,18 @@ dependencies = [
     "alembic>=1.13",
     "psycopg2-binary>=2.9",
     "cachetools>=5.3",
+    "pgvector>=0.3",
 ]
 
 [project.optional-dependencies]
 tui = ["textual>=0.50"]
 s3 = ["s3fs>=2024.0"]
 server = ["fastapi>=0.110", "uvicorn[standard]>=0.27", "sse-starlette>=1.6", "apscheduler>=3.10"]
-all = ["featcat[tui,s3,server]"]
+# T1.2 — sentence-transformers is heavy (pulls torch ~1GB). Keeping it in an
+# optional extra so default installs stay lean. Feature embedding + similarity
+# search degrade to the existing TF-IDF path when this isn't installed.
+embeddings = ["sentence-transformers>=2.2"]
+all = ["featcat[tui,s3,server,embeddings]"]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",

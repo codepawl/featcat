@@ -2712,6 +2712,70 @@ def _set_action_status(item_id: str, status: str, summary: str, user: str) -> No
 
 
 # =========================================================================
+# Embeddings (T1.2)
+# =========================================================================
+
+
+@app.command()
+def embed(
+    all_: bool = typer.Option(False, "--all", help="Re-embed every feature, including ones already embedded"),
+    feature: str | None = typer.Option(None, "--feature", help="Embed only this feature (by name)"),
+) -> None:
+    """Generate vector embeddings for features (T1.2).
+
+    Default: embed only features missing an embedding or whose ``updated_at``
+    is newer than ``embedding_updated_at``. ``--all`` forces a full re-embed;
+    ``--feature NAME`` targets a single one.
+
+    Requires ``sentence-transformers`` — install with::
+
+        uv pip install -e '.[embeddings]'
+    """
+    from .ai.embeddings import (
+        embeddings_available,
+        update_feature_embedding,
+        update_missing_embeddings,
+    )
+
+    if not embeddings_available():
+        console.print(
+            "[red]sentence-transformers is not installed.[/red] Run: [cyan]uv pip install -e '.[embeddings]'[/cyan]"
+        )
+        raise typer.Exit(1)
+
+    db = _get_db()
+
+    if feature:
+        f = db.get_feature_by_name(feature)
+        if f is None:
+            console.print(f"[red]Feature not found:[/red] {feature}")
+            raise typer.Exit(1)
+        console.print(f"Embedding [cyan]{feature}[/cyan]...")
+        update_feature_embedding(db, f)
+        console.print("[green]Done.[/green]")
+        return
+
+    if all_:
+        # Force re-embed: clear all embeddings so the "stale" check fires for every row.
+        from sqlalchemy import text as _text
+
+        with db.session() as s:
+            s.execute(_text("UPDATE features SET embedding = NULL"))
+            s.commit()
+        console.print("[dim]Cleared all embeddings; re-embedding...[/dim]")
+
+    import time
+
+    start = time.monotonic()
+    result = update_missing_embeddings(db, batch_size=32)
+    elapsed = time.monotonic() - start
+    console.print(
+        f"[green]Embedded[/green] {result['embedded']} feature(s) "
+        f"([dim]{result['failed']} failed[/dim]) in {elapsed:.1f}s"
+    )
+
+
+# =========================================================================
 # Lineage / impact analysis (T1.1)
 # =========================================================================
 
