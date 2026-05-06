@@ -69,3 +69,6 @@ featcat/server/static/
 .openpawl/
 CLAUDE.local.md
 site/
+
+# Local Claude Code agent scratchpads (planning notes, not source)
+.claude/
