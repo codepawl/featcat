@@ -242,25 +242,129 @@ class LocalBackend(CatalogBackend):
 
         return feature
 
-    def list_features(self, source_name: str | None = None) -> list[Feature]:
+    # Allowlist for sort + order — guards against SQL injection on the f-string
+    # below (the values come from query params).
+    _SORT_COLUMNS = frozenset({"name", "created_at", "updated_at", "dtype"})
+    _SORT_ORDERS = frozenset({"asc", "desc"})
+
+    def _features_filter_clauses(
+        self,
+        *,
+        source_name: str | None,
+        dtype: str | None,
+        owner: str | None,
+        tag: str | None,
+        search: str | None,
+        has_doc: bool | None,
+    ) -> tuple[list[str], dict[str, Any]]:
+        """Build WHERE clauses + params shared by list_features and count_features."""
+        clauses: list[str] = []
+        params: dict[str, Any] = {}
+        join_sources = source_name is not None
+        if source_name:
+            clauses.append("ds.name = :source_name")
+            params["source_name"] = source_name
+        if dtype:
+            clauses.append("f.dtype = :dtype")
+            params["dtype"] = dtype
+        if owner:
+            clauses.append("f.owner = :owner")
+            params["owner"] = owner
+        if tag:
+            clauses.append("f.tags LIKE :tag_pattern")
+            params["tag_pattern"] = f'%"{tag}"%'
+        if search:
+            clauses.append(
+                "(f.name LIKE :search OR f.description LIKE :search "
+                "OR f.tags LIKE :search OR f.column_name LIKE :search)"
+            )
+            params["search"] = f"%{search}%"
+        if has_doc is True:
+            clauses.append(
+                "EXISTS (SELECT 1 FROM feature_docs fd WHERE fd.feature_id = f.id "
+                "AND fd.short_description IS NOT NULL AND fd.short_description != '')"
+            )
+        elif has_doc is False:
+            clauses.append(
+                "NOT EXISTS (SELECT 1 FROM feature_docs fd WHERE fd.feature_id = f.id "
+                "AND fd.short_description IS NOT NULL AND fd.short_description != '')"
+            )
+        # Always join data_sources when source_name filter is in play; otherwise
+        # the FROM clause stays single-table for the query planner.
+        params["_join_sources"] = join_sources  # signal to caller (popped before binding)
+        return clauses, params
+
+    def list_features(
+        self,
+        source_name: str | None = None,
+        *,
+        dtype: str | None = None,
+        owner: str | None = None,
+        tag: str | None = None,
+        search: str | None = None,
+        has_doc: bool | None = None,
+        sort: str = "name",
+        order: str = "asc",
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[Feature]:
+        """Return features matching the given filters with optional pagination.
+
+        Backward-compat: called with no kwargs, returns the full sorted list as
+        before. ``limit=None`` means "no LIMIT" — caller handles pagination by
+        passing ``limit=N, offset=M``.
+
+        ``sort`` / ``order`` are validated against the allowlist defined above
+        and interpolated as identifiers; do NOT pass user-supplied values
+        directly through other paths.
+        """
+        if sort not in self._SORT_COLUMNS:
+            raise ValueError(f"sort must be one of {sorted(self._SORT_COLUMNS)}, got {sort!r}")
+        if order not in self._SORT_ORDERS:
+            raise ValueError(f"order must be one of {sorted(self._SORT_ORDERS)}, got {order!r}")
+        clauses, params = self._features_filter_clauses(
+            source_name=source_name, dtype=dtype, owner=owner, tag=tag, search=search, has_doc=has_doc
+        )
+        join_sources = params.pop("_join_sources")
+        join_clause = "JOIN data_sources ds ON f.data_source_id = ds.id" if join_sources else ""
+        where_clause = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        limit_clause = ""
+        if limit is not None:
+            limit_clause = "LIMIT :limit OFFSET :offset"
+            params["limit"] = int(limit)
+            params["offset"] = int(offset)
+        sql = (
+            f"SELECT f.* FROM features f {join_clause} {where_clause} "  # noqa: S608
+            f"ORDER BY f.{sort} {order.upper()} {limit_clause}"
+        )
         with self.session() as s:
-            if source_name:
-                rows = (
-                    s.execute(
-                        text(
-                            "SELECT f.* FROM features f "
-                            "JOIN data_sources ds ON f.data_source_id = ds.id "
-                            "WHERE ds.name = :name "
-                            "ORDER BY f.name"
-                        ),
-                        {"name": source_name},
-                    )
-                    .mappings()
-                    .all()
-                )
-            else:
-                rows = s.execute(text("SELECT * FROM features ORDER BY name")).mappings().all()
+            rows = s.execute(text(sql), params).mappings().all()
             return [_row_to_feature(r) for r in rows]
+
+    def count_features(
+        self,
+        source_name: str | None = None,
+        *,
+        dtype: str | None = None,
+        owner: str | None = None,
+        tag: str | None = None,
+        search: str | None = None,
+        has_doc: bool | None = None,
+    ) -> int:
+        """Count features matching the same filters as ``list_features``.
+
+        Used by paginated endpoints to populate the ``total`` envelope field
+        without round-tripping the full result set.
+        """
+        clauses, params = self._features_filter_clauses(
+            source_name=source_name, dtype=dtype, owner=owner, tag=tag, search=search, has_doc=has_doc
+        )
+        join_sources = params.pop("_join_sources")
+        join_clause = "JOIN data_sources ds ON f.data_source_id = ds.id" if join_sources else ""
+        where_clause = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        sql = f"SELECT COUNT(*) FROM features f {join_clause} {where_clause}"  # noqa: S608
+        with self.session() as s:
+            return int(s.execute(text(sql), params).scalar() or 0)
 
     def get_feature_by_name(self, name: str) -> Feature | None:
         with self.session() as s:

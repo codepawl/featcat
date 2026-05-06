@@ -44,8 +44,53 @@ class CatalogBackend(ABC):
         """Insert or update a feature (keyed on data_source_id + column_name)."""
 
     @abstractmethod
-    def list_features(self, source_name: str | None = None) -> list:
-        """Return features, optionally filtered by source name."""
+    def list_features(
+        self,
+        source_name: str | None = None,
+        *,
+        dtype: str | None = None,
+        owner: str | None = None,
+        tag: str | None = None,
+        search: str | None = None,
+        has_doc: bool | None = None,
+        sort: str = "name",
+        order: str = "asc",
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list:
+        """Return features matching filters, with optional server-side pagination.
+
+        Calling with no args (or only ``source_name``) preserves the legacy
+        full-list behaviour. Passing ``limit`` opts into pagination.
+        """
+
+    def count_features(
+        self,
+        source_name: str | None = None,
+        *,
+        dtype: str | None = None,
+        owner: str | None = None,
+        tag: str | None = None,
+        search: str | None = None,
+        has_doc: bool | None = None,
+    ) -> int:
+        """Count features matching the same filters as ``list_features``.
+
+        Default implementation falls back to ``len(list_features(...))`` so
+        backends without a dedicated count path (RemoteBackend) still satisfy
+        the interface — at the cost of fetching the full set, which is fine
+        for the small remote-mode usage.
+        """
+        return len(
+            self.list_features(
+                source_name,
+                dtype=dtype,
+                owner=owner,
+                tag=tag,
+                search=search,
+                has_doc=has_doc,
+            )
+        )
 
     @abstractmethod
     def get_feature_by_name(self, name: str) -> Any | None:

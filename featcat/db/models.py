@@ -61,6 +61,11 @@ class Feature(Base):
         Index("idx_features_source", "data_source_id"),
         Index("idx_features_name", "name"),
         Index("idx_features_created_at", "created_at"),
+        # Added in T1.4a — used by paginated /api/features filters and default
+        # sort orders. The dtype index helps the WHERE f.dtype = X filter; the
+        # updated_at index supports ORDER BY updated_at DESC pagination.
+        Index("idx_features_dtype", "dtype"),
+        Index("idx_features_updated_at", "updated_at"),
     )
 
     id: Mapped[str] = mapped_column(Text, primary_key=True)

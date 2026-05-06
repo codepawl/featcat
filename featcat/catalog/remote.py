@@ -60,11 +60,41 @@ class RemoteBackend(CatalogBackend):
         # upsert is handled server-side via scan; for individual features, PATCH is used
         return feature
 
-    def list_features(self, source_name: str | None = None) -> list:
-        params = {}
+    def list_features(
+        self,
+        source_name: str | None = None,
+        *,
+        dtype: str | None = None,
+        owner: str | None = None,
+        tag: str | None = None,
+        search: str | None = None,
+        has_doc: bool | None = None,
+        sort: str = "name",
+        order: str = "asc",
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list:
+        params: dict[str, Any] = {"sort": sort, "order": order}
         if source_name:
             params["source"] = source_name
+        if dtype:
+            params["dtype"] = dtype
+        if owner:
+            params["owner"] = owner
+        if tag:
+            params["tag"] = tag
+        if search:
+            params["search"] = search
+        if has_doc is not None:
+            params["has_doc"] = "true" if has_doc else "false"
+        if limit is not None:
+            params["limit"] = limit
+            params["offset"] = offset
         result = self._request("GET", "/api/features", params=params)
+        # Server returns either a list (no limit) or {items, total, ...}
+        # envelope (limit set) — unwrap so callers get a list either way.
+        if isinstance(result, dict) and "items" in result:
+            return [Feature.model_validate(f) for f in result["items"]]
         return [Feature.model_validate(f) for f in result]
 
     def get_feature_by_name(self, name: str) -> Any | None:

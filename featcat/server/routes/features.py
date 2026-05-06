@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -103,10 +104,37 @@ def list_features(
     tag: str | None = None,
     sort: str = Query("name", pattern="^(name|health|created_at|updated_at)$"),
     order: str = Query("asc", pattern="^(asc|desc)$"),
+    limit: int | None = Query(None, ge=1, le=500),
+    offset: int = Query(0, ge=0),
     db=Depends(get_db),  # noqa: B008
 ):
-    """List features with filters, sorting, and TF-IDF ranked search."""
+    """List features with filters, sorting, and TF-IDF ranked search.
+
+    Backward-compat envelope:
+    - No ``?limit`` → returns the full list (current behavior). ``health_grade``
+      and ``drift_status`` work in this mode because filtering happens
+      in-memory after enrichment.
+    - ``?limit=N`` (1..500) → returns ``{items, total, limit, offset}`` with
+      filters pushed down to SQL. ``health_grade`` and ``drift_status`` are
+      ignored in paginated mode (they require full-set enrichment before
+      filter; document via 400 if/when needed). Use unpaginated mode for those.
+    """
     from ...catalog.search import highlight_matches, search_features
+
+    if limit is not None:
+        return _list_features_paginated(
+            db=db,
+            source=source,
+            search=search,
+            dtype=dtype,
+            has_doc=has_doc,
+            owner=owner,
+            tag=tag,
+            sort=sort if sort != "health" else "name",  # health sort needs enrichment; fall back
+            order=order,
+            limit=limit,
+            offset=offset,
+        )
 
     features = db.list_features(source_name=source)
     all_docs, drift_map, usage_map = _bulk_health_data(db)
@@ -166,6 +194,58 @@ def list_features(
             d["search_score"] = search_scores[d["name"]]
 
     return enriched
+
+
+def _list_features_paginated(
+    *,
+    db: Any,
+    source: str | None,
+    search: str | None,
+    dtype: str | None,
+    has_doc: bool | None,
+    owner: str | None,
+    tag: str | None,
+    sort: str,
+    order: str,
+    limit: int,
+    offset: int,
+) -> dict[str, Any]:
+    """Paginated path — pushes filters to SQL and enriches only the page slice.
+
+    For 5000+-feature catalogs, this avoids the O(N) full-list load that the
+    legacy in-memory path does. Health/drift enrichment runs on the returned
+    rows only (≤ ``limit``).
+    """
+    items_features = db.list_features(
+        source_name=source,
+        dtype=dtype,
+        owner=owner,
+        tag=tag,
+        search=search,
+        has_doc=has_doc,
+        sort=sort,
+        order=order,
+        limit=limit,
+        offset=offset,
+    )
+    total = db.count_features(
+        source_name=source,
+        dtype=dtype,
+        owner=owner,
+        tag=tag,
+        search=search,
+        has_doc=has_doc,
+    )
+    all_docs, drift_map, usage_map = _bulk_health_data(db)
+    items: list[dict] = []
+    for f in items_features:
+        d = f.model_dump(mode="json")
+        d["has_doc"] = f.id in all_docs
+        doc = all_docs.get(f.id)
+        d["short_description"] = doc.get("short_description", "") if doc else ""
+        _enrich_with_health(d, f.id, all_docs, drift_map, usage_map)
+        items.append(d)
+    return {"items": items, "total": total, "limit": limit, "offset": offset}
 
 
 @router.get("/health-summary")
