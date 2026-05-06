@@ -19,5 +19,15 @@
       "light": "Light",
       "dark": "Dark"
     }
+  },
+  "llm_cache": {
+    "title": "LLM Response Cache",
+    "description": "Cached AI responses keyed by prompt + system. Clearing forces a fresh LLM call next time.",
+    "total": "Total",
+    "active": "Active",
+    "expired": "Expired",
+    "clear_expired": "Clear expired",
+    "clear_all": "Clear all",
+    "confirm_clear": "Drop ALL cached LLM responses?"
   }
 }

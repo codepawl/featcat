@@ -1,0 +1,67 @@
+{
+  "terms": {
+    "health_score": {
+      "label": "Điểm sức khỏe",
+      "description": "Điểm tổng hợp 0–100 phản ánh mức độ feature được lập tài liệu, được sử dụng và hoạt động ổn định. Càng cao càng tốt.",
+      "intro": "Kết hợp tài liệu, drift, sử dụng và hint thành một con số duy nhất.",
+      "thresholds": {
+        "A": "Xuất sắc",
+        "B": "Tốt",
+        "C": "Cần chú ý",
+        "D": "Kém"
+      }
+    },
+    "health_grade": {
+      "label": "Hạng sức khỏe",
+      "description": "Xếp loại chữ cái suy ra từ điểm sức khỏe.",
+      "values": {
+        "A": "điểm ≥ 90 — đầy đủ tài liệu, ổn định, được dùng gần đây",
+        "B": "điểm 75–89 — còn vài chỗ thiếu nhỏ",
+        "C": "điểm 60–74 — cần chú ý sớm",
+        "D": "điểm < 60 — kém, nhiều khả năng thiếu tài liệu hoặc đang drift"
+      }
+    },
+    "psi": {
+      "label": "Chỉ số ổn định phân phối (PSI)",
+      "description": "Đo độ dịch chuyển phân phối giữa baseline và dữ liệu hiện tại. PSI càng cao ⇒ drift càng lớn.",
+      "intro": "Chỉ số chuẩn ngành dùng để phát hiện drift phân phối.",
+      "thresholds": {
+        "stable": "ổn định",
+        "moderate": "drift trung bình",
+        "significant": "drift đáng kể"
+      }
+    },
+    "drift_severity": {
+      "label": "Mức độ drift",
+      "description": "Mức độ nghiêm trọng được gán cho mỗi lần kiểm tra giám sát.",
+      "values": {
+        "healthy": "không phát hiện drift đáng kể",
+        "warning": "PSI drift trung bình, tăng đột biến null, hoặc vi phạm khoảng giá trị",
+        "critical": "PSI drift lớn, nhiều bất thường, hoặc lỗi cứng",
+        "unknown": "không có baseline / chưa có lần kiểm tra gần đây"
+      }
+    },
+    "completeness": {
+      "label": "Độ hoàn chỉnh",
+      "description": "Tỉ lệ giá trị không null trong cửa sổ dữ liệu hiện tại so với baseline. Dùng để phát hiện tăng đột biến null."
+    },
+    "quality_score": {
+      "label": "Điểm chất lượng",
+      "description": "Tín hiệu lúc discovery về độ đầy đủ metadata (đặt tên, dtype, sample stats). Điều khiển xếp hạng của plugin Discovery.",
+      "intro": "Tín hiệu lúc discovery về độ đầy đủ metadata."
+    },
+    "monitoring_status": {
+      "label": "Trạng thái giám sát",
+      "description": "Trạng thái tổng hợp qua các lần giám sát gần đây của một feature hay group: healthy / warning / critical."
+    },
+    "action_item": {
+      "label": "Mục hành động",
+      "description": "Hành động đề xuất được lưu lại trong catalog. Nguồn: drift_alert (tự động từ giám sát), chat (gợi ý của AI), autodoc (thiếu tài liệu), manual (người dùng tự thêm). Luồng trạng thái: pending → applied / dismissed / snoozed.",
+      "intro": "Cách các đề xuất trở thành kết quả có thể theo dõi được."
+    }
+  },
+  "thresholds_columns": {
+    "bucket": "Khoảng",
+    "meaning": "Ý nghĩa"
+  }
+}

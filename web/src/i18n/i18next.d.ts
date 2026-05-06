@@ -12,6 +12,9 @@ import chat from '../locales/en/chat.json'
 import settings from '../locales/en/settings.json'
 import modals from '../locales/en/modals.json'
 import errors from '../locales/en/errors.json'
+import actions from '../locales/en/actions.json'
+import help from '../locales/en/help.json'
+import glossary from '../locales/en/glossary.json'
 
 declare module 'i18next' {
   interface CustomTypeOptions {
@@ -30,6 +33,9 @@ declare module 'i18next' {
       settings: typeof settings
       modals: typeof modals
       errors: typeof errors
+      actions: typeof actions
+      help: typeof help
+      glossary: typeof glossary
     }
   }
 }

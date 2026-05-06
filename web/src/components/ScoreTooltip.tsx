@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Info } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useGlossary } from '../hooks/useGlossary'
@@ -13,6 +14,7 @@ interface Props {
 }
 
 export function ScoreTooltip({ name, children, iconOnly }: Props) {
+  const { t } = useTranslation('common')
   const glossary = useGlossary()
   const term = glossary[name]
   const [open, setOpen] = useState(false)
@@ -31,7 +33,7 @@ export function ScoreTooltip({ name, children, iconOnly }: Props) {
         onFocus={() => setOpen(true)}
         onBlur={() => setOpen(false)}
         className="text-[var(--text-tertiary)] hover:text-accent transition-colors p-0.5 -m-0.5 rounded cursor-help"
-        aria-label={`Definition of ${term.label}`}
+        aria-label={t('tooltip.definition_of', { label: term.label })}
       >
         <Info size={12} strokeWidth={2} />
       </button>
@@ -69,7 +71,7 @@ export function ScoreTooltip({ name, children, iconOnly }: Props) {
             className="block mt-2 text-[11px] text-accent hover:underline"
             onClick={(e) => e.stopPropagation()}
           >
-            Learn more →
+            {t('tooltip.learn_more')}
           </Link>
         </span>
       )}

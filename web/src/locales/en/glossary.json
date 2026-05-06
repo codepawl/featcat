@@ -1,0 +1,67 @@
+{
+  "terms": {
+    "health_score": {
+      "label": "Health Score",
+      "description": "0–100 composite score reflecting how well a feature is documented, used, and behaving. Higher is better.",
+      "intro": "Combines docs, drift, usage, and hints into one number.",
+      "thresholds": {
+        "A": "Excellent",
+        "B": "Good",
+        "C": "Needs attention",
+        "D": "Poor"
+      }
+    },
+    "health_grade": {
+      "label": "Health Grade",
+      "description": "Letter grade derived from health score.",
+      "values": {
+        "A": "score ≥ 90 — fully documented, healthy, used recently",
+        "B": "score 75–89 — minor gaps",
+        "C": "score 60–74 — needs attention soon",
+        "D": "score < 60 — poor, likely undocumented or drifting"
+      }
+    },
+    "psi": {
+      "label": "Population Stability Index (PSI)",
+      "description": "Measures distribution shift between baseline and current data. Higher PSI ⇒ more drift.",
+      "intro": "Industry-standard distribution shift metric used for drift detection.",
+      "thresholds": {
+        "stable": "stable",
+        "moderate": "moderate drift",
+        "significant": "significant drift"
+      }
+    },
+    "drift_severity": {
+      "label": "Drift Severity",
+      "description": "Severity bucket assigned to a monitoring check.",
+      "values": {
+        "healthy": "no significant drift detected",
+        "warning": "moderate PSI drift, null spike, or range violation",
+        "critical": "large PSI drift, multiple anomalies, or a hard failure",
+        "unknown": "no baseline / no recent check available"
+      }
+    },
+    "completeness": {
+      "label": "Completeness",
+      "description": "Share of non-null values in the current data window vs. the baseline. Used to detect null spikes."
+    },
+    "quality_score": {
+      "label": "Quality Score",
+      "description": "Discovery-time signal of metadata richness (naming, dtype, sample stats). Drives the Discovery plugin's ranking.",
+      "intro": "Discovery-time signal of metadata richness."
+    },
+    "monitoring_status": {
+      "label": "Monitoring Status",
+      "description": "Aggregate status across recent monitoring runs for a feature or group: healthy / warning / critical."
+    },
+    "action_item": {
+      "label": "Action Item",
+      "description": "Recommended action persisted in the catalog. Sources: drift_alert (auto from monitoring), chat (AI suggestion), autodoc (doc gap), manual (user-added). Status flow: pending → applied / dismissed / snoozed.",
+      "intro": "How recommendations turn into trackable outcomes."
+    }
+  },
+  "thresholds_columns": {
+    "bucket": "Bucket",
+    "meaning": "Meaning"
+  }
+}

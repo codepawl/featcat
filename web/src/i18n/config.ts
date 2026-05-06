@@ -15,6 +15,9 @@ import viChat from '../locales/vi/chat.json'
 import viSettings from '../locales/vi/settings.json'
 import viModals from '../locales/vi/modals.json'
 import viErrors from '../locales/vi/errors.json'
+import viActions from '../locales/vi/actions.json'
+import viHelp from '../locales/vi/help.json'
+import viGlossary from '../locales/vi/glossary.json'
 
 import enCommon from '../locales/en/common.json'
 import enSidebar from '../locales/en/sidebar.json'
@@ -29,6 +32,9 @@ import enChat from '../locales/en/chat.json'
 import enSettings from '../locales/en/settings.json'
 import enModals from '../locales/en/modals.json'
 import enErrors from '../locales/en/errors.json'
+import enActions from '../locales/en/actions.json'
+import enHelp from '../locales/en/help.json'
+import enGlossary from '../locales/en/glossary.json'
 
 export const SUPPORTED_LANGS = ['vi', 'en'] as const
 export type SupportedLang = typeof SUPPORTED_LANGS[number]
@@ -53,6 +59,9 @@ const resources = {
     settings: viSettings,
     modals: viModals,
     errors: viErrors,
+    actions: viActions,
+    help: viHelp,
+    glossary: viGlossary,
   },
   en: {
     common: enCommon,
@@ -68,6 +77,9 @@ const resources = {
     settings: enSettings,
     modals: enModals,
     errors: enErrors,
+    actions: enActions,
+    help: enHelp,
+    glossary: enGlossary,
   },
 }
 
