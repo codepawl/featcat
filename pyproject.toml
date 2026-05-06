@@ -47,7 +47,11 @@ server = ["fastapi>=0.110", "uvicorn[standard]>=0.27", "sse-starlette>=1.6", "ap
 # optional extra so default installs stay lean. Feature embedding + similarity
 # search degrade to the existing TF-IDF path when this isn't installed.
 embeddings = ["sentence-transformers>=2.2"]
-all = ["featcat[tui,s3,server,embeddings]"]
+# T1.5 — Celery + Redis broker + Flower (web UI for queue inspection).
+# Operators install on the worker / beat / flower nodes; the API server
+# itself doesn't need them unless it enqueues tasks (T1.5c+).
+tasks = ["celery[redis]>=5.3", "redis>=5.0", "flower>=2.0"]
+all = ["featcat[tui,s3,server,embeddings,tasks]"]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
