@@ -124,6 +124,28 @@ export const api = {
       request<any>(`/groups/${encodeURIComponent(name)}/members`, { method: 'POST', body: JSON.stringify({ feature_specs: specs }) }),
     removeMember: (name: string, spec: string) =>
       request<any>(`/groups/${encodeURIComponent(name)}/members?spec=${encodeURIComponent(spec)}`, { method: 'DELETE' }),
+    health: (name: string) => cachedRequest<{
+      group: string
+      member_count: number
+      average_score: number
+      grade_distribution: Record<string, number>
+      members: { spec: string; score: number; grade: string; drift_status: string; has_doc: boolean }[]
+      lowest_scored: { spec: string; score: number; grade: string }[]
+    }>(`/groups/${encodeURIComponent(name)}/health`),
+    monitoring: (name: string) => cachedRequest<{
+      group: string
+      member_count: number
+      severity_counts: Record<string, number>
+      psi_average: number | null
+      members_with_drift: { spec: string; severity: string; psi: number | null; checked_at: string | null }[]
+      members: { spec: string; severity: string; psi: number | null; checked_at: string | null }[]
+      last_check_at: string | null
+    }>(`/groups/${encodeURIComponent(name)}/monitoring`),
+    regenerateDocs: (name: string, opts: { regenerate_existing?: boolean; global_hint?: string | null } = {}) =>
+      request<{ job_id: string; total: number; group: string }>(
+        `/groups/${encodeURIComponent(name)}/regenerate-docs`,
+        { method: 'POST', body: JSON.stringify({ regenerate_existing: opts.regenerate_existing ?? false, global_hint: opts.global_hint ?? null }) }
+      ),
   },
   definitions: {
     get: (name: string) => cachedRequest<any>(`/features/by-name/definition?name=${encodeURIComponent(name)}`),

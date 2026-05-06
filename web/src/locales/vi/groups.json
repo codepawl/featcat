@@ -45,5 +45,39 @@
     "title": "Thêm Feature vào {{group}}"
   },
   "export_title": "{{name}} ({{count}} Feature)",
-  "confirm_delete": "Xóa nhóm \"{{name}}\"?"
+  "confirm_delete": "Xóa nhóm \"{{name}}\"?",
+  "tabs": {
+    "members": "Thành viên",
+    "health": "Sức khỏe",
+    "monitoring": "Giám sát",
+    "docs": "Tài liệu"
+  },
+  "health": {
+    "empty": "Chưa có thành viên để đánh giá",
+    "average": "Điểm trung bình",
+    "distribution": "Phân bố hạng",
+    "lowest": "Thành viên điểm thấp nhất",
+    "all_healthy": "Tất cả thành viên đều khỏe",
+    "refresh": "Làm mới"
+  },
+  "monitoring": {
+    "empty": "Không có thành viên",
+    "severity": "Phân bố mức độ nghiêm trọng",
+    "psi_avg": "PSI trung bình",
+    "last_check": "Kiểm tra gần nhất",
+    "with_drift": "Thành viên đang drift",
+    "no_drift": "Không có thành viên drift"
+  },
+  "docs": {
+    "empty": "Hãy thêm thành viên trước khi tạo lại tài liệu",
+    "help": "Sinh tài liệu AI cho mọi thành viên trong nhóm. Bỏ qua các tài liệu đã có trừ khi bật regenerate.",
+    "regenerate_label": "Tạo lại tài liệu đã có",
+    "regenerate_hint": "Ghi đè tài liệu của các thành viên đã có sẵn.",
+    "hint_label": "Hint chung (tùy chọn)",
+    "hint_placeholder": "ví dụ: các feature mô tả sự kiện thanh toán",
+    "start": "Tạo lại tài liệu",
+    "running": "Đang chạy…",
+    "status": "Trạng thái",
+    "failed_count": "{{count}} lỗi"
+  }
 }
