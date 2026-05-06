@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from ...catalog.models import DataSource
 from ...catalog.scanner import scan_source
+from ..cache import cache_get, cache_set, invalidate
 from ..deps import get_db
 
 router = APIRouter()
@@ -28,14 +29,22 @@ def add_source(body: SourceCreate, db=Depends(get_db)):
         db.add_source(source)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+    # Source list + dashboard counters change — drop their cache entries.
+    invalidate(prefix="sources:")
+    invalidate(prefix="dashboard:")
     return source.model_dump(mode="json")
 
 
 @router.get("")
 def list_sources(db=Depends(get_db)):
-    """List all registered data sources."""
+    """List all registered data sources. Cached in-process for 600s."""
+    cached = cache_get("sources:list")
+    if cached is not None:
+        return cached
     sources = db.list_sources()
-    return [s.model_dump(mode="json") for s in sources]
+    payload = [s.model_dump(mode="json") for s in sources]
+    cache_set("sources:list", payload)
+    return payload
 
 
 @router.get("/{name}")
@@ -83,5 +92,7 @@ def delete_source(name: str, db=Depends(get_db)):
     source = db.get_source_by_name(name)
     if source is None:
         raise HTTPException(status_code=404, detail=f"Source not found: {name}")
+    invalidate(prefix="sources:")
+    invalidate(prefix="dashboard:")
     # LocalBackend doesn't have delete_source yet, so we return a simple message
     return {"deleted": name}
