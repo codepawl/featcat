@@ -9,6 +9,7 @@ import { MetricCard } from '../components/MetricCard'
 import { Badge } from '../components/Badge'
 import { Modal } from '../components/Modal'
 import { Skeleton } from '../components/Skeleton'
+import { ScoreTooltip } from '../components/ScoreTooltip'
 import { PsiTimeline } from '../components/charts/PsiTimeline'
 import { DistributionShift } from '../components/charts/DistributionShift'
 
@@ -157,9 +158,19 @@ export function Monitoring() {
               <table className="w-full text-[13px]">
                 <thead><tr className="text-xs text-[var(--text-tertiary)] border-b border-[var(--border-default)]">
                   <th className="text-left py-2 font-medium">{t('drift_table.columns.feature')}</th>
-                  <th className="text-left py-2 font-medium">{t('drift_table.columns.severity')}</th>
+                  <th className="text-left py-2 font-medium">
+                    <span className="inline-flex items-center gap-1">
+                      {t('drift_table.columns.severity')}
+                      <ScoreTooltip name="drift_severity" iconOnly />
+                    </span>
+                  </th>
                   <th className="text-left py-2 font-medium">{t('drift_table.columns.issue')}</th>
-                  <th className="text-right py-2 font-medium">{t('drift_table.columns.psi')}</th>
+                  <th className="text-right py-2 font-medium">
+                    <span className="inline-flex items-center gap-1">
+                      {t('drift_table.columns.psi')}
+                      <ScoreTooltip name="psi" iconOnly />
+                    </span>
+                  </th>
                 </tr></thead>
                 <tbody>
                   {sorted.map((d, i: number) => (

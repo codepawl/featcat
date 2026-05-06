@@ -73,6 +73,7 @@ export const api = {
   docs: {
     get: (name: string) => cachedRequest<Record<string, unknown>>(`/docs/by-name?name=${encodeURIComponent(name)}`),
     stats: () => cachedRequest<Record<string, unknown>>('/docs/stats'),
+    glossary: () => cachedRequest<{ terms: Record<string, GlossaryTerm> }>('/docs/glossary'),
     generate: (data: Record<string, unknown>) => request<Record<string, unknown>>('/docs/generate', { method: 'POST', body: JSON.stringify(data) }),
     generateBatch: (data: { feature_specs: string[]; regenerate_existing: boolean; global_hint: string | null }) =>
       request<{ job_id: string; total: number }>('/docs/generate-batch', { method: 'POST', body: JSON.stringify(data) }),
@@ -223,6 +224,14 @@ export const api = {
         body: JSON.stringify(data),
       }),
   },
+}
+
+export type GlossaryTerm = {
+  label: string
+  description: string
+  formula?: string
+  thresholds?: { grade?: string; min?: number; range?: string; severity?: string; meaning?: string; label?: string }[]
+  values?: Record<string, string>
 }
 
 export type ActionItem = {

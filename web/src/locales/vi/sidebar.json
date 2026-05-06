@@ -9,7 +9,8 @@
     "actions": "Hành động",
     "jobs": "Tác vụ",
     "chat": "AI Chat",
-    "settings": "Cài đặt"
+    "settings": "Cài đặt",
+    "help": "Trợ giúp"
   },
   "status": {
     "server": "Server",

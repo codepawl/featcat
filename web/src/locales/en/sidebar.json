@@ -9,7 +9,8 @@
     "actions": "Actions",
     "jobs": "Jobs",
     "chat": "AI Chat",
-    "settings": "Settings"
+    "settings": "Settings",
+    "help": "Help"
   },
   "status": {
     "server": "Server",
