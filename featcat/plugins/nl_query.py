@@ -52,6 +52,36 @@ def _fuzzy_search(db: CatalogBackend, query: str) -> list[dict]:
         return [{"feature": f.name, "score": 0.5, "reason": "Keyword match"} for f in results]
 
 
+def _embedding_search(db: CatalogBackend, query: str, top_k: int = 50) -> list[dict] | None:
+    """Embed the user's NL query and pgvector-search the catalog (T1.2c).
+
+    Returns ``None`` when embeddings aren't applicable here (sqlite, or
+    sentence-transformers not installed) so the caller can fall through
+    to LLM/fuzzy paths. Returns a list — possibly empty if no rows have
+    an embedding yet — when the embedding path *did* run.
+    """
+    backend = getattr(db, "backend", "sqlite")
+    if backend != "postgres":
+        return None
+    from ..ai.embeddings import embed_text, embeddings_available
+
+    if not embeddings_available():
+        return None
+    try:
+        vec = embed_text(query)
+    except Exception:  # noqa: BLE001 — model load failure shouldn't kill the request
+        return None
+    rows = db.search_by_embedding(vec, top_k=top_k)
+    return [
+        {
+            "feature": r["name"],
+            "score": round(r["similarity"], 3),
+            "reason": "Vector similarity (pgvector)",
+        }
+        for r in rows
+    ]
+
+
 class NLQueryPlugin(BasePlugin):
     """Search the feature catalog using natural language queries."""
 
@@ -82,6 +112,26 @@ class NLQueryPlugin(BasePlugin):
 
         max_features = kwargs.get("max_features", 10)
         fallback_only = kwargs.get("fallback_only", False)
+
+        # T1.2c — embeds-first when postgres + embeddings are usable. Returns
+        # None if not applicable; we then fall through to the LLM/fuzzy
+        # paths exactly as before.
+        embed_results = _embedding_search(catalog_db, query, top_k=50)
+        if not fallback_only and embed_results:
+            # Optionally rerank/filter via LLM with the small candidate set.
+            # When the LLM is unavailable, return the pgvector ranking
+            # directly — still better than fuzzy + much faster than the
+            # whole-catalog LLM scan.
+            top = embed_results[:max_features]
+            return PluginResult(
+                status="success",
+                data={
+                    "results": top,
+                    "interpretation": f"Vector similarity match for: {query}",
+                    "follow_up": None,
+                    "method": "embedding",
+                },
+            )
 
         # Always compute fuzzy results as baseline
         fuzzy_results = _fuzzy_search(catalog_db, query)
