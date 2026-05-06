@@ -48,6 +48,10 @@ class Feature(BaseModel):
     generation_hints: str | None = None
     created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)
+    # T3.1 lifecycle status — plain label, not a permission gate.
+    status: str = "draft"
+    status_changed_at: datetime | None = None
+    status_notes: str | None = None
 
 
 class FeatureDoc(BaseModel):
