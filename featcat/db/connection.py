@@ -16,9 +16,9 @@ for the 4-worker uvicorn deployment without tuning.
 from __future__ import annotations
 
 import os
-from typing import Literal
+from typing import Any, Literal
 
-from sqlalchemy import Engine, create_engine
+from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import QueuePool, StaticPool
 
@@ -80,12 +80,25 @@ def make_engine(backend: Backend | None = None, url: str | None = None, db_path:
     url = url or resolve_url(backend, db_path=db_path)
 
     if backend == "sqlite":
-        return create_engine(
+        engine = create_engine(
             url,
             connect_args={"check_same_thread": False, "timeout": 30.0},
             poolclass=StaticPool,
             future=True,
         )
+
+        # SQLite defaults foreign_keys=OFF per connection. Without this hook,
+        # ON DELETE CASCADE silently no-ops (e.g. deleting a feature_group
+        # would leave orphaned feature_group_members rows). The legacy raw
+        # ``self.conn`` already sets this PRAGMA explicitly; the event
+        # listener gives the engine's pooled connections the same behavior.
+        @event.listens_for(engine, "connect")
+        def _enable_sqlite_fk(dbapi_conn: Any, _record: Any) -> None:
+            cur = dbapi_conn.cursor()
+            cur.execute("PRAGMA foreign_keys=ON")
+            cur.close()
+
+        return engine
 
     # postgres
     return create_engine(

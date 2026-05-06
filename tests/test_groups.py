@@ -101,11 +101,12 @@ class TestFeatureGroups:
         assert db.count_group_members(group.id) == 0
 
     def test_duplicate_name_fails(self, db_with_features: CatalogDB) -> None:
-        import sqlite3
+        from sqlalchemy.exc import IntegrityError
 
         db = db_with_features
         db.create_group(FeatureGroup(name="g1"))
-        with pytest.raises(sqlite3.IntegrityError):
+        # Now SQLAlchemy-wrapped — works on both sqlite and postgres.
+        with pytest.raises(IntegrityError):
             db.create_group(FeatureGroup(name="g1"))
 
     def test_update_group(self, db_with_features: CatalogDB) -> None:
