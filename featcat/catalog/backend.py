@@ -174,6 +174,38 @@ class CatalogBackend(ABC):
         del source_name, column, max_depth
         return []
 
+    def full_text_search(
+        self,
+        query: str,
+        *,
+        source: str | None = None,
+        tag: str | None = None,
+        dtype: str | None = None,
+        has_doc: bool | None = None,
+        limit: int = 50,
+    ) -> list:
+        """Postgres tsvector / sqlite token-scan ranked search (T2.2a).
+
+        Each item: ``{id, name, dtype, source, rank}``. Default empty so
+        backends without the surface satisfy the interface; LocalBackend
+        overrides with the real implementation.
+        """
+        del query, source, tag, dtype, has_doc, limit
+        return []
+
+    def search_facets(
+        self,
+        query: str | None = None,
+        *,
+        source: str | None = None,
+        tag: str | None = None,
+        dtype: str | None = None,
+        has_doc: bool | None = None,
+    ) -> dict:
+        """Facet counts for the search sidebar. Default empty per facet."""
+        del query, source, tag, dtype, has_doc
+        return {"sources": [], "tags": [], "dtypes": [], "has_doc": {"true": 0, "false": 0}}
+
     def find_similar_features(self, feature_id: str, top_k: int = 10) -> list:
         """Return up to ``top_k`` features most similar to ``feature_id``.
 

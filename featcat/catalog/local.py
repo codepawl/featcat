@@ -482,6 +482,209 @@ class LocalBackend(CatalogBackend):
     def update_feature_tags(self, feature_id: str, tags: list[str]) -> None:
         self.update_feature_metadata(feature_id, tags=tags)
 
+    def full_text_search(
+        self,
+        query: str,
+        *,
+        source: str | None = None,
+        tag: str | None = None,
+        dtype: str | None = None,
+        has_doc: bool | None = None,
+        limit: int = 50,
+    ) -> list[dict]:
+        """Postgres tsvector + ranking on postgres; LIKE fallback on sqlite (T2.2a).
+
+        Returns ``[{id, name, dtype, source, rank, snippet}]`` sorted by
+        relevance descending. ``rank`` is ``ts_rank`` value on postgres
+        (higher = better) or a synthetic 0..1 score on sqlite based on
+        how many of the query tokens appear in the searchable text.
+
+        Filters all push down to SQL on both backends.
+        """
+        if not query.strip():
+            return []
+        if self.backend == "postgres":
+            return self._fts_postgres(query, source, tag, dtype, has_doc, limit)
+        return self._fts_sqlite(query, source, tag, dtype, has_doc, limit)
+
+    def _fts_postgres(
+        self,
+        q: str,
+        source: str | None,
+        tag: str | None,
+        dtype: str | None,
+        has_doc: bool | None,
+        limit: int,
+    ) -> list[dict]:
+        clauses = ["f.search_vector @@ plainto_tsquery('simple', :q)"]
+        params: dict[str, Any] = {"q": q, "lim": limit}
+        joins = "JOIN data_sources ds ON f.data_source_id = ds.id"
+        if source:
+            clauses.append("ds.name = :source")
+            params["source"] = source
+        if tag:
+            clauses.append("f.tags LIKE :tagp")
+            params["tagp"] = f'%"{tag}"%'
+        if dtype:
+            clauses.append("f.dtype = :dtype")
+            params["dtype"] = dtype
+        if has_doc is True:
+            clauses.append(
+                "EXISTS (SELECT 1 FROM feature_docs fd WHERE fd.feature_id = f.id "
+                "AND fd.short_description IS NOT NULL AND fd.short_description != '')"
+            )
+        elif has_doc is False:
+            clauses.append(
+                "NOT EXISTS (SELECT 1 FROM feature_docs fd WHERE fd.feature_id = f.id "
+                "AND fd.short_description IS NOT NULL AND fd.short_description != '')"
+            )
+        where = " AND ".join(clauses)
+        sql = (
+            f"SELECT f.id, f.name, f.dtype, ds.name AS source_name, "  # noqa: S608
+            f"       ts_rank(f.search_vector, plainto_tsquery('simple', :q)) AS rank "
+            f"FROM features f {joins} WHERE {where} "
+            f"ORDER BY rank DESC LIMIT :lim"
+        )
+        with self.session() as s:
+            rows = s.execute(text(sql), params).mappings().all()
+        return [
+            {
+                "id": r["id"],
+                "name": r["name"],
+                "dtype": r["dtype"],
+                "source": r["source_name"],
+                "rank": float(r["rank"]),
+            }
+            for r in rows
+        ]
+
+    def _fts_sqlite(
+        self,
+        q: str,
+        source: str | None,
+        tag: str | None,
+        dtype: str | None,
+        has_doc: bool | None,
+        limit: int,
+    ) -> list[dict]:
+        """Sqlite fallback — tokenizes the query and counts matches across
+        name/description/tags/column_name to produce a synthetic rank. Slower
+        than postgres FTS but doesn't require a special index."""
+        tokens = [t for t in q.lower().split() if t]
+        if not tokens:
+            return []
+        # Reuse list_features filter pushdown for source/dtype/has_doc, then
+        # rank in Python. Pull source name via join.
+        feats = self.list_features(source_name=source, dtype=dtype, has_doc=has_doc, tag=tag, limit=None)
+        scored: list[tuple[float, Feature]] = []
+        for f in feats:
+            haystack = " ".join(
+                [
+                    f.name.lower(),
+                    f.description.lower(),
+                    " ".join(f.tags).lower(),
+                    f.column_name.lower(),
+                ]
+            )
+            hits = sum(1 for tok in tokens if tok in haystack)
+            if hits == 0:
+                continue
+            # Higher = better. Bonus when the name contains the query verbatim.
+            score = hits / len(tokens)
+            if q.lower() in f.name.lower():
+                score += 0.5
+            scored.append((score, f))
+        scored.sort(key=lambda pair: pair[0], reverse=True)
+        results: list[dict] = []
+        for score, f in scored[:limit]:
+            results.append(
+                {
+                    "id": f.id,
+                    "name": f.name,
+                    "dtype": f.dtype,
+                    "source": f.name.split(".")[0] if "." in f.name else "",
+                    "rank": round(score, 4),
+                }
+            )
+        return results
+
+    def search_facets(
+        self,
+        query: str | None = None,
+        *,
+        source: str | None = None,
+        tag: str | None = None,
+        dtype: str | None = None,
+        has_doc: bool | None = None,
+    ) -> dict[str, Any]:
+        """Faceted counts for the search UI sidebar (T2.2a).
+
+        Returns ``{sources: [{name, count}], tags: [...], dtypes: [...],
+        has_doc: {true, false}}``. Each facet is computed against the same
+        filter set as the search itself (so applying a filter narrows the
+        other facet counts as expected).
+        """
+        feats = (
+            self.full_text_search(
+                query,
+                source=source,
+                tag=tag,
+                dtype=dtype,
+                has_doc=has_doc,
+                limit=10_000,  # facets need full set, not paginated slice
+            )
+            if query
+            else [
+                {"id": f.id, "name": f.name, "dtype": f.dtype, "source": f.name.split(".")[0]}
+                for f in self.list_features(source_name=source, dtype=dtype, tag=tag, has_doc=has_doc, limit=None)
+            ]
+        )
+        ids = [f["id"] for f in feats]
+        from collections import Counter
+
+        # Source + dtype facets we already have on the rows.
+        src_counts = Counter(f["source"] for f in feats if f.get("source"))
+        dtype_counts = Counter(f["dtype"] for f in feats if f.get("dtype"))
+        # Tag + has_doc facets need a second look at the full feature rows.
+        tags_counter: Counter = Counter()
+        has_doc_counts = {"true": 0, "false": 0}
+        if ids:
+            from sqlalchemy import bindparam
+
+            with self.session() as s:
+                rows = (
+                    s.execute(
+                        text(
+                            "SELECT f.id, f.tags, "
+                            "       (CASE WHEN EXISTS ("
+                            "         SELECT 1 FROM feature_docs fd "
+                            "         WHERE fd.feature_id = f.id "
+                            "           AND fd.short_description IS NOT NULL "
+                            "           AND fd.short_description != ''"
+                            "       ) THEN 1 ELSE 0 END) AS has_doc "
+                            "FROM features f WHERE f.id IN :ids"
+                        ).bindparams(bindparam("ids", expanding=True)),
+                        {"ids": ids},
+                    )
+                    .mappings()
+                    .all()
+                )
+            for r in rows:
+                raw = r["tags"]
+                if isinstance(raw, str) and raw:
+                    try:
+                        for t in json.loads(raw):
+                            tags_counter[t] += 1
+                    except json.JSONDecodeError:
+                        pass
+                has_doc_counts["true" if r["has_doc"] else "false"] += 1
+        return {
+            "sources": [{"name": k, "count": v} for k, v in src_counts.most_common()],
+            "tags": [{"name": k, "count": v} for k, v in tags_counter.most_common()],
+            "dtypes": [{"name": k, "count": v} for k, v in dtype_counts.most_common()],
+            "has_doc": has_doc_counts,
+        }
+
     def search_features(self, query: str) -> list[Feature]:
         pattern = f"%{query}%"
         with self.session() as s:
