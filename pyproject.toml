@@ -51,7 +51,14 @@ embeddings = ["sentence-transformers>=2.2"]
 # Operators install on the worker / beat / flower nodes; the API server
 # itself doesn't need them unless it enqueues tasks (T1.5c+).
 tasks = ["celery[redis]>=5.3", "redis>=5.0", "flower>=2.0"]
-all = ["featcat[tui,s3,server,embeddings,tasks]"]
+# T3.3 — MkDocs site. Operators install when building docs locally or in CI;
+# the runtime container doesn't need them.
+docs = [
+    "mkdocs-material>=9.5",
+    "mkdocstrings[python]>=0.24",
+    "mkdocs-mermaid2-plugin>=1.1",
+]
+all = ["featcat[tui,s3,server,embeddings,tasks,docs]"]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
