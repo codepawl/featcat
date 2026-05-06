@@ -6,6 +6,7 @@ import contextlib
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy import text
 
 from ...catalog.health import compute_health_score
 from ...catalog.models import FeatureGroup
@@ -201,41 +202,48 @@ def group_monitoring(name: str, db=Depends(get_db)):  # noqa: B008
     psi_values: list[float] = []
     last_check: str | None = None
 
-    for f in members:
-        latest = None
-        with contextlib.suppress(Exception):
-            row = db.conn.execute(
-                """SELECT severity, psi, checked_at FROM monitoring_checks
-                   WHERE feature_id = ? ORDER BY checked_at DESC LIMIT 1""",
-                (f.id,),
-            ).fetchone()
-            if row is not None:
-                latest = dict(row)
+    with db.session() as s:
+        for f in members:
+            latest = None
+            with contextlib.suppress(Exception):
+                row = (
+                    s.execute(
+                        text(
+                            "SELECT severity, psi, checked_at FROM monitoring_checks "
+                            "WHERE feature_id = :fid ORDER BY checked_at DESC LIMIT 1"
+                        ),
+                        {"fid": f.id},
+                    )
+                    .mappings()
+                    .first()
+                )
+                if row is not None:
+                    latest = dict(row)
 
-        severity = (latest or {}).get("severity") or "unknown"
-        severity_counts[severity] = severity_counts.get(severity, 0) + 1
-        psi = (latest or {}).get("psi")
-        if isinstance(psi, (int, float)):
-            psi_values.append(float(psi))
-        checked = (latest or {}).get("checked_at")
-        checked_str: str | None
-        if checked is None:
-            checked_str = None
-        elif hasattr(checked, "isoformat"):
-            checked_str = checked.isoformat()
-        else:
-            checked_str = str(checked)
-        if checked_str and (last_check is None or checked_str > last_check):
-            last_check = checked_str
+            severity = (latest or {}).get("severity") or "unknown"
+            severity_counts[severity] = severity_counts.get(severity, 0) + 1
+            psi = (latest or {}).get("psi")
+            if isinstance(psi, (int, float)):
+                psi_values.append(float(psi))
+            checked = (latest or {}).get("checked_at")
+            checked_str: str | None
+            if checked is None:
+                checked_str = None
+            elif hasattr(checked, "isoformat"):
+                checked_str = checked.isoformat()
+            else:
+                checked_str = str(checked)
+            if checked_str and (last_check is None or checked_str > last_check):
+                last_check = checked_str
 
-        members_state.append(
-            {
-                "spec": f.name,
-                "severity": severity,
-                "psi": psi,
-                "checked_at": checked_str,
-            }
-        )
+            members_state.append(
+                {
+                    "spec": f.name,
+                    "severity": severity,
+                    "psi": psi,
+                    "checked_at": checked_str,
+                }
+            )
 
     members_with_drift = [m for m in members_state if m["severity"] in ("warning", "critical")]
     return {

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import sys
@@ -2334,15 +2335,8 @@ def _get_health_inputs(db, feature):
     has_hints = bool(feature.generation_hints)
 
     drift_status = None
-    try:
-        row = db.conn.execute(
-            "SELECT severity FROM monitoring_checks WHERE feature_id = ? ORDER BY checked_at DESC LIMIT 1",
-            (feature.id,),
-        ).fetchone()
-        if row:
-            drift_status = row["severity"]
-    except Exception:  # noqa: BLE001
-        pass
+    with contextlib.suppress(Exception):
+        drift_status = db.get_latest_severity(feature.id)
 
     views_30d = 0
     queries_30d = 0
@@ -2444,15 +2438,8 @@ def feature_health_report(
         has_hints = bool(f.generation_hints)
 
         drift_status = None
-        try:
-            row = db.conn.execute(
-                "SELECT severity FROM monitoring_checks WHERE feature_id = ? ORDER BY checked_at DESC LIMIT 1",
-                (f.id,),
-            ).fetchone()
-            if row:
-                drift_status = row["severity"]
-        except Exception:  # noqa: BLE001
-            pass
+        with contextlib.suppress(Exception):
+            drift_status = db.get_latest_severity(f.id)
 
         views_30d = 0
         queries_30d = 0

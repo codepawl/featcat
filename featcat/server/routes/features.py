@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import contextlib
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy import text
 
 from ...catalog.health import compute_health_score
 from ...catalog.usage import log_feature_usage
@@ -24,26 +26,41 @@ def _bulk_health_data(db) -> tuple[dict, dict, dict]:
     # Drift: latest severity per feature
     drift_map: dict[str, str] = {}
     with contextlib.suppress(Exception):
-        rows = db.conn.execute(
-            """SELECT feature_id, severity FROM monitoring_checks
-               WHERE (feature_id, checked_at) IN (
-                   SELECT feature_id, MAX(checked_at) FROM monitoring_checks GROUP BY feature_id
-               )"""
-        ).fetchall()
+        with db.session() as s:
+            rows = (
+                s.execute(
+                    text(
+                        "SELECT feature_id, severity FROM monitoring_checks "
+                        "WHERE (feature_id, checked_at) IN ( "
+                        "  SELECT feature_id, MAX(checked_at) FROM monitoring_checks GROUP BY feature_id "
+                        ")"
+                    )
+                )
+                .mappings()
+                .all()
+            )
         for r in rows:
             drift_map[r["feature_id"]] = r["severity"]
 
-    # Usage: views and queries in last 30 days per feature
+    # Usage: views and queries in last 30 days per feature.
+    # Cutoff computed in Python so SQL is portable across sqlite/postgres.
     usage_map: dict[str, dict[str, int]] = {}
     with contextlib.suppress(Exception):
-        rows = db.conn.execute(
-            """SELECT feature_id,
-                      SUM(CASE WHEN action = 'view' THEN 1 ELSE 0 END) as views,
-                      SUM(CASE WHEN action = 'query' THEN 1 ELSE 0 END) as queries
-               FROM usage_log
-               WHERE created_at >= datetime('now', '-30 days')
-               GROUP BY feature_id"""
-        ).fetchall()
+        cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+        with db.session() as s:
+            rows = (
+                s.execute(
+                    text(
+                        "SELECT feature_id, "
+                        "  SUM(CASE WHEN action = 'view' THEN 1 ELSE 0 END) as views, "
+                        "  SUM(CASE WHEN action = 'query' THEN 1 ELSE 0 END) as queries "
+                        "FROM usage_log WHERE created_at >= :cutoff GROUP BY feature_id"
+                    ),
+                    {"cutoff": cutoff},
+                )
+                .mappings()
+                .all()
+            )
         for r in rows:
             usage_map[r["feature_id"]] = {"views": r["views"] or 0, "queries": r["queries"] or 0}
 
@@ -386,26 +403,26 @@ def similarity_graph(
     all_docs = db.get_all_feature_docs()
     doc_map = {fid: doc.get("short_description", "") for fid, doc in all_docs.items()}
 
-    # Drift status: query monitoring_checks for latest severity per feature
+    # Drift status: latest severity per feature via the LocalBackend helper.
+    # Closes both the rule violation (route was hitting raw .conn) and the
+    # hot-reload race that flagged in PR #1's known-followups.
     drift_map: dict[str, str] = {}
     for f in features:
-        row = db.conn.execute(
-            "SELECT severity FROM monitoring_checks WHERE feature_id = ? ORDER BY checked_at DESC LIMIT 1",
-            (f.id,),
-        ).fetchone()
-        if row:
-            drift_map[f.id] = row["severity"]
+        sev = db.get_latest_severity(f.id)
+        if sev is not None:
+            drift_map[f.id] = sev
 
-    # Build text corpus
+    # Build text corpus (variable renamed from `text` to avoid shadowing the
+    # ``sqlalchemy.text`` import used above).
     corpus = []
     for f in features:
-        text = f.name.replace("_", " ").replace(".", " ")
+        doc_text = f.name.replace("_", " ").replace(".", " ")
         if f.tags:
-            text += " " + " ".join(f.tags)
+            doc_text += " " + " ".join(f.tags)
         short_desc = doc_map.get(f.id, "")
         if short_desc:
-            text += " " + short_desc
-        corpus.append(text)
+            doc_text += " " + short_desc
+        corpus.append(doc_text)
 
     vectorizer = TfidfVectorizer(ngram_range=(1, 2), min_df=1)
     tfidf_matrix = vectorizer.fit_transform(corpus)

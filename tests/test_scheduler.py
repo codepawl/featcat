@@ -99,16 +99,16 @@ class TestLogRetention:
         logs = scheduler.get_logs()
         assert len(logs) == 1
 
-        # Artificially age the log using Python adapter for consistent datetime format
+        # Artificially age the log + tighten retention via Session.
         from datetime import timedelta, timezone
 
-        old_ts = (datetime.now(timezone.utc) - timedelta(days=60)).isoformat()
-        backend.conn.execute("UPDATE job_logs SET started_at = ?", (old_ts,))
-        backend.conn.commit()
+        from sqlalchemy import text
 
-        # Set short retention
-        backend.conn.execute("UPDATE job_schedules SET max_log_retention_days = 1 WHERE job_name = 'baseline_refresh'")
-        backend.conn.commit()
+        old_ts = datetime.now(timezone.utc) - timedelta(days=60)
+        with backend.session() as s:
+            s.execute(text("UPDATE job_logs SET started_at = :ts"), {"ts": old_ts})
+            s.execute(text("UPDATE job_schedules SET max_log_retention_days = 1 WHERE job_name = 'baseline_refresh'"))
+            s.commit()
 
         scheduler.purge_old_logs("baseline_refresh")
         logs = scheduler.get_logs()
