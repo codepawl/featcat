@@ -106,6 +106,7 @@ def build_app() -> FastAPI:
     from .routes.groups import router as groups_router
     from .routes.health import router as health_router
     from .routes.jobs import router as jobs_router
+    from .routes.lineage import router as lineage_router
     from .routes.monitor import router as monitor_router
     from .routes.scan import router as scan_router
     from .routes.sources import router as sources_router
@@ -126,6 +127,7 @@ def build_app() -> FastAPI:
     app.include_router(scan_router, prefix="/api/scan-bulk", tags=["scan"])
     app.include_router(export_router, prefix="/api/export", tags=["export"])
     app.include_router(versions_router, prefix="/api/versions", tags=["versions"])
+    app.include_router(lineage_router, prefix="/api/lineage", tags=["lineage"])
 
     # Mount static assets (js, css) under /assets if present
     assets_dir = STATIC_DIR / "assets"

@@ -1184,31 +1184,197 @@ class LocalBackend(CatalogBackend):
 
     # --- Lineage ---
 
-    def add_lineage(self, child_feature_id: str, parent_feature_id: str, transform: str = "") -> None:
+    def add_lineage(
+        self,
+        child_feature_id: str,
+        parent_feature_id: str,
+        transform: str = "",
+        detected_method: str = "manual",
+    ) -> None:
+        """Record a feature→feature lineage edge.
+
+        ``detected_method`` defaults to 'manual'; the auto-detect path
+        (T1.1b sqlglot parser) passes 'sql_parse'. The unique-constraint
+        target was widened in T1.1 to cover the new (parent_type,
+        parent_source_id, parent_column) discriminators, so the conflict
+        target now lists all five.
+        """
         with self.session() as s:
             s.execute(
                 text(
-                    "INSERT INTO feature_lineage (id, child_feature_id, parent_feature_id, transform, created_at) "
-                    "VALUES (:id, :cid, :pid, :transform, :now) "
-                    "ON CONFLICT (child_feature_id, parent_feature_id) DO NOTHING"
+                    "INSERT INTO feature_lineage "
+                    "(id, child_feature_id, parent_type, parent_feature_id, "
+                    " parent_source_id, parent_column, transform, "
+                    " detected_method, created_at) "
+                    "VALUES (:id, :cid, 'feature', :pid, NULL, NULL, :transform, "
+                    "        :method, :now) "
+                    "ON CONFLICT (child_feature_id, parent_type, parent_feature_id, "
+                    "             parent_source_id, parent_column) DO NOTHING"
                 ),
                 {
                     "id": _new_id(),
                     "cid": child_feature_id,
                     "pid": parent_feature_id,
                     "transform": transform,
+                    "method": detected_method,
+                    "now": _utcnow(),
+                },
+            )
+            s.commit()
+
+    def add_source_lineage(
+        self,
+        child_feature_id: str,
+        source_id: str,
+        column_name: str,
+        transform: str = "",
+        detected_method: str = "manual",
+    ) -> None:
+        """Record a source-column→feature lineage edge (T1.1).
+
+        Use this when a feature is derived directly from a raw column on a
+        data source rather than from another feature. ``column_name`` is the
+        column on ``source_id``'s parquet/table that the feature reads from.
+        """
+        with self.session() as s:
+            s.execute(
+                text(
+                    "INSERT INTO feature_lineage "
+                    "(id, child_feature_id, parent_type, parent_feature_id, "
+                    " parent_source_id, parent_column, transform, "
+                    " detected_method, created_at) "
+                    "VALUES (:id, :cid, 'source_column', NULL, :sid, :col, "
+                    "        :transform, :method, :now) "
+                    "ON CONFLICT (child_feature_id, parent_type, parent_feature_id, "
+                    "             parent_source_id, parent_column) DO NOTHING"
+                ),
+                {
+                    "id": _new_id(),
+                    "cid": child_feature_id,
+                    "sid": source_id,
+                    "col": column_name,
+                    "transform": transform,
+                    "method": detected_method,
                     "now": _utcnow(),
                 },
             )
             s.commit()
 
     def remove_lineage(self, child_feature_id: str, parent_feature_id: str) -> None:
+        """Remove a feature→feature lineage edge.
+
+        Source-column edges are removed via ``remove_source_lineage`` —
+        they're keyed differently and matching them by parent_feature_id
+        wouldn't work (it's NULL for source-column rows).
+        """
         with self.session() as s:
             s.execute(
-                text("DELETE FROM feature_lineage WHERE child_feature_id = :cid AND parent_feature_id = :pid"),
+                text(
+                    "DELETE FROM feature_lineage "
+                    "WHERE child_feature_id = :cid "
+                    "  AND parent_type = 'feature' "
+                    "  AND parent_feature_id = :pid"
+                ),
                 {"cid": child_feature_id, "pid": parent_feature_id},
             )
             s.commit()
+
+    def remove_source_lineage(self, child_feature_id: str, source_id: str, column_name: str) -> None:
+        with self.session() as s:
+            s.execute(
+                text(
+                    "DELETE FROM feature_lineage "
+                    "WHERE child_feature_id = :cid "
+                    "  AND parent_type = 'source_column' "
+                    "  AND parent_source_id = :sid "
+                    "  AND parent_column = :col"
+                ),
+                {"cid": child_feature_id, "sid": source_id, "col": column_name},
+            )
+            s.commit()
+
+    def get_impact(self, source_name: str, column: str | None = None, max_depth: int = 5) -> list[dict]:
+        """Impact analysis: which features depend on this source[.column]?
+
+        Returns features that are direct downstream of the source-column edge,
+        plus features transitively downstream via feature→feature edges, up
+        to ``max_depth`` hops.
+
+        Each item: ``{name, dtype, depth, via}`` where ``via`` describes how
+        the impact propagates (the immediate parent name in the chain).
+        """
+        source = self.get_source_by_name(source_name)
+        if source is None:
+            return []
+
+        # Step 1: direct children of this source[.column].
+        params: dict[str, Any] = {"sid": source.id}
+        col_clause = ""
+        if column is not None:
+            col_clause = " AND fl.parent_column = :col"
+            params["col"] = column
+        sql_direct = (
+            "SELECT f.id, f.name, f.dtype, fl.parent_column, fl.transform "
+            "FROM feature_lineage fl JOIN features f ON fl.child_feature_id = f.id "
+            "WHERE fl.parent_type = 'source_column' AND fl.parent_source_id = :sid" + col_clause
+        )
+        with self.session() as s:
+            direct_rows = s.execute(text(sql_direct), params).mappings().all()
+
+        if not direct_rows:
+            return []
+
+        impact: dict[str, dict[str, Any]] = {}  # feature_id → record (dedupe across paths)
+        frontier: list[tuple[str, str, int]] = []  # (feature_id, via_name, depth)
+        for r in direct_rows:
+            fid = r["id"]
+            via = f"{source.name}.{r['parent_column']}" if r["parent_column"] else source.name
+            impact[fid] = {"name": r["name"], "dtype": r["dtype"], "depth": 1, "via": via}
+            frontier.append((fid, r["name"], 1))
+
+        # Step 2: BFS through feature→feature edges up to max_depth.
+        while frontier:
+            next_frontier: list[tuple[str, str, int]] = []
+            ids = [fid for fid, _via, depth in frontier if depth < max_depth]
+            if not ids:
+                break
+            from sqlalchemy import bindparam
+
+            with self.session() as s:
+                rows = (
+                    s.execute(
+                        text(
+                            "SELECT fl.parent_feature_id, fl.child_feature_id, "
+                            "       f.id, f.name, f.dtype, fp.name AS parent_name "
+                            "FROM feature_lineage fl "
+                            "JOIN features f ON fl.child_feature_id = f.id "
+                            "JOIN features fp ON fl.parent_feature_id = fp.id "
+                            "WHERE fl.parent_type = 'feature' "
+                            "  AND fl.parent_feature_id IN :ids"
+                        ).bindparams(bindparam("ids", expanding=True)),
+                        {"ids": ids},
+                    )
+                    .mappings()
+                    .all()
+                )
+            # Find source depth of each parent we just queried.
+            depth_by_id = {fid: depth for fid, _via, depth in frontier}
+            for r in rows:
+                child_id = r["id"]
+                if child_id in impact:
+                    continue  # first-found depth wins
+                parent_depth = depth_by_id.get(r["parent_feature_id"], max_depth)
+                new_depth = parent_depth + 1
+                impact[child_id] = {
+                    "name": r["name"],
+                    "dtype": r["dtype"],
+                    "depth": new_depth,
+                    "via": r["parent_name"],
+                }
+                next_frontier.append((child_id, r["name"], new_depth))
+            frontier = next_frontier
+
+        return sorted(impact.values(), key=lambda d: (d["depth"], d["name"]))
 
     def get_lineage_graph(self) -> dict:
         with self.session() as s:
