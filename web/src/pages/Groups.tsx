@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Trash2, UserPlus, X, Download } from 'lucide-react'
+import { Plus, Trash2, UserPlus, X, Download, Activity, HeartPulse, FileText, RefreshCw, Sparkles } from 'lucide-react'
 import { api, invalidateCache } from '../api'
 import { Badge } from '../components/Badge'
 import { DataTable } from '../components/DataTable'
@@ -8,6 +8,22 @@ import { ExportModal } from '../components/ExportModal'
 import { FeatureSelector, toFeatureItems } from '../components/FeatureSelector'
 import { Modal } from '../components/Modal'
 import { Skeleton } from '../components/Skeleton'
+
+type GroupTab = 'members' | 'health' | 'monitoring' | 'docs'
+
+const GRADE_COLORS: Record<string, string> = {
+  A: 'bg-green-500',
+  B: 'bg-emerald-400',
+  C: 'bg-amber-400',
+  D: 'bg-red-400',
+}
+
+const SEVERITY_COLORS: Record<string, string> = {
+  healthy: 'bg-green-500',
+  warning: 'bg-amber-500',
+  critical: 'bg-red-500',
+  unknown: 'bg-[var(--border-default)]',
+}
 
 export function Groups() {
   const { t } = useTranslation('groups')
@@ -19,6 +35,7 @@ export function Groups() {
   const [createOpen, setCreateOpen] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
+  const [tab, setTab] = useState<GroupTab>('members')
 
   const load = () => {
     setLoading(true)
@@ -32,6 +49,7 @@ export function Groups() {
 
   const selectGroup = (g: any) => {
     setSelected(g)
+    setTab('members')
     setDetailLoading(true)
     invalidateCache('/groups')
     api.groups.get(g.name)
@@ -141,14 +159,45 @@ export function Groups() {
                 </div>
               </div>
 
-              <h3 className="text-xs font-semibold uppercase text-[var(--text-tertiary)] tracking-wide mb-2">
-                {t('detail.members_heading', { count: detail.members?.length || 0 })}
-              </h3>
-              {detail.members?.length > 0 ? (
-                <DataTable columns={memberColumns} data={detail.members} pageSize={20} />
-              ) : (
-                <p className="text-sm text-[var(--text-tertiary)] py-4 text-center">{t('detail.members_empty')}</p>
+              <div className="flex gap-1 mb-3 border-b border-[var(--border-subtle)]">
+                {([
+                  { id: 'members', labelKey: 'tabs.members', icon: UserPlus, withCount: true },
+                  { id: 'health', labelKey: 'tabs.health', icon: HeartPulse, withCount: false },
+                  { id: 'monitoring', labelKey: 'tabs.monitoring', icon: Activity, withCount: false },
+                  { id: 'docs', labelKey: 'tabs.docs', icon: FileText, withCount: false },
+                ] as { id: GroupTab; labelKey: string; icon: typeof UserPlus; withCount: boolean }[]).map((entry) => {
+                  const Icon = entry.icon
+                  const label = entry.withCount
+                    ? `${t(entry.labelKey, { defaultValue: 'Members' })} (${detail.members?.length || 0})`
+                    : t(entry.labelKey, { defaultValue: entry.id })
+                  return (
+                    <button
+                      key={entry.id}
+                      onClick={() => setTab(entry.id)}
+                      className={`flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium border-b-2 transition-colors ${
+                        tab === entry.id
+                          ? 'border-accent text-accent'
+                          : 'border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'
+                      }`}
+                    >
+                      <Icon size={13} />
+                      {label}
+                    </button>
+                  )
+                })}
+              </div>
+
+              {tab === 'members' && (
+                detail.members?.length > 0 ? (
+                  <DataTable columns={memberColumns} data={detail.members} pageSize={20} />
+                ) : (
+                  <p className="text-sm text-[var(--text-tertiary)] py-4 text-center">{t('detail.members_empty')}</p>
+                )
               )}
+
+              {tab === 'health' && <GroupHealthTab groupName={detail.name} />}
+              {tab === 'monitoring' && <GroupMonitoringTab groupName={detail.name} />}
+              {tab === 'docs' && <GroupDocsTab groupName={detail.name} memberCount={detail.members?.length || 0} />}
             </div>
           ) : null}
         </div>
@@ -254,5 +303,246 @@ function AddFeaturesModal({ open, onClose, groupName, onAdded }: { open: boolean
         showAISuggest
       />
     </Modal>
+  )
+}
+
+
+function GroupHealthTab({ groupName }: { groupName: string }) {
+  const { t } = useTranslation('groups')
+  const [data, setData] = useState<Awaited<ReturnType<typeof api.groups.health>> | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  const load = () => {
+    setLoading(true)
+    invalidateCache(`/groups/${encodeURIComponent(groupName)}/health`)
+    api.groups.health(groupName).then(setData).finally(() => setLoading(false))
+  }
+  useEffect(() => { load() }, [groupName]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (loading) return <Skeleton className="h-32" />
+  if (!data || data.member_count === 0) {
+    return <p className="text-sm text-[var(--text-tertiary)] py-4 text-center">{t('health.empty', { defaultValue: 'No members to score yet' })}</p>
+  }
+
+  const total = Object.values(data.grade_distribution).reduce((a, b) => a + b, 0) || 1
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-3">
+        <div className="border border-[var(--border-subtle)] rounded-xl p-3">
+          <div className="text-[11px] uppercase text-[var(--text-tertiary)] tracking-wide">{t('health.average', { defaultValue: 'Average score' })}</div>
+          <div className="text-2xl font-semibold mt-1">{data.average_score}<span className="text-sm text-[var(--text-tertiary)]">/100</span></div>
+        </div>
+        <div className="border border-[var(--border-subtle)] rounded-xl p-3">
+          <div className="text-[11px] uppercase text-[var(--text-tertiary)] tracking-wide mb-2">{t('health.distribution', { defaultValue: 'Grade distribution' })}</div>
+          <div className="flex h-2.5 rounded overflow-hidden">
+            {(['A','B','C','D'] as const).map(g => {
+              const n = data.grade_distribution[g] || 0
+              const pct = (n / total) * 100
+              return pct > 0 ? <div key={g} className={GRADE_COLORS[g]} style={{ width: `${pct}%` }} title={`${g}: ${n}`} /> : null
+            })}
+          </div>
+          <div className="flex gap-3 mt-2 text-[11px] text-[var(--text-secondary)]">
+            {(['A','B','C','D'] as const).map(g => (
+              <span key={g} className="flex items-center gap-1">
+                <span className={`size-2 rounded-sm ${GRADE_COLORS[g]}`} /> {g}: {data.grade_distribution[g] || 0}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <h4 className="text-xs font-semibold uppercase text-[var(--text-tertiary)] tracking-wide">{t('health.lowest', { defaultValue: 'Lowest scoring members' })}</h4>
+          <button onClick={load} className="flex items-center gap-1 text-[11px] text-[var(--text-tertiary)] hover:text-accent">
+            <RefreshCw size={11} /> {t('health.refresh', { defaultValue: 'Refresh' })}
+          </button>
+        </div>
+        <div className="border border-[var(--border-subtle)] rounded-xl divide-y divide-[var(--border-subtle)]">
+          {data.lowest_scored.length === 0 ? (
+            <p className="text-sm text-[var(--text-tertiary)] py-3 text-center">{t('health.all_healthy', { defaultValue: 'All members healthy' })}</p>
+          ) : data.lowest_scored.map(m => (
+            <div key={m.spec} className="flex items-center justify-between px-3 py-2 text-[13px]">
+              <span className="font-mono text-accent truncate">{m.spec}</span>
+              <span className="flex items-center gap-2 shrink-0">
+                <Badge variant={m.grade === 'A' ? 'success' : m.grade === 'B' ? 'info' : m.grade === 'C' ? 'warning' : 'critical'}>{m.grade}</Badge>
+                <span className="font-mono text-xs">{m.score}/100</span>
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
+function GroupMonitoringTab({ groupName }: { groupName: string }) {
+  const { t } = useTranslation('groups')
+  const [data, setData] = useState<Awaited<ReturnType<typeof api.groups.monitoring>> | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  const load = () => {
+    setLoading(true)
+    invalidateCache(`/groups/${encodeURIComponent(groupName)}/monitoring`)
+    api.groups.monitoring(groupName).then(setData).finally(() => setLoading(false))
+  }
+  useEffect(() => { load() }, [groupName]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (loading) return <Skeleton className="h-32" />
+  if (!data || data.member_count === 0) {
+    return <p className="text-sm text-[var(--text-tertiary)] py-4 text-center">{t('monitoring.empty', { defaultValue: 'No members' })}</p>
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-3">
+        <div className="border border-[var(--border-subtle)] rounded-xl p-3">
+          <div className="text-[11px] uppercase text-[var(--text-tertiary)] tracking-wide mb-2">{t('monitoring.severity', { defaultValue: 'Severity distribution' })}</div>
+          <div className="space-y-1.5">
+            {(['critical','warning','healthy','unknown'] as const).map(s => {
+              const n = data.severity_counts[s] || 0
+              if (n === 0) return null
+              return (
+                <div key={s} className="flex items-center gap-2 text-[12px]">
+                  <span className={`size-2 rounded-sm ${SEVERITY_COLORS[s]}`} />
+                  <span className="capitalize text-[var(--text-secondary)]">{s}</span>
+                  <span className="ml-auto font-mono text-[var(--text-primary)]">{n}</span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+        <div className="border border-[var(--border-subtle)] rounded-xl p-3">
+          <div className="text-[11px] uppercase text-[var(--text-tertiary)] tracking-wide">{t('monitoring.psi_avg', { defaultValue: 'Avg PSI' })}</div>
+          <div className="text-2xl font-semibold mt-1 font-mono">
+            {data.psi_average === null ? '—' : data.psi_average.toFixed(4)}
+          </div>
+          {data.last_check_at && (
+            <div className="text-[11px] text-[var(--text-tertiary)] mt-1">
+              {t('monitoring.last_check', { defaultValue: 'Last check' })}: {new Date(data.last_check_at).toLocaleString()}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <h4 className="text-xs font-semibold uppercase text-[var(--text-tertiary)] tracking-wide">{t('monitoring.with_drift', { defaultValue: 'Members with drift' })}</h4>
+          <button onClick={load} className="flex items-center gap-1 text-[11px] text-[var(--text-tertiary)] hover:text-accent">
+            <RefreshCw size={11} /> {t('health.refresh', { defaultValue: 'Refresh' })}
+          </button>
+        </div>
+        <div className="border border-[var(--border-subtle)] rounded-xl divide-y divide-[var(--border-subtle)]">
+          {data.members_with_drift.length === 0 ? (
+            <p className="text-sm text-[var(--text-tertiary)] py-3 text-center">{t('monitoring.no_drift', { defaultValue: 'No drifting members' })}</p>
+          ) : data.members_with_drift.map(m => (
+            <a key={m.spec} href={`/monitoring?feature=${encodeURIComponent(m.spec)}`} className="flex items-center justify-between px-3 py-2 text-[13px] hover:bg-[var(--bg-secondary)]">
+              <span className="font-mono text-accent truncate">{m.spec}</span>
+              <span className="flex items-center gap-2 shrink-0">
+                <Badge variant={m.severity === 'critical' ? 'critical' : 'warning'}>{m.severity}</Badge>
+                <span className="font-mono text-xs">{m.psi !== null ? m.psi.toFixed(4) : '-'}</span>
+              </span>
+            </a>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
+function GroupDocsTab({ groupName, memberCount }: { groupName: string; memberCount: number }) {
+  const { t } = useTranslation('groups')
+  const [regenerate, setRegenerate] = useState(false)
+  const [hint, setHint] = useState('')
+  const [job, setJob] = useState<{ job_id: string; total: number } | null>(null)
+  const [progress, setProgress] = useState<{ completed: number; failed: number; total: number; status: string } | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const start = async () => {
+    setError(null)
+    setProgress(null)
+    try {
+      const res = await api.groups.regenerateDocs(groupName, { regenerate_existing: regenerate, global_hint: hint || null })
+      setJob(res)
+      setProgress({ completed: 0, failed: 0, total: res.total, status: 'running' })
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to start job')
+    }
+  }
+
+  useEffect(() => {
+    if (!job) return
+    const id = setInterval(async () => {
+      try {
+        const st = await api.docs.batchStatus(job.job_id)
+        setProgress({ completed: st.completed, failed: st.failed, total: st.total, status: st.status })
+        if (st.status !== 'running') clearInterval(id)
+      } catch {
+        // ignore poll errors
+      }
+    }, 1500)
+    return () => clearInterval(id)
+  }, [job])
+
+  if (memberCount === 0) {
+    return <p className="text-sm text-[var(--text-tertiary)] py-4 text-center">{t('docs.empty', { defaultValue: 'Add members before regenerating docs' })}</p>
+  }
+
+  return (
+    <div className="space-y-4 max-w-xl">
+      <p className="text-[13px] text-[var(--text-secondary)]">
+        {t('docs.help', { defaultValue: 'Generate AI documentation for every member in this group. Existing docs are skipped unless regenerate is on.' })}
+      </p>
+
+      <label className="flex items-start gap-2 text-[13px] cursor-pointer">
+        <input type="checkbox" checked={regenerate} onChange={(e) => setRegenerate(e.target.checked)} className="mt-0.5" />
+        <span>
+          {t('docs.regenerate_label', { defaultValue: 'Regenerate existing docs' })}
+          <span className="block text-[11px] text-[var(--text-tertiary)]">{t('docs.regenerate_hint', { defaultValue: 'Overwrite docs for members that already have one.' })}</span>
+        </span>
+      </label>
+
+      <div>
+        <label className="block text-[12px] font-medium mb-1">{t('docs.hint_label', { defaultValue: 'Global hint (optional)' })}</label>
+        <textarea
+          rows={2}
+          value={hint}
+          onChange={(e) => setHint(e.target.value)}
+          placeholder={t('docs.hint_placeholder', { defaultValue: 'e.g. these features describe payment events' })}
+          className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px]"
+        />
+      </div>
+
+      <button
+        onClick={start}
+        disabled={!!progress && progress.status === 'running'}
+        className="flex items-center gap-1.5 px-4 py-2 bg-accent text-white rounded-lg text-[13px] font-medium hover:bg-accent-emphasis disabled:opacity-50"
+      >
+        <Sparkles size={14} />
+        {progress?.status === 'running' ? t('docs.running', { defaultValue: 'Running…' }) : t('docs.start', { defaultValue: 'Regenerate docs' })}
+      </button>
+
+      {error && <p className="text-[12px] text-[var(--danger)]">{error}</p>}
+
+      {progress && (
+        <div className="border border-[var(--border-subtle)] rounded-xl p-3">
+          <div className="flex items-center justify-between text-[12px] mb-2">
+            <span>{t('docs.status', { defaultValue: 'Status' })}: <span className="font-mono">{progress.status}</span></span>
+            <span className="font-mono">{progress.completed + progress.failed} / {progress.total}</span>
+          </div>
+          <div className="h-2 bg-[var(--bg-secondary)] rounded">
+            <div
+              className="h-full bg-accent rounded transition-all"
+              style={{ width: `${progress.total === 0 ? 0 : Math.round(((progress.completed + progress.failed) / progress.total) * 100)}%` }}
+            />
+          </div>
+          {progress.failed > 0 && (
+            <p className="text-[11px] text-amber-500 mt-2">{t('docs.failed_count', { count: progress.failed, defaultValue: '{{count}} failure(s)' })}</p>
+          )}
+        </div>
+      )}
+    </div>
   )
 }

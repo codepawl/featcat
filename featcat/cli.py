@@ -1841,6 +1841,159 @@ def group_delete(
     console.print(f"[green]Group deleted:[/green] {name}")
 
 
+@group_app.command("health")
+def group_health(name: str = typer.Argument(help="Group name")) -> None:
+    """Aggregate health score and grade distribution for a group."""
+    from .catalog.health import compute_health_score
+    from .server.routes.features import _bulk_health_data
+
+    db = _get_db()
+    group = db.get_group_by_name(name)
+    if group is None:
+        db.close()
+        console.print(f"[red]Group not found:[/red] {name}")
+        raise typer.Exit(1)
+
+    members = db.list_group_members(group.id)
+    if not members:
+        db.close()
+        console.print(f"[dim]Group '{name}' has no members[/dim]")
+        return
+
+    all_docs, drift_map, usage_map = _bulk_health_data(db)
+    grades: dict[str, int] = {"A": 0, "B": 0, "C": 0, "D": 0}
+    rows: list[dict] = []
+    for f in members:
+        usage = usage_map.get(f.id, {"views": 0, "queries": 0})
+        h = compute_health_score(
+            has_doc=f.id in all_docs,
+            has_hints=bool(f.generation_hints),
+            drift_status=drift_map.get(f.id),
+            views_30d=usage["views"],
+            queries_30d=usage["queries"],
+        )
+        grades[h["grade"]] = grades.get(h["grade"], 0) + 1
+        rows.append({"spec": f.name, "score": h["score"], "grade": h["grade"]})
+    db.close()
+
+    rows.sort(key=lambda x: x["score"])
+    avg = round(sum(r["score"] for r in rows) / len(rows))
+
+    console.print(f"\n[bold cyan]Group health: {name}[/bold cyan]")
+    console.print(f"  Members:        {len(members)}")
+    console.print(f"  Average score:  {avg}/100")
+    grade_str = "  ".join(f"{g}: {c}" for g, c in grades.items())
+    console.print(f"  Grades:         {grade_str}\n")
+
+    table = Table(title="Lowest scoring members")
+    table.add_column("Feature", style="cyan")
+    table.add_column("Score", justify="right")
+    table.add_column("Grade")
+    for r in rows[:10]:
+        table.add_row(r["spec"], str(r["score"]), r["grade"])
+    console.print(table)
+
+
+@group_app.command("monitoring")
+def group_monitoring(name: str = typer.Argument(help="Group name")) -> None:
+    """Aggregate latest drift status across group members."""
+    db = _get_db()
+    group = db.get_group_by_name(name)
+    if group is None:
+        db.close()
+        console.print(f"[red]Group not found:[/red] {name}")
+        raise typer.Exit(1)
+
+    members = db.list_group_members(group.id)
+    severity_counts: dict[str, int] = {"healthy": 0, "warning": 0, "critical": 0, "unknown": 0}
+    rows: list[dict] = []
+    for f in members:
+        history = []
+        try:
+            history = db.get_monitoring_history(f.name, days=365)
+        except Exception:  # noqa: BLE001
+            history = []
+        latest = history[0] if history else {}
+        sev = (latest or {}).get("severity") or "unknown"
+        severity_counts[sev] = severity_counts.get(sev, 0) + 1
+        rows.append(
+            {
+                "spec": f.name,
+                "severity": sev,
+                "psi": (latest or {}).get("psi"),
+                "checked_at": str((latest or {}).get("checked_at") or ""),
+            }
+        )
+    db.close()
+
+    console.print(f"\n[bold cyan]Group monitoring: {name}[/bold cyan]")
+    console.print(f"  Members: {len(members)}")
+    summary = "  ".join(f"{k}: {v}" for k, v in severity_counts.items())
+    console.print(f"  Severity: {summary}\n")
+
+    drift = [r for r in rows if r["severity"] in ("warning", "critical")]
+    if not drift:
+        console.print("[green]No drift detected in this group[/green]")
+        return
+
+    table = Table(title="Members with drift")
+    table.add_column("Feature", style="cyan")
+    table.add_column("Severity")
+    table.add_column("PSI", justify="right")
+    table.add_column("Checked at")
+    for r in drift:
+        psi_str = f"{r['psi']:.4f}" if isinstance(r["psi"], (int, float)) else "-"
+        table.add_row(r["spec"], r["severity"], psi_str, r["checked_at"][:19])
+    console.print(table)
+
+
+@group_app.command("regenerate-docs")
+def group_regenerate_docs(
+    name: str = typer.Argument(help="Group name"),
+    regenerate_existing: bool = typer.Option(False, "--regenerate", help="Overwrite existing docs"),
+    global_hint: str = typer.Option("", "--hint", help="Global hint applied to features without an individual hint"),
+) -> None:
+    """Trigger batch doc regeneration scoped to this group via the server."""
+    import os as _os
+    import time as _time
+
+    import httpx
+
+    server_url = _os.environ.get("FEATCAT_SERVER_URL", "http://localhost:8000")
+    try:
+        post = httpx.post(
+            f"{server_url}/api/groups/{name}/regenerate-docs",
+            json={"regenerate_existing": regenerate_existing, "global_hint": global_hint or None},
+            timeout=30,
+        )
+        post.raise_for_status()
+    except httpx.HTTPError as e:  # noqa: BLE001
+        console.print(f"[red]Server error:[/red] {e}")
+        raise typer.Exit(1) from None
+
+    payload = post.json()
+    job_id = payload.get("job_id")
+    total = payload.get("total", 0)
+    console.print(f"[green]Started job {job_id}[/green] for {total} feature(s) in group '{name}'.")
+
+    while True:
+        try:
+            resp = httpx.get(f"{server_url}/api/docs/generate-batch/{job_id}/status", timeout=15)
+            resp.raise_for_status()
+        except httpx.HTTPError:
+            _time.sleep(2)
+            continue
+        st = resp.json()
+        line = (
+            f"  status={st.get('status')} completed={st.get('completed')} failed={st.get('failed')} / {st.get('total')}"
+        )
+        console.print(line, end="\r")
+        if st.get("status") in ("done", "error", "completed"):
+            console.print()
+            break
+        _time.sleep(2)
+
+
 # =========================================================================
 # Feature Definitions
 # =========================================================================

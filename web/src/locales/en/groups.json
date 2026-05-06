@@ -45,5 +45,39 @@
     "title": "Add features to {{group}}"
   },
   "export_title": "{{name}} ({{count}} features)",
-  "confirm_delete": "Delete group \"{{name}}\"?"
+  "confirm_delete": "Delete group \"{{name}}\"?",
+  "tabs": {
+    "members": "Members",
+    "health": "Health",
+    "monitoring": "Monitoring",
+    "docs": "Docs"
+  },
+  "health": {
+    "empty": "No members to score yet",
+    "average": "Average score",
+    "distribution": "Grade distribution",
+    "lowest": "Lowest scoring members",
+    "all_healthy": "All members healthy",
+    "refresh": "Refresh"
+  },
+  "monitoring": {
+    "empty": "No members",
+    "severity": "Severity distribution",
+    "psi_avg": "Avg PSI",
+    "last_check": "Last check",
+    "with_drift": "Members with drift",
+    "no_drift": "No drifting members"
+  },
+  "docs": {
+    "empty": "Add members before regenerating docs",
+    "help": "Generate AI documentation for every member in this group. Existing docs are skipped unless regenerate is on.",
+    "regenerate_label": "Regenerate existing docs",
+    "regenerate_hint": "Overwrite docs for members that already have one.",
+    "hint_label": "Global hint (optional)",
+    "hint_placeholder": "e.g. these features describe payment events",
+    "start": "Regenerate docs",
+    "running": "Running…",
+    "status": "Status",
+    "failed_count": "{{count}} failure(s)"
+  }
 }

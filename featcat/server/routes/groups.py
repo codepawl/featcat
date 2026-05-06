@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+import contextlib
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel
 
+from ...catalog.health import compute_health_score
 from ...catalog.models import FeatureGroup
-from ..deps import get_db
+from ..deps import get_db, get_llm
 
 router = APIRouter()
 
@@ -120,3 +123,186 @@ def remove_member(name: str, spec: str = Query(..., description="Feature spec to
         raise HTTPException(status_code=404, detail=f"Feature not found: {spec}")
     db.remove_group_member(group.id, feature.id)
     return {"removed": spec}
+
+
+# ---------------------------------------------------------------------------
+# Group aggregation: health, monitoring, batch doc regeneration
+# ---------------------------------------------------------------------------
+
+
+def _group_or_404(db, name: str):
+    group = db.get_group_by_name(name)
+    if group is None:
+        raise HTTPException(status_code=404, detail=f"Group not found: {name}")
+    return group
+
+
+@router.get("/{name}/health")
+def group_health(name: str, db=Depends(get_db)):  # noqa: B008
+    """Aggregate health score and grade distribution for members of this group."""
+    from .features import _bulk_health_data
+
+    group = _group_or_404(db, name)
+    members = db.list_group_members(group.id)
+    if not members:
+        return {
+            "group": name,
+            "member_count": 0,
+            "average_score": 0,
+            "grade_distribution": {"A": 0, "B": 0, "C": 0, "D": 0},
+            "members": [],
+            "lowest_scored": [],
+        }
+
+    all_docs, drift_map, usage_map = _bulk_health_data(db)
+    grades: dict[str, int] = {"A": 0, "B": 0, "C": 0, "D": 0}
+    scored: list[dict] = []
+
+    for f in members:
+        usage = usage_map.get(f.id, {"views": 0, "queries": 0})
+        health = compute_health_score(
+            has_doc=f.id in all_docs,
+            has_hints=bool(f.generation_hints),
+            drift_status=drift_map.get(f.id),
+            views_30d=usage["views"],
+            queries_30d=usage["queries"],
+        )
+        grades[health["grade"]] = grades.get(health["grade"], 0) + 1
+        scored.append(
+            {
+                "spec": f.name,
+                "score": health["score"],
+                "grade": health["grade"],
+                "drift_status": drift_map.get(f.id, "unknown"),
+                "has_doc": f.id in all_docs,
+            }
+        )
+
+    scored.sort(key=lambda x: x["score"])
+    avg = round(sum(s["score"] for s in scored) / len(scored))
+    return {
+        "group": name,
+        "member_count": len(members),
+        "average_score": avg,
+        "grade_distribution": grades,
+        "members": scored,
+        "lowest_scored": scored[:5],
+    }
+
+
+@router.get("/{name}/monitoring")
+def group_monitoring(name: str, db=Depends(get_db)):  # noqa: B008
+    """Aggregate latest drift/PSI status across group members."""
+    group = _group_or_404(db, name)
+    members = db.list_group_members(group.id)
+
+    severity_counts: dict[str, int] = {"healthy": 0, "warning": 0, "critical": 0, "unknown": 0}
+    members_state: list[dict] = []
+    psi_values: list[float] = []
+    last_check: str | None = None
+
+    for f in members:
+        latest = None
+        with contextlib.suppress(Exception):
+            row = db.conn.execute(
+                """SELECT severity, psi, checked_at FROM monitoring_checks
+                   WHERE feature_id = ? ORDER BY checked_at DESC LIMIT 1""",
+                (f.id,),
+            ).fetchone()
+            if row is not None:
+                latest = dict(row)
+
+        severity = (latest or {}).get("severity") or "unknown"
+        severity_counts[severity] = severity_counts.get(severity, 0) + 1
+        psi = (latest or {}).get("psi")
+        if isinstance(psi, (int, float)):
+            psi_values.append(float(psi))
+        checked = (latest or {}).get("checked_at")
+        checked_str: str | None
+        if checked is None:
+            checked_str = None
+        elif hasattr(checked, "isoformat"):
+            checked_str = checked.isoformat()
+        else:
+            checked_str = str(checked)
+        if checked_str and (last_check is None or checked_str > last_check):
+            last_check = checked_str
+
+        members_state.append(
+            {
+                "spec": f.name,
+                "severity": severity,
+                "psi": psi,
+                "checked_at": checked_str,
+            }
+        )
+
+    members_with_drift = [m for m in members_state if m["severity"] in ("warning", "critical")]
+    return {
+        "group": name,
+        "member_count": len(members),
+        "severity_counts": severity_counts,
+        "psi_average": round(sum(psi_values) / len(psi_values), 4) if psi_values else None,
+        "members_with_drift": members_with_drift,
+        "members": members_state,
+        "last_check_at": last_check,
+    }
+
+
+class GroupRegenerateDocsRequest(BaseModel):
+    regenerate_existing: bool = False
+    global_hint: str | None = None
+
+
+@router.post("/{name}/regenerate-docs")
+def group_regenerate_docs(
+    name: str,
+    body: GroupRegenerateDocsRequest,
+    background_tasks: BackgroundTasks,
+    db=Depends(get_db),  # noqa: B008
+    llm=Depends(get_llm),  # noqa: B008
+):
+    """Kick off batch doc regeneration scoped to this group's members."""
+    from .docs import _batch_jobs, _jobs_lock, _run_batch_generation
+
+    if llm is None:
+        raise HTTPException(status_code=503, detail="LLM not available. Is LLM server running?")
+
+    group = _group_or_404(db, name)
+    members = db.list_group_members(group.id)
+    if not members:
+        raise HTTPException(status_code=400, detail=f"Group is empty: {name}")
+
+    if body.regenerate_existing:
+        specs = [f.name for f in members]
+    else:
+        documented = db.get_all_feature_docs()
+        specs = [f.name for f in members if f.id not in documented]
+        if not specs:
+            raise HTTPException(
+                status_code=400,
+                detail="All members already have docs. Pass regenerate_existing=true to overwrite.",
+            )
+
+    import uuid as _uuid
+
+    job_id = str(_uuid.uuid4())
+    with _jobs_lock:
+        _batch_jobs[job_id] = {
+            "job_id": job_id,
+            "total": len(specs),
+            "completed": 0,
+            "failed": 0,
+            "status": "running",
+            "group": name,
+        }
+
+    background_tasks.add_task(
+        _run_batch_generation,
+        job_id=job_id,
+        feature_specs=specs,
+        global_hint=body.global_hint,
+        db=db,
+        llm=llm,
+    )
+    return {"job_id": job_id, "total": len(specs), "group": name}
