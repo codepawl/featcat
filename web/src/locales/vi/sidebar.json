@@ -1,0 +1,21 @@
+{
+  "nav": {
+    "dashboard": "Tổng quan",
+    "features": "Features",
+    "groups": "Nhóm",
+    "similarity": "Tương đồng",
+    "audit": "Nhật ký",
+    "monitoring": "Giám sát",
+    "actions": "Hành động",
+    "jobs": "Tác vụ",
+    "chat": "AI Chat",
+    "settings": "Cài đặt"
+  },
+  "status": {
+    "server": "Server",
+    "llm_label": "LLM",
+    "connected": "Đã kết nối",
+    "disconnected": "Mất kết nối",
+    "checking": "đang kiểm tra..."
+  }
+}

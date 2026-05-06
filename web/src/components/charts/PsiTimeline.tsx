@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceArea, Dot } from 'recharts'
 
 interface PsiDataPoint {
@@ -31,6 +32,7 @@ function CustomDot(props: { cx?: number; cy?: number; payload?: PsiDataPoint }) 
 }
 
 export function PsiTimeline({ data, loading }: PsiTimelineProps) {
+  const { t } = useTranslation('monitoring')
   if (loading) {
     return <div className="h-32 bg-[var(--bg-tertiary)] rounded animate-shimmer" />
   }
@@ -40,7 +42,7 @@ export function PsiTimeline({ data, loading }: PsiTimelineProps) {
   if (validData.length < 2) {
     return (
       <div className="flex items-center justify-center h-24 text-xs text-[var(--text-tertiary)] border border-dashed border-[var(--border-default)] rounded-lg">
-        Not enough history yet
+        {t('psi_timeline.empty')}
       </div>
     )
   }
@@ -60,14 +62,14 @@ export function PsiTimeline({ data, loading }: PsiTimelineProps) {
       <div className="bg-[var(--bg-secondary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[12px] shadow-lg">
         <p className="text-[var(--text-secondary)]">{new Date(d.checked_at).toLocaleString()}</p>
         <p className="font-mono font-semibold">PSI: {d.psiValue?.toFixed(4)}</p>
-        <p className="text-[var(--text-tertiary)]">Severity: {d.severity}</p>
+        <p className="text-[var(--text-tertiary)]">{t('psi_timeline.tooltip.severity', { severity: d.severity })}</p>
       </div>
     )
   }
 
   return (
     <div className="mb-3">
-      <p className="text-xs font-medium text-[var(--text-secondary)] mb-2">PSI Timeline</p>
+      <p className="text-xs font-medium text-[var(--text-secondary)] mb-2">{t('psi_timeline.title')}</p>
       <ResponsiveContainer width="100%" height={140}>
         <LineChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
           <XAxis
@@ -83,8 +85,8 @@ export function PsiTimeline({ data, loading }: PsiTimelineProps) {
           />
           <Tooltip content={<CustomTooltip />} />
           <ReferenceArea y1={0.2} y2={maxPsi} fill="#EF4444" fillOpacity={0.08} />
-          <ReferenceLine y={0.1} stroke="#F59E0B" strokeDasharray="4 4" label={{ value: 'Warning', fontSize: 9, fill: '#F59E0B', position: 'right' }} />
-          <ReferenceLine y={0.2} stroke="#EF4444" strokeDasharray="4 4" label={{ value: 'Critical', fontSize: 9, fill: '#EF4444', position: 'right' }} />
+          <ReferenceLine y={0.1} stroke="#F59E0B" strokeDasharray="4 4" label={{ value: t('psi_timeline.labels.warning'), fontSize: 9, fill: '#F59E0B', position: 'right' }} />
+          <ReferenceLine y={0.2} stroke="#EF4444" strokeDasharray="4 4" label={{ value: t('psi_timeline.labels.critical'), fontSize: 9, fill: '#EF4444', position: 'right' }} />
           <Line
             type="monotone"
             dataKey="psiValue"

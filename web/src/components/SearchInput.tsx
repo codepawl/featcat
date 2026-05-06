@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Search } from 'lucide-react'
 
 interface Props {
@@ -8,7 +9,8 @@ interface Props {
   className?: string
 }
 
-export function SearchInput({ placeholder = 'Search...', onSearch, delay = 300, className = '' }: Props) {
+export function SearchInput({ placeholder, onSearch, delay = 300, className = '' }: Props) {
+  const { t } = useTranslation('common')
   const [value, setValue] = useState('')
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
@@ -25,7 +27,7 @@ export function SearchInput({ placeholder = 'Search...', onSearch, delay = 300, 
         type="text"
         value={value}
         onChange={(e) => setValue(e.target.value)}
-        placeholder={placeholder}
+        placeholder={placeholder ?? t('placeholders.search')}
         className="w-full bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-lg pl-9 pr-3 py-2 text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:border-accent focus:ring-2 focus:ring-accent/15 outline-none transition-all duration-200"
       />
     </div>

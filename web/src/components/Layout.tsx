@@ -1,8 +1,10 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Menu, X } from 'lucide-react'
 import { Sidebar } from './Sidebar'
 
 export function Layout({ children }: { children: React.ReactNode }) {
+  const { t } = useTranslation('common')
   const [mobileOpen, setMobileOpen] = useState(false)
 
   return (
@@ -11,7 +13,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <button
         onClick={() => setMobileOpen(true)}
         className="fixed top-3 left-3 z-40 p-2 rounded-lg bg-[var(--bg-primary)] border border-[var(--border-subtle)] shadow-sm md:hidden"
-        aria-label="Open menu"
+        aria-label={t('actions.open_menu')}
       >
         <Menu size={20} />
       </button>

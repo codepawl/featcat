@@ -1,0 +1,23 @@
+{
+  "page": {
+    "title": "Settings",
+    "subtitle": "Customize your featcat experience"
+  },
+  "language": {
+    "title": "Language",
+    "description": "Choose the display language for the interface",
+    "current": "Current",
+    "options": {
+      "vi": "Tiếng Việt",
+      "en": "English"
+    }
+  },
+  "theme": {
+    "title": "Theme",
+    "description": "Choose a light or dark appearance",
+    "options": {
+      "light": "Light",
+      "dark": "Dark"
+    }
+  }
+}

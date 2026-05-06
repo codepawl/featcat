@@ -1,16 +1,21 @@
 import type { LucideIcon } from 'lucide-react'
 
+const SUCCESS = 'bg-[var(--success-subtle-bg)] text-[var(--success)] border border-[var(--success-subtle-bg)]'
+const WARNING = 'bg-[var(--warning-subtle-bg)] text-[var(--warning)] border border-[var(--warning-subtle-bg)]'
+const DANGER = 'bg-[var(--danger-subtle-bg)] text-[var(--danger)] border border-[var(--danger-subtle-bg)]'
+const INFO = 'bg-[var(--accent-subtle-bg)] text-[var(--accent)] border border-[var(--accent-subtle-bg)]'
+const DEFAULT = 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] border border-transparent'
+
 const styles: Record<string, string> = {
-  success: 'bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-400',
-  warning: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400',
-  danger: 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400',
-  info: 'bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-400',
-  default: 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]',
-  // Aliases
-  healthy: 'bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-400',
-  critical: 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400',
-  error: 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400',
-  running: 'bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-400',
+  success: SUCCESS,
+  warning: WARNING,
+  danger: DANGER,
+  info: INFO,
+  default: DEFAULT,
+  healthy: SUCCESS,
+  critical: DANGER,
+  error: DANGER,
+  running: INFO,
 }
 
 interface Props {
@@ -21,7 +26,7 @@ interface Props {
 
 export function Badge({ variant = 'default', children, icon: Icon }: Props) {
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-mono font-medium ${styles[variant] || styles.default}`}>
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium ${styles[variant] || styles.default}`}>
       {Icon && <Icon size={12} strokeWidth={1.8} />}
       {children}
     </span>

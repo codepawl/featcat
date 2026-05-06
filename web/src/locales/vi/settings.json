@@ -1,0 +1,23 @@
+{
+  "page": {
+    "title": "Cài đặt",
+    "subtitle": "Tùy chỉnh trải nghiệm featcat của bạn"
+  },
+  "language": {
+    "title": "Ngôn ngữ",
+    "description": "Chọn ngôn ngữ hiển thị cho giao diện",
+    "current": "Đang dùng",
+    "options": {
+      "vi": "Tiếng Việt",
+      "en": "English"
+    }
+  },
+  "theme": {
+    "title": "Giao diện",
+    "description": "Chọn kiểu hiển thị sáng hoặc tối",
+    "options": {
+      "light": "Sáng",
+      "dark": "Tối"
+    }
+  }
+}

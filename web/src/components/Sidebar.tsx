@@ -1,23 +1,25 @@
 import { NavLink } from 'react-router-dom'
 import { useEffect, useState } from 'react'
-import { LayoutDashboard, Database, Activity, Clock, MessageSquare, FolderKanban, GitBranch, History, ListChecks } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { LayoutDashboard, Database, Activity, Clock, MessageSquare, FolderKanban, GitBranch, History, Settings, ListChecks } from 'lucide-react'
 import { api } from '../api'
-import { ThemeToggle } from './ThemeToggle'
 
 const NAV = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/features', label: 'Features', icon: Database },
-  { to: '/groups', label: 'Groups', icon: FolderKanban },
-  { to: '/monitoring', label: 'Monitoring', icon: Activity },
-  { to: '/actions', label: 'Actions', icon: ListChecks },
-  { to: '/similarity', label: 'Similarity', icon: GitBranch },
-  { to: '/audit', label: 'Audit', icon: History },
-  { to: '/jobs', label: 'Jobs', icon: Clock },
-  { to: '/chat', label: 'AI Chat', icon: MessageSquare },
-]
+  { to: '/', key: 'dashboard', icon: LayoutDashboard },
+  { to: '/features', key: 'features', icon: Database },
+  { to: '/groups', key: 'groups', icon: FolderKanban },
+  { to: '/monitoring', key: 'monitoring', icon: Activity },
+  { to: '/actions', key: 'actions', icon: ListChecks },
+  { to: '/similarity', key: 'similarity', icon: GitBranch },
+  { to: '/audit', key: 'audit', icon: History },
+  { to: '/jobs', key: 'jobs', icon: Clock },
+  { to: '/chat', key: 'chat', icon: MessageSquare },
+  { to: '/settings', key: 'settings', icon: Settings },
+] as const
 
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
-  const [llm, setLlm] = useState<{ ok: boolean; model: string }>({ ok: false, model: 'checking...' })
+  const { t } = useTranslation('sidebar')
+  const [llm, setLlm] = useState<{ ok: boolean; model: string | null; checked: boolean }>({ ok: false, model: null, checked: false })
   const [serverOk, setServerOk] = useState(false)
   const [pendingActions, setPendingActions] = useState<number>(0)
 
@@ -25,14 +27,18 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
     api.health()
       .then((d) => {
         setServerOk(true)
-        setLlm({ ok: !!d.llm, model: d.model || (d.llm ? 'connected' : 'offline') })
+        setLlm({ ok: !!d.llm, model: (d.model as string) || null, checked: true })
       })
-      .catch(() => setServerOk(false))
+      .catch(() => { setServerOk(false); setLlm(s => ({ ...s, checked: true })) })
     api.actions.count('pending').then(d => setPendingActions(d.count)).catch(() => {})
   }, [])
 
+  const llmDisplay = !llm.checked
+    ? t('status.checking')
+    : llm.model ?? (llm.ok ? t('status.connected') : t('status.disconnected'))
+
   return (
-    <nav className="w-[220px] shrink-0 sticky top-0 h-screen overflow-y-auto flex flex-col bg-[var(--bg-primary)] border-r border-[var(--border-subtle)] py-4 transition-all">
+    <nav className="w-[220px] shrink-0 sticky top-0 h-screen overflow-y-auto flex flex-col bg-[var(--bg-primary)] border-r border-[var(--border-subtle)] py-4">
       {/* Brand */}
       <div className="px-5 pb-6 pt-1">
         <span className="font-mono text-base font-bold tracking-tight">
@@ -48,15 +54,15 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           end={n.to === '/'}
           onClick={onNavigate}
           className={({ isActive }) =>
-            `flex items-center gap-2.5 px-5 py-2.5 text-[13px] font-medium border-l-2 transition-all no-underline ${
+            `flex items-center gap-2.5 px-5 py-2.5 text-[13px] font-medium border-l-2 transition-colors no-underline ${
               isActive
                 ? 'text-accent border-accent bg-accent-muted'
-                : 'text-[var(--text-secondary)] border-transparent hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] hover:pl-6'
+                : 'text-[var(--text-secondary)] border-transparent hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]'
             }`
           }
         >
           <n.icon size={16} strokeWidth={1.8} />
-          <span className="flex-1">{n.label}</span>
+          <span className="flex-1">{t(`nav.${n.key}`)}</span>
           {n.to === '/actions' && pendingActions > 0 && (
             <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-accent text-[var(--bg-primary)]">
               {pendingActions > 99 ? '99+' : pendingActions}
@@ -66,19 +72,16 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       ))}
 
       {/* Footer */}
-      <div className="mt-auto px-5 flex flex-col gap-3">
-        <div className="border-t border-[var(--border-subtle)] pt-3 flex flex-col gap-2 text-xs text-[var(--text-tertiary)]">
+      <div className="mt-auto px-5">
+        <div className="border-t border-[var(--border-subtle)] pt-3 pb-1 flex flex-col gap-2 text-xs text-[var(--text-tertiary)]">
           <div className="flex items-center gap-2">
-            <span className={`size-1.5 rounded-full ${serverOk ? 'bg-green-500 animate-glow-pulse' : 'bg-[var(--border-default)]'}`} />
-            Server
+            <span className={`size-1.5 rounded-full ${serverOk ? 'bg-[var(--success)]' : 'bg-[var(--border-default)]'}`} />
+            {t('status.server')}
           </div>
           <div className="flex items-center gap-2 truncate">
-            <span className={`size-1.5 rounded-full ${llm.ok ? 'bg-green-500 animate-glow-pulse' : 'bg-red-500'}`} />
-            <span className="truncate">LLM: {llm.model}</span>
+            <span className={`size-1.5 rounded-full ${llm.ok ? 'bg-[var(--success)]' : 'bg-[var(--danger)]'}`} />
+            <span className="truncate">{t('status.llm_label')}: {llmDisplay}</span>
           </div>
-        </div>
-        <div className="border-t border-[var(--border-subtle)] pt-3 pb-1">
-          <ThemeToggle />
         </div>
       </div>
     </nav>
