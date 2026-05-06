@@ -1,0 +1,63 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "featcat-client"
+version = "0.1.0"
+description = "Python SDK for the featcat feature catalog server"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [{name = "Codepawl", email = "hi@codepawl.dev"}]
+keywords = ["feature-catalog", "feature-store", "data-science", "mlops"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+    "httpx>=0.25",
+    "pydantic>=2.0",
+    "polars>=0.20",
+    "pyarrow>=14.0",
+]
+
+[project.optional-dependencies]
+pandas = ["pandas>=2.0"]
+s3 = ["s3fs>=2024.0"]
+all = ["featcat-client[pandas,s3]"]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+    "mypy>=1.8",
+    "ruff>=0.4",
+]
+
+[project.urls]
+Repository = "https://github.com/codepawl/featcat"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/featcat_client"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "TCH"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_unreachable = true
+
+[[tool.mypy.overrides]]
+module = ["pyarrow.*", "s3fs.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
