@@ -2712,6 +2712,49 @@ def _set_action_status(item_id: str, status: str, summary: str, user: str) -> No
 
 
 # =========================================================================
+# Lineage / impact analysis (T1.1)
+# =========================================================================
+
+
+@app.command()
+def impact(
+    target: str = typer.Argument(..., help="Source name or 'source.column' to analyze"),
+    depth: int = typer.Option(5, "--depth", "-d", help="Max BFS depth through feature→feature edges"),
+) -> None:
+    """Show features impacted by changes to a source or source.column.
+
+    Output is grouped by depth: direct children first, then transitive
+    downstreams. ``via`` shows the immediate parent in the propagation chain
+    so you can trace how the impact reaches each feature.
+
+    Examples:
+
+        featcat impact user_behavior
+        featcat impact user_behavior.session_count
+        featcat impact user_behavior.session_count --depth 3
+    """
+    db = _get_db()
+    if "." in target:
+        source_name, column = target.split(".", 1)
+    else:
+        source_name, column = target, None
+
+    rows = db.get_impact(source_name=source_name, column=column, max_depth=depth)
+    if not rows:
+        console.print(f"[yellow]No features depend on {target}.[/yellow]")
+        return
+
+    console.print(f"[bold]Impact of {target}[/bold] — [cyan]{len(rows)}[/cyan] downstream feature(s)")
+    current_depth = -1
+    for r in rows:
+        if r["depth"] != current_depth:
+            current_depth = r["depth"]
+            label = "direct" if current_depth == 1 else f"depth {current_depth}"
+            console.print(f"\n[dim]{label}[/dim]")
+        console.print(f"  [cyan]{r['name']}[/cyan]  [dim]({r['dtype']})[/dim]  via [magenta]{r['via']}[/magenta]")
+
+
+# =========================================================================
 # TUI command
 # =========================================================================
 

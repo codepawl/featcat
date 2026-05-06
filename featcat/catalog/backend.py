@@ -164,6 +164,16 @@ class CatalogBackend(ABC):
         """
         return None
 
+    def get_impact(self, source_name: str, column: str | None = None, max_depth: int = 5) -> list:
+        """Return features impacted (directly or transitively) by source[.column].
+
+        Each item: ``{name, dtype, depth, via}``. RemoteBackend overrides via
+        ``GET /api/lineage/impact``; default returns empty so plain backends
+        without lineage data still satisfy the interface.
+        """
+        del source_name, column, max_depth
+        return []
+
     # --- Stats ---
 
     @abstractmethod

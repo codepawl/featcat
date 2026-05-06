@@ -213,15 +213,40 @@ class MonitoringCheck(Base):
 class FeatureLineage(Base):
     __tablename__ = "feature_lineage"
     __table_args__ = (
-        UniqueConstraint("child_feature_id", "parent_feature_id", name="uq_feature_lineage_pair"),
+        # Pre-T1.1 the unique key was (child, parent_feature). Now widened to
+        # cover source-column parents too — a feature can be derived from a
+        # raw column instead of (or in addition to) another feature.
+        UniqueConstraint(
+            "child_feature_id",
+            "parent_type",
+            "parent_feature_id",
+            "parent_source_id",
+            "parent_column",
+            name="uq_feature_lineage_pair",
+        ),
         Index("idx_lineage_child", "child_feature_id"),
         Index("idx_lineage_parent", "parent_feature_id"),
+        Index("idx_lineage_parent_source", "parent_source_id"),
     )
 
     id: Mapped[str] = mapped_column(Text, primary_key=True)
     child_feature_id: Mapped[str] = mapped_column(Text, ForeignKey("features.id", ondelete="CASCADE"), nullable=False)
-    parent_feature_id: Mapped[str] = mapped_column(Text, ForeignKey("features.id", ondelete="CASCADE"), nullable=False)
+    # parent_type discriminates what the parent is. Pre-T1.1 rows are backfilled
+    # to 'feature'. New rows can also be 'source_column' (parent is a raw
+    # column on a data source, not another feature).
+    parent_type: Mapped[str] = mapped_column(Text, nullable=False, default="feature", server_default="feature")
+    # parent_feature_id NULL when parent_type='source_column'.
+    parent_feature_id: Mapped[str | None] = mapped_column(Text, ForeignKey("features.id", ondelete="CASCADE"))
+    # parent_source_id + parent_column populated when parent_type='source_column'.
+    # ondelete='SET NULL' so removing a source detaches the lineage record
+    # rather than cascade-deleting it (downstream features keep their history).
+    parent_source_id: Mapped[str | None] = mapped_column(Text, ForeignKey("data_sources.id", ondelete="SET NULL"))
+    parent_column: Mapped[str | None] = mapped_column(Text)
     transform: Mapped[str] = mapped_column(Text, default="", server_default="")
+    # detected_method tracks how the lineage was recorded — 'manual' (user
+    # added via CLI/API), 'sql_parse' (sqlglot auto-detect from definition,
+    # T1.1b), 'imported' (bulk import from external lineage source).
+    detected_method: Mapped[str] = mapped_column(Text, nullable=False, default="manual", server_default="manual")
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
 
 
