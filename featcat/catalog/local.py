@@ -1398,6 +1398,127 @@ class LocalBackend(CatalogBackend):
                 break
         return result
 
+    # --- Bulk operations (T1.3a) ---
+
+    BULK_MAX_IDS = 1000  # spec ceiling — guard a single request from being unbounded
+
+    def _validate_feature_ids(self, feature_ids: list[str]) -> tuple[list[str], list[str]]:
+        """Return ``(valid, invalid)`` partition. ``feature_ids`` is unbounded
+        in size at this layer; route layer enforces ``BULK_MAX_IDS``."""
+        if not feature_ids:
+            return [], []
+        from sqlalchemy import bindparam
+
+        with self.session() as s:
+            rows = (
+                s.execute(
+                    text("SELECT id FROM features WHERE id IN :ids").bindparams(bindparam("ids", expanding=True)),
+                    {"ids": list(feature_ids)},
+                )
+                .scalars()
+                .all()
+            )
+        found = set(rows)
+        valid = [fid for fid in feature_ids if fid in found]
+        invalid = [fid for fid in feature_ids if fid not in found]
+        return valid, invalid
+
+    def bulk_update_tags(
+        self,
+        feature_ids: list[str],
+        action: str,
+        tags: list[str],
+    ) -> int:
+        """Apply a tag change to many features at once.
+
+        ``action`` is one of:
+        - ``add`` — union with existing tags
+        - ``remove`` — set difference
+        - ``replace`` — overwrite
+        Returns count of features updated. Each call routes through
+        ``update_feature_tags`` so feature_versions snapshots are created
+        as usual — meaning a bulk-tag change is fully reflected in the
+        per-feature audit log without a new audit_log table.
+        """
+        if action not in {"add", "remove", "replace"}:
+            raise ValueError(f"action must be one of add/remove/replace, got {action!r}")
+        updated = 0
+        with self.session() as s:
+            from sqlalchemy import bindparam
+
+            rows = (
+                s.execute(
+                    text("SELECT id, tags FROM features WHERE id IN :ids").bindparams(bindparam("ids", expanding=True)),
+                    {"ids": list(feature_ids)},
+                )
+                .mappings()
+                .all()
+            )
+        tag_set = set(tags)
+        for r in rows:
+            current_raw = r["tags"]
+            current = json.loads(current_raw) if isinstance(current_raw, str) and current_raw else []
+            if action == "add":
+                new_tags = list(set(current) | tag_set)
+            elif action == "remove":
+                new_tags = [t for t in current if t not in tag_set]
+            else:  # replace
+                new_tags = list(tags)
+            if sorted(new_tags) == sorted(current):
+                continue
+            self.update_feature_tags(r["id"], new_tags)
+            updated += 1
+        return updated
+
+    def bulk_group_action(self, group_id: str, feature_ids: list[str], action: str) -> int:
+        """Add/remove many features to/from a group. Returns rows actually
+        changed (idempotent — re-adding members counts 0)."""
+        if action not in {"add_to", "remove_from"}:
+            raise ValueError(f"action must be add_to or remove_from, got {action!r}")
+        if action == "add_to":
+            return self.add_group_members(group_id, feature_ids)
+        from sqlalchemy import bindparam
+
+        with self.session() as s:
+            result = s.execute(
+                text("DELETE FROM feature_group_members WHERE group_id = :gid AND feature_id IN :ids").bindparams(
+                    bindparam("ids", expanding=True)
+                ),
+                {"gid": group_id, "ids": list(feature_ids)},
+            )
+            s.commit()
+            return int(result.rowcount or 0)  # type: ignore[attr-defined]
+
+    def bulk_delete_features(self, feature_ids: list[str]) -> int:
+        """Delete many features. Cleans up child rows whose FK to ``features``
+        is NOT configured ON DELETE CASCADE (feature_docs, monitoring_baselines,
+        monitoring_checks, usage_log) before issuing the main DELETE.
+        CASCADE-configured tables (feature_versions, feature_group_members,
+        feature_lineage, action_items) clean up automatically.
+        """
+        if not feature_ids:
+            return 0
+        from sqlalchemy import bindparam
+
+        non_cascade_cleanup = (
+            "DELETE FROM feature_docs WHERE feature_id IN :ids",
+            "DELETE FROM monitoring_baselines WHERE feature_id IN :ids",
+            "DELETE FROM monitoring_checks WHERE feature_id IN :ids",
+            "DELETE FROM usage_log WHERE feature_id IN :ids",
+        )
+        with self.session() as s:
+            for stmt in non_cascade_cleanup:
+                s.execute(
+                    text(stmt).bindparams(bindparam("ids", expanding=True)),
+                    {"ids": list(feature_ids)},
+                )
+            result = s.execute(
+                text("DELETE FROM features WHERE id IN :ids").bindparams(bindparam("ids", expanding=True)),
+                {"ids": list(feature_ids)},
+            )
+            s.commit()
+            return int(result.rowcount or 0)  # type: ignore[attr-defined]
+
     # --- Lineage ---
 
     def add_lineage(
