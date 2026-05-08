@@ -6,6 +6,7 @@ import { api, invalidateCache, timeAgo } from '../api'
 import { Badge } from '../components/Badge'
 import { Modal } from '../components/Modal'
 import { Skeleton } from '../components/Skeleton'
+import { SchedulerOverview } from '../components/SchedulerOverview'
 
 function cronToHuman(cron: string, t: TFunction<'jobs'>): string {
   const parts = cron.trim().split(/\s+/)
@@ -105,6 +106,9 @@ export function Jobs() {
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-xl font-semibold">{t('page.title')}</h1>
       </div>
+
+      {/* T1.5d: unified job-status overview (cards + run-now + detail modal) */}
+      <SchedulerOverview jobLabel={getJobLabel} />
 
       {/* Job Cards */}
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">

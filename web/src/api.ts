@@ -257,6 +257,29 @@ export const api = {
     run: (name: string) => request<any>(`/jobs/${encodeURIComponent(name)}/run`, { method: 'POST' }),
     update: (name: string, data: any) => request<any>(`/jobs/${encodeURIComponent(name)}`, { method: 'PATCH', body: JSON.stringify(data) }),
   },
+  scheduler: {
+    /**
+     * Unified job-status API (T1.5c). Same endpoints regardless of whether the
+     * server is running APScheduler in-process or Celery — the `backend` field
+     * on each summary tells you which.
+     */
+    listJobs: () => cachedRequest<JobSummary[]>('/scheduler/jobs'),
+    getJob: (name: string) =>
+      cachedRequest<JobDetail>(`/scheduler/jobs/${encodeURIComponent(name)}`),
+    runJob: (name: string, kwargs?: Record<string, unknown>) =>
+      request<JobTriggerResponse>(`/scheduler/jobs/${encodeURIComponent(name)}/run`, {
+        method: 'POST',
+        body: JSON.stringify({ kwargs: kwargs ?? null }),
+      }),
+    listRuns: (params?: { job?: string; limit?: number; since?: string }) => {
+      const qs = new URLSearchParams()
+      if (params?.job) qs.set('job', params.job)
+      if (params?.limit) qs.set('limit', String(params.limit))
+      if (params?.since) qs.set('since', params.since)
+      const suffix = qs.toString() ? `?${qs.toString()}` : ''
+      return cachedRequest<JobRun[]>(`/scheduler/runs${suffix}`)
+    },
+  },
   admin: {
     cacheStats: () => cachedRequest<{ total: number; active: number; expired: number }>('/admin/cache/stats'),
     cacheClear: () => request<{ deleted: number }>('/admin/cache/clear', { method: 'POST' }),
@@ -315,6 +338,42 @@ export type GlossaryTerm = {
   values?: Record<string, string>
 }
 
+export type JobSummary = {
+  name: string
+  cron: string
+  enabled: boolean
+  next_run_at: string | null
+  last_status: string | null
+  last_run_at: string | null
+  last_duration_ms: number | null
+  last_error: string | null
+  backend: string
+}
+
+export type JobRun = {
+  id: string
+  job_name: string
+  status: string
+  started_at: string
+  finished_at: string | null
+  duration_seconds: number | null
+  result_summary: Record<string, unknown>
+  error_message: string | null
+  triggered_by: string
+}
+
+export type JobDetail = JobSummary & {
+  description: string
+  recent_runs: JobRun[]
+  active_celery_task_ids: string[]
+}
+
+export type JobTriggerResponse = {
+  job_log_id: string
+  celery_task_id: string | null
+  status: string
+}
+
 export type ActionItem = {
   id: string
   feature_id: string
@@ -333,6 +392,37 @@ export type ActionItem = {
 }
 
 import i18n from './i18n/config'
+
+/**
+ * Human-friendly duration: 45ms / 1.2s / 2m 15s / 1h 5m. Accepts milliseconds
+ * (preferred — matches `last_duration_ms` from /scheduler/jobs) or `null`.
+ */
+export function humanizeDuration(ms: number | null | undefined): string {
+  if (ms == null) return '-'
+  if (ms < 1000) return `${Math.round(ms)}ms`
+  const seconds = ms / 1000
+  if (seconds < 60) return `${seconds.toFixed(seconds < 10 ? 1 : 0)}s`
+  const totalSec = Math.round(seconds)
+  const minutes = Math.floor(totalSec / 60)
+  const remSec = totalSec % 60
+  if (minutes < 60) return remSec ? `${minutes}m ${remSec}s` : `${minutes}m`
+  const hours = Math.floor(minutes / 60)
+  const remMin = minutes % 60
+  return remMin ? `${hours}h ${remMin}m` : `${hours}h`
+}
+
+/** Future-friendly variant of timeAgo — returns "in 5 min" for upcoming dates. */
+export function timeUntil(dateStr: string | null | undefined): string {
+  if (!dateStr) return i18n.t('time.never', { ns: 'common' })
+  const lang = i18n.resolvedLanguage === 'vi' ? 'vi' : 'en'
+  const rtf = new Intl.RelativeTimeFormat(lang, { numeric: 'auto' })
+  const diff = (new Date(dateStr).getTime() - Date.now()) / 1000
+  if (Math.abs(diff) < 60) return rtf.format(Math.round(diff), 'second')
+  if (Math.abs(diff) < 3600) return rtf.format(Math.round(diff / 60), 'minute')
+  if (Math.abs(diff) < 86400) return rtf.format(Math.round(diff / 3600), 'hour')
+  if (Math.abs(diff) < 604800) return rtf.format(Math.round(diff / 86400), 'day')
+  return rtf.format(Math.round(diff / 604800), 'week')
+}
 
 export function timeAgo(dateStr: string | null | undefined): string {
   if (!dateStr) return i18n.t('time.never', { ns: 'common' })
