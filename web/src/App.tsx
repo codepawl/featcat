@@ -6,6 +6,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard').then((m) => ({ default:
 const Features = lazy(() => import('./pages/Features').then((m) => ({ default: m.Features })))
 const Groups = lazy(() => import('./pages/Groups').then((m) => ({ default: m.Groups })))
 const Similarity = lazy(() => import('./pages/Similarity').then((m) => ({ default: m.Similarity })))
+const Lineage = lazy(() => import('./pages/Lineage').then((m) => ({ default: m.Lineage })))
 const Monitoring = lazy(() => import('./pages/Monitoring').then((m) => ({ default: m.Monitoring })))
 const Jobs = lazy(() => import('./pages/Jobs').then((m) => ({ default: m.Jobs })))
 const Audit = lazy(() => import('./pages/Audit').then((m) => ({ default: m.Audit })))
@@ -35,6 +36,7 @@ export default function App() {
             <Route path="/features/:name" element={<Features />} />
             <Route path="/groups" element={<Groups />} />
             <Route path="/similarity" element={<Similarity />} />
+            <Route path="/lineage" element={<Lineage />} />
             <Route path="/audit" element={<Audit />} />
             <Route path="/monitoring" element={<Monitoring />} />
             <Route path="/actions" element={<Actions />} />

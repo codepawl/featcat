@@ -247,6 +247,12 @@ export const api = {
       edges: { source: string; target: string; similarity: number }[];
     }>(`/features/similarity-graph?threshold=${threshold}${source ? `&source=${encodeURIComponent(source)}` : ''}`),
   },
+  lineage: {
+    full: () => cachedRequest<{
+      nodes: { name: string; source: string; dtype: string; owner: string }[];
+      edges: { child: string; parent: string; transform: string; detected_method: string }[];
+    }>('/lineage/full'),
+  },
   jobs: {
     list: () => cachedRequest<any[]>('/jobs'),
     logs: (params?: Record<string, string>) => {
