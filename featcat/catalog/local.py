@@ -1738,6 +1738,29 @@ class LocalBackend(CatalogBackend):
             )
         return [_row_to_feature(r) for r in rows]
 
+    def get_status_counts(self) -> dict:
+        """Return per-status feature counts via a single ``GROUP BY status``.
+
+        Cheaper than ``list_features() -> count`` at 5k+ features (Dashboard
+        certification tile is the primary caller). Unknown / NULL status
+        values fall through into ``draft`` to match the default-on-insert
+        semantics so the dashboard never silently drops rows.
+        """
+        counts: dict[str, int] = {"draft": 0, "reviewed": 0, "certified": 0, "deprecated": 0}
+        with self.session() as s:
+            rows = s.execute(text("SELECT status, COUNT(*) AS n FROM features GROUP BY status")).mappings().all()
+        for r in rows:
+            status = r["status"]
+            if status in counts:
+                counts[status] += int(r["n"] or 0)
+            else:
+                # NULL or unexpected status string — fold into draft, matching
+                # the column default so the totals stay consistent with what
+                # the Features list shows.
+                counts["draft"] += int(r["n"] or 0)
+        counts["total"] = sum(counts.values())
+        return counts
+
     # --- In-app notifications (T2.1, in-web only) ---
 
     def create_notification(

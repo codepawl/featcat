@@ -314,6 +314,28 @@ def health_summary(db=Depends(get_db)):
     }
 
 
+class StatusCountsResponse(BaseModel):
+    """Aggregated certification-status counts for the Dashboard tile."""
+
+    draft: int
+    reviewed: int
+    certified: int
+    deprecated: int
+    total: int
+
+
+@router.get("/stats/status-counts", response_model=StatusCountsResponse)
+def status_counts(db=Depends(get_db)) -> StatusCountsResponse:
+    """Return per-status feature counts in one query.
+
+    Replaces the Dashboard tile's prior pattern of fetching the full feature
+    list and counting client-side. A single ``GROUP BY status`` is O(1) on
+    the wire vs. O(N) rows, which matters at 5k+ features.
+    """
+    counts = db.get_status_counts()
+    return StatusCountsResponse(**counts)
+
+
 class RollbackRequest(BaseModel):
     version: int
 

@@ -81,6 +81,18 @@ export const api = {
       lowest_scored: { spec: string; score: number; grade: string }[];
       improvement_opportunities: { spec: string; missing: string[] }[];
     }>('/features/health-summary'),
+    /**
+     * Aggregated certification-status counts for the Dashboard tile.
+     * Backend computes via a single GROUP BY — much cheaper than
+     * fetching the full feature list and counting client-side.
+     */
+    statusCounts: () => cachedRequest<{
+      draft: number;
+      reviewed: number;
+      certified: number;
+      deprecated: number;
+      total: number;
+    }>('/features/stats/status-counts'),
   },
   docs: {
     get: (name: string) => cachedRequest<Record<string, unknown>>(`/docs/by-name?name=${encodeURIComponent(name)}`),
