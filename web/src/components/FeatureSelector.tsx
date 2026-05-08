@@ -126,7 +126,7 @@ export function FeatureSelector({
           onClick={() => setShowSelectedOnly(prev => !prev)}
           className={`text-sm px-3 py-1.5 rounded border whitespace-nowrap ${
             showSelectedOnly
-              ? 'border-accent bg-accent/20 text-accent'
+              ? 'border-brand bg-brand/20 text-brand'
               : 'border-[var(--border-default)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'
           }`}
         >
@@ -136,7 +136,7 @@ export function FeatureSelector({
           <button
             onClick={handleAISuggest}
             disabled={suggesting}
-            className="text-sm px-3 py-1.5 rounded border border-[var(--accent-border)] text-[var(--accent)] hover:bg-[var(--accent-subtle-bg)] disabled:opacity-50 whitespace-nowrap"
+            className="text-sm px-3 py-1.5 rounded border border-[var(--brand-border)] text-[var(--brand)] hover:bg-[var(--brand-subtle-bg)] disabled:opacity-50 whitespace-nowrap"
           >
             {suggesting ? t('feature_selector.ai_suggesting') : t('feature_selector.ai_suggest')}
           </button>
@@ -150,7 +150,7 @@ export function FeatureSelector({
         </p>
         {dominantSource && (
           <button onClick={() => selectAllFromSource(dominantSource)}
-            className="text-[10px] text-accent hover:underline whitespace-nowrap">
+            className="text-[10px] text-brand hover:underline whitespace-nowrap">
             {t('feature_selector.select_all_from_source', { source: dominantSource, count: dominantCount })}
           </button>
         )}

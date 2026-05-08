@@ -234,7 +234,7 @@ export function Features() {
     { key: 'name', label: 'Name', render: (r: FeatureRow) => {
       const hl = (r as FeatureRow & { highlight?: Record<string, string[]> }).highlight
       const terms = hl ? [...new Set(Object.values(hl).flat())] : []
-      return <span className="font-medium text-accent"><HighlightedText text={r.name} terms={terms} /></span>
+      return <span className="font-medium text-brand"><HighlightedText text={r.name} terms={terms} /></span>
     }},
     { key: 'source', label: 'Source', sortable: false, render: (r: FeatureRow) => <span className="text-[var(--text-secondary)]">{r.name?.split('.')[0] || ''}</span> },
     { key: 'dtype', label: 'Dtype', render: (r: FeatureRow) => <span className="font-mono text-xs">{r.dtype}</span> },
@@ -249,7 +249,7 @@ export function Features() {
         return (
           <div className="flex items-center gap-1.5">
             <div className="w-12 h-1.5 bg-[var(--bg-secondary)] rounded-full overflow-hidden">
-              <div className="h-full bg-accent rounded-full" style={{ width: `${pct}%` }} />
+              <div className="h-full bg-brand rounded-full" style={{ width: `${pct}%` }} />
             </div>
             <span className="text-[11px] font-mono text-[var(--text-tertiary)]">{pct}%</span>
           </div>
@@ -299,12 +299,12 @@ export function Features() {
         </select>
         <button
           onClick={() => setDocFilter(!docFilter)}
-          className={`px-3 py-2 text-[13px] rounded-lg border transition-colors ${docFilter ? 'bg-accent text-white border-accent' : 'bg-[var(--bg-primary)] border-[var(--border-default)] hover:bg-[var(--bg-secondary)]'}`}
+          className={`px-3 py-2 text-[13px] rounded-lg border transition-colors ${docFilter ? 'bg-brand text-white border-brand' : 'bg-[var(--bg-primary)] border-[var(--border-default)] hover:bg-[var(--bg-secondary)]'}`}
         >
           {t('actions.undocumented_only')}
         </button>
         {hasActiveFilters && (
-          <button onClick={clearAllFilters} className="text-xs text-accent hover:underline">
+          <button onClick={clearAllFilters} className="text-xs text-brand hover:underline">
             {t('actions.clear_all_filters')}
           </button>
         )}
@@ -321,11 +321,11 @@ export function Features() {
           <FolderSearch size={16} /> {t('actions.bulk_scan')}
         </button>
         {selectedForExport.size > 0 && (
-          <button onClick={() => setExportOpen(true)} className="flex items-center gap-1.5 px-4 py-2 bg-accent text-white rounded-lg text-[13px] font-medium hover:bg-accent-emphasis transition-colors">
+          <button onClick={() => setExportOpen(true)} className="flex items-center gap-1.5 px-4 py-2 bg-brand text-white rounded-lg text-[13px] font-medium hover:bg-brand-emphasis transition-colors">
             <Download size={16} /> {t('actions.export_selected', { count: selectedForExport.size })}
           </button>
         )}
-        <button onClick={() => setAddModalOpen(true)} className="flex items-center gap-1.5 px-4 py-2 bg-accent text-white rounded-lg text-[13px] font-medium hover:bg-accent-emphasis transition-colors">
+        <button onClick={() => setAddModalOpen(true)} className="flex items-center gap-1.5 px-4 py-2 bg-brand text-white rounded-lg text-[13px] font-medium hover:bg-brand-emphasis transition-colors">
           <Plus size={16} /> {t('actions.add_source')}
         </button>
       </div>
@@ -451,11 +451,11 @@ function FeatureDetailModal({ feature, onClose, onDocGenerated }: { feature: Fea
       <div className="flex gap-4 border-b border-[var(--border-subtle)] mb-5">
         <button
           onClick={() => setActiveTab('overview')}
-          className={`pb-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'overview' ? 'border-accent text-accent' : 'border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'}`}
+          className={`pb-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'overview' ? 'border-brand text-brand' : 'border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'}`}
         >{t('tabs.overview')}</button>
         <button
           onClick={() => setActiveTab('history')}
-          className={`pb-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'history' ? 'border-accent text-accent' : 'border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'}`}
+          className={`pb-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'history' ? 'border-brand text-brand' : 'border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'}`}
         >{t('actions.history_tab', { count: versions.length })}</button>
       </div>
 
@@ -546,7 +546,7 @@ function FeatureDetailModal({ feature, onClose, onDocGenerated }: { feature: Fea
         ) : (
           <div className="flex items-center gap-3">
             <span className="text-sm text-[var(--text-tertiary)]">{t('documentation.empty')}</span>
-            <button onClick={generateDoc} disabled={generating} className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-accent text-white rounded-lg disabled:opacity-50">
+            <button onClick={generateDoc} disabled={generating} className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-brand text-white rounded-lg disabled:opacity-50">
               <RefreshCw size={12} className={generating ? 'animate-spin' : ''} />
               {generating ? t('actions.generating', { ns: 'common' }) : t('actions.generate', { ns: 'common' })}
             </button>
@@ -560,14 +560,14 @@ function FeatureDetailModal({ feature, onClose, onDocGenerated }: { feature: Fea
           <div className="space-y-2">
             <textarea value={hintDraft} onChange={(e) => setHintDraft(e.target.value)} rows={2}
               placeholder=""
-              className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-xs focus:border-accent outline-none" />
+              className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-xs focus:border-brand outline-none" />
             <div className="flex gap-2">
               <button onClick={async () => {
                 await api.hints.save(feature.name, hintDraft)
                 invalidateCache('/features')
                 setHintData({ hints: hintDraft })
                 setHintEditing(false)
-              }} className="px-3 py-1.5 text-xs bg-accent text-white rounded-lg">{t('actions.save', { ns: 'common' })}</button>
+              }} className="px-3 py-1.5 text-xs bg-brand text-white rounded-lg">{t('actions.save', { ns: 'common' })}</button>
               <button onClick={() => setHintEditing(false)} className="px-3 py-1.5 text-xs border border-[var(--border-default)] rounded-lg">{t('actions.cancel', { ns: 'common' })}</button>
             </div>
           </div>
@@ -575,13 +575,13 @@ function FeatureDetailModal({ feature, onClose, onDocGenerated }: { feature: Fea
           <div>
             <p className="text-sm text-[var(--text-secondary)] mb-1">{hintData.hints}</p>
             <button onClick={() => { setHintDraft(hintData.hints || ''); setHintEditing(true) }}
-              className="text-xs text-accent hover:underline">{t('actions.edit', { ns: 'common' })}</button>
+              className="text-xs text-brand hover:underline">{t('actions.edit', { ns: 'common' })}</button>
           </div>
         ) : (
           <div className="flex items-center gap-3">
             <span className="text-sm text-[var(--text-tertiary)]">{t('hints.empty')}</span>
             <button onClick={() => { setHintDraft(''); setHintEditing(true) }}
-              className="text-xs text-accent hover:underline">{t('hints.add')}</button>
+              className="text-xs text-brand hover:underline">{t('hints.add')}</button>
             <span className="text-[10px] text-[var(--text-tertiary)]" title={t('hints.info_tooltip')}>ℹ</span>
           </div>
         )}
@@ -600,7 +600,7 @@ function FeatureDetailModal({ feature, onClose, onDocGenerated }: { feature: Fea
               <option value="manual">{t('definition.types.manual')}</option>
             </select>
             <textarea value={defForm.definition} onChange={(e) => setDefForm((f) => ({ ...f, definition: e.target.value }))}
-              rows={4} className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-xs font-mono focus:border-accent outline-none" />
+              rows={4} className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-xs font-mono focus:border-brand outline-none" />
             <div className="flex gap-2">
               <button onClick={async () => {
                 await api.definitions.save(feature.name, defForm)
@@ -608,7 +608,7 @@ function FeatureDetailModal({ feature, onClose, onDocGenerated }: { feature: Fea
                 const d = await api.definitions.get(feature.name)
                 setDefinition(d)
                 setDefEditing(false)
-              }} className="px-3 py-1.5 text-xs bg-accent text-white rounded-lg">{t('actions.save', { ns: 'common' })}</button>
+              }} className="px-3 py-1.5 text-xs bg-brand text-white rounded-lg">{t('actions.save', { ns: 'common' })}</button>
               <button onClick={() => setDefEditing(false)} className="px-3 py-1.5 text-xs border border-[var(--border-default)] rounded-lg">{t('actions.cancel', { ns: 'common' })}</button>
             </div>
           </div>
@@ -617,7 +617,7 @@ function FeatureDetailModal({ feature, onClose, onDocGenerated }: { feature: Fea
             <div className="flex items-center gap-2 mb-2">
               <Badge variant="info">{String(definition.definition_type)}</Badge>
               <button onClick={() => { setDefForm({ definition: String(definition.definition), definition_type: String(definition.definition_type) }); setDefEditing(true) }}
-                className="text-xs text-accent hover:underline">{t('actions.edit', { ns: 'common' })}</button>
+                className="text-xs text-brand hover:underline">{t('actions.edit', { ns: 'common' })}</button>
             </div>
             <pre className="bg-[var(--bg-secondary)] rounded-lg p-3 text-xs font-mono overflow-x-auto whitespace-pre-wrap">{String(definition.definition)}</pre>
           </div>
@@ -625,7 +625,7 @@ function FeatureDetailModal({ feature, onClose, onDocGenerated }: { feature: Fea
           <div className="flex items-center gap-3">
             <span className="text-sm text-[var(--text-tertiary)]">{t('definition.empty')}</span>
             <button onClick={() => { setDefForm({ definition: '', definition_type: 'sql' }); setDefEditing(true) }}
-              className="text-xs text-accent hover:underline">{t('definition.add')}</button>
+              className="text-xs text-brand hover:underline">{t('definition.add')}</button>
           </div>
         )}
       </Section>
@@ -677,7 +677,7 @@ function FeatureDetailModal({ feature, onClose, onDocGenerated }: { feature: Fea
         ) : (
           <div className="flex items-center gap-3">
             <span className="text-sm text-[var(--text-tertiary)]">{t('monitoring.empty')}</span>
-            <button onClick={computeBaseline} disabled={blLoading} className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-accent text-white rounded-lg disabled:opacity-50">
+            <button onClick={computeBaseline} disabled={blLoading} className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-brand text-white rounded-lg disabled:opacity-50">
               {blLoading ? t('actions.computing') : t('actions.compute_baseline')}
             </button>
           </div>
@@ -808,7 +808,7 @@ function GenerateDocsModal({ open, onClose, features, selectedSpecs, onStarted }
       <>
         <button onClick={onClose} className="px-4 py-2 text-sm border border-[var(--border-default)] rounded-lg">{t('actions.cancel', { ns: 'common' })}</button>
         <button onClick={handleGenerate} disabled={submitting || !canGenerate}
-          className="px-4 py-2 text-sm bg-accent text-white rounded-lg disabled:opacity-50">
+          className="px-4 py-2 text-sm bg-brand text-white rounded-lg disabled:opacity-50">
           {submitting ? 'Starting...' : `Generate ${targetCount} Docs`}
         </button>
       </>
@@ -835,7 +835,7 @@ function GenerateDocsModal({ open, onClose, features, selectedSpecs, onStarted }
                 <select
                   value={selectedGroup}
                   onChange={e => setSelectedGroup(e.target.value)}
-                  className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px] focus:border-accent outline-none"
+                  className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px] focus:border-brand outline-none"
                 >
                   <option value="">Select a group...</option>
                   {groups.map(g => (
@@ -848,7 +848,7 @@ function GenerateDocsModal({ open, onClose, features, selectedSpecs, onStarted }
                   <p className="text-[11px] text-[var(--text-tertiary)] mt-1">{t('generate_modal.select_group_hint')}</p>
                 )}
                 {selectedGroup && groupMembers.length > 0 && (
-                  <p className="text-[11px] text-accent mt-1">
+                  <p className="text-[11px] text-brand mt-1">
                     Will generate docs for {groupMembers.length} features in group {selectedGroup}
                   </p>
                 )}
@@ -886,7 +886,7 @@ function GenerateDocsModal({ open, onClose, features, selectedSpecs, onStarted }
             onChange={(e) => setGlobalHint(e.target.value)}
             rows={2}
             placeholder="e.g. All features are computed from the last 30 days of telecom usage data. Dataset covers FPT Telecom subscribers in Vietnam."
-            className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px] focus:border-accent outline-none resize-none"
+            className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px] focus:border-brand outline-none resize-none"
           />
           <p className="text-[11px] text-[var(--text-tertiary)] mt-1">Applied to all features in this batch. Individual feature hints take priority.</p>
         </div>
@@ -895,7 +895,7 @@ function GenerateDocsModal({ open, onClose, features, selectedSpecs, onStarted }
         <div>
           <button
             onClick={() => setShowPreview(!showPreview)}
-            className="flex items-center gap-1.5 text-[13px] font-medium text-accent hover:underline"
+            className="flex items-center gap-1.5 text-[13px] font-medium text-brand hover:underline"
           >
             {showPreview ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             {showPreview ? 'Hide' : 'Show'} features to be documented ({targetCount})
@@ -925,11 +925,11 @@ function GenerateDocsModal({ open, onClose, features, selectedSpecs, onStarted }
                                 value={hintDrafts[f.name] ?? hint ?? ''}
                                 onChange={(e) => setHintDrafts(prev => ({ ...prev, [f.name]: e.target.value }))}
                                 rows={2}
-                                className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded px-2 py-1 text-[11px] focus:border-accent outline-none resize-none"
+                                className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded px-2 py-1 text-[11px] focus:border-brand outline-none resize-none"
                                 placeholder="Add a hint..."
                               />
                               <div className="flex gap-1">
-                                <button onClick={() => saveHint(f.name)} className="px-2 py-0.5 text-[10px] bg-accent text-white rounded">{t('actions.save', { ns: 'common' })}</button>
+                                <button onClick={() => saveHint(f.name)} className="px-2 py-0.5 text-[10px] bg-brand text-white rounded">{t('actions.save', { ns: 'common' })}</button>
                                 <button onClick={() => setEditingHint(null)} className="px-2 py-0.5 text-[10px] border border-[var(--border-default)] rounded">{t('actions.cancel', { ns: 'common' })}</button>
                               </div>
                             </div>
@@ -942,7 +942,7 @@ function GenerateDocsModal({ open, onClose, features, selectedSpecs, onStarted }
                               )}
                               <button
                                 onClick={() => { setHintDrafts(prev => ({ ...prev, [f.name]: hint ?? '' })); setEditingHint(f.name) }}
-                                className="text-[var(--text-tertiary)] hover:text-accent shrink-0 p-0.5"
+                                className="text-[var(--text-tertiary)] hover:text-brand shrink-0 p-0.5"
                                 title={t('generate_modal.edit_hint_title')}
                               >
                                 <Pencil size={10} />
@@ -985,7 +985,7 @@ function AddSourceModal({ open, onClose, onSubmit }: { open: boolean; onClose: (
     <Modal open={open} onClose={onClose} title={t('add_source_modal.title')} actions={
       <>
         <button onClick={onClose} className="px-4 py-2 text-sm border border-[var(--border-default)] rounded-lg">{t('actions.cancel', { ns: 'common' })}</button>
-        <button onClick={() => onSubmit(form)} disabled={!form.path} className="px-4 py-2 text-sm bg-accent text-white rounded-lg disabled:opacity-50">Add</button>
+        <button onClick={() => onSubmit(form)} disabled={!form.path} className="px-4 py-2 text-sm bg-brand text-white rounded-lg disabled:opacity-50">Add</button>
       </>
     }>
       <div className="space-y-3">
@@ -1002,7 +1002,7 @@ function AddSourceModal({ open, onClose, onSubmit }: { open: boolean; onClose: (
               value={form[k as keyof typeof form]}
               onChange={(e) => set(k, e.target.value)}
               placeholder={placeholder}
-              className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px] focus:border-accent outline-none"
+              className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px] focus:border-brand outline-none"
             />
           </div>
         ))}
@@ -1048,11 +1048,11 @@ function BulkScanModal({ open, onClose, onDone }: { open: boolean; onClose: () =
   return (
     <Modal open={open} onClose={() => { reset(); onClose() }} title={t('bulk_scan_modal.title')} maxWidth="max-w-lg" actions={
       result ? (
-        <button onClick={() => { reset(); onDone() }} className="px-4 py-2 text-sm bg-accent text-white rounded-lg">{t('actions.done', { ns: 'common' })}</button>
+        <button onClick={() => { reset(); onDone() }} className="px-4 py-2 text-sm bg-brand text-white rounded-lg">{t('actions.done', { ns: 'common' })}</button>
       ) : (
         <>
           <button onClick={onClose} className="px-4 py-2 text-sm border border-[var(--border-default)] rounded-lg">{t('actions.cancel', { ns: 'common' })}</button>
-          <button onClick={submit} disabled={!form.path || scanning} className="px-4 py-2 text-sm bg-accent text-white rounded-lg disabled:opacity-50">
+          <button onClick={submit} disabled={!form.path || scanning} className="px-4 py-2 text-sm bg-brand text-white rounded-lg disabled:opacity-50">
             {scanning ? 'Scanning...' : 'Scan'}
           </button>
         </>
@@ -1094,7 +1094,7 @@ function BulkScanModal({ open, onClose, onDone }: { open: boolean; onClose: () =
           <div>
             <label className="block text-xs font-medium mb-1">{t('bulk_scan_modal.directory_path')} <span className="text-[var(--danger)]">*</span></label>
             <input value={form.path} onChange={(e) => setForm((f) => ({ ...f, path: e.target.value }))} placeholder="/path/to/data"
-              className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px] focus:border-accent outline-none" />
+              className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px] focus:border-brand outline-none" />
           </div>
           <div className="flex gap-4">
             <label className="flex items-center gap-2 text-[13px] cursor-pointer">
@@ -1109,7 +1109,7 @@ function BulkScanModal({ open, onClose, onDone }: { open: boolean; onClose: () =
           <div>
             <label className="block text-xs font-medium mb-1">{t('bulk_scan_modal.owner')}</label>
             <input value={form.owner} onChange={(e) => setForm((f) => ({ ...f, owner: e.target.value }))} placeholder={t('bulk_scan_modal.owner_placeholder')}
-              className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px] focus:border-accent outline-none" />
+              className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px] focus:border-brand outline-none" />
           </div>
           <div>
             <label className="block text-xs font-medium mb-1">{t('bulk_scan_modal.tags')}</label>
@@ -1123,7 +1123,7 @@ function BulkScanModal({ open, onClose, onDone }: { open: boolean; onClose: () =
             <input value={tagInput} onChange={(e) => setTagInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTag() } }}
               placeholder={t('bulk_scan_modal.tag_placeholder')}
-              className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px] focus:border-accent outline-none" />
+              className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px] focus:border-brand outline-none" />
           </div>
         </div>
       )}
@@ -1140,7 +1140,7 @@ function MiniBarChart({ data }: { data: { date: string; count: number }[] }) {
     <svg viewBox={`0 0 ${w} 40`} className="w-full max-w-[200px] h-8 mt-2">
       {data.map((d, i) => (
         <rect key={i} x={i * 20 + 2} y={40 - (d.count / max) * 36} width={16} height={Math.max((d.count / max) * 36, 1)}
-          className="fill-accent/60" rx={2} />
+          className="fill-brand/60" rx={2} />
       ))}
     </svg>
   )
@@ -1177,21 +1177,21 @@ function HealthBreakdown({ feature }: { feature: FeatureRow }) {
       <div className="grid grid-cols-[112px_1fr_auto_auto] gap-x-3 gap-y-3 items-center">
         <span className="text-sm text-[var(--text-secondary)]">{t('health_breakdown.documentation')}</span>
         <div className="h-1.5 bg-[var(--bg-tertiary)] rounded-full overflow-hidden">
-          <div className="h-full bg-[var(--accent)] transition-all" style={{ width: `${docPct}%` }} />
+          <div className="h-full bg-[var(--brand)] transition-all" style={{ width: `${docPct}%` }} />
         </div>
         <span className="font-mono tabular-nums text-xs text-[var(--text-secondary)] whitespace-nowrap text-right">{bd.documentation}/40</span>
         <span />
 
         <span className="text-sm text-[var(--text-secondary)]">{t('health_breakdown.drift')}</span>
         <div className="h-1.5 bg-[var(--bg-tertiary)] rounded-full overflow-hidden">
-          <div className="h-full bg-[var(--accent)] transition-all" style={{ width: `${driftPct}%` }} />
+          <div className="h-full bg-[var(--brand)] transition-all" style={{ width: `${driftPct}%` }} />
         </div>
         <span className="font-mono tabular-nums text-xs text-[var(--text-secondary)] whitespace-nowrap text-right">{bd.drift}/40</span>
         <span className="text-xs text-[var(--text-tertiary)] whitespace-nowrap">{driftNote}</span>
 
         <span className="text-sm text-[var(--text-secondary)]">{t('health_breakdown.usage')}</span>
         <div className="h-1.5 bg-[var(--bg-tertiary)] rounded-full overflow-hidden">
-          <div className="h-full bg-[var(--accent)] transition-all" style={{ width: `${usagePct}%` }} />
+          <div className="h-full bg-[var(--brand)] transition-all" style={{ width: `${usagePct}%` }} />
         </div>
         <span className="font-mono tabular-nums text-xs text-[var(--text-secondary)] whitespace-nowrap text-right">{bd.usage}/20</span>
         {usageNote ? (
@@ -1270,7 +1270,7 @@ function VersionTimeline({ versions, loading }: { versions: Record<string, unkno
               </div>
               <p className="text-sm text-[var(--text-secondary)] mt-0.5">{v.change_summary as string}</p>
               {prev && next && (
-                <button onClick={() => toggle(version)} className="text-[11px] text-accent hover:underline mt-1">
+                <button onClick={() => toggle(version)} className="text-[11px] text-brand hover:underline mt-1">
                   {isExpanded ? 'Hide diff' : 'Show diff'}
                 </button>
               )}
@@ -1303,7 +1303,7 @@ function HighlightedText({ text, terms }: { text: string; terms: string[] }) {
     <span>
       {parts.map((part, i) =>
         terms.some(t => t.toLowerCase() === part.toLowerCase())
-          ? <mark key={i} className="bg-[var(--accent-subtle-bg)] text-[var(--accent)] rounded px-0.5">{part}</mark>
+          ? <mark key={i} className="bg-[var(--brand-subtle-bg)] text-[var(--brand)] rounded px-0.5">{part}</mark>
           : <span key={i}>{part}</span>
       )}
     </span>

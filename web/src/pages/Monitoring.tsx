@@ -112,7 +112,7 @@ export function Monitoring() {
             <MetricCard label={t('stats.warnings')} value={(data?.warnings as number) ?? 0} color={(data?.warnings as number) > 0 ? 'warning' : 'default'} />
             <MetricCard label={t('stats.critical')} value={(data?.critical as number) ?? 0} color={(data?.critical as number) > 0 ? 'danger' : 'default'} />
             <div className="bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-lg p-4 flex flex-col items-center justify-center gap-1.5">
-              <button onClick={runCheck} disabled={checking} className="px-4 py-2 bg-accent text-white rounded-lg text-[13px] font-medium disabled:opacity-50">
+              <button onClick={runCheck} disabled={checking} className="px-4 py-2 bg-brand text-white rounded-lg text-[13px] font-medium disabled:opacity-50">
                 {checking ? t('actions.checking') : t('actions.run_check_now')}
               </button>
               {sorted.length === 0 && !loading && (
@@ -208,7 +208,7 @@ export function Monitoring() {
       <Modal open={baselineModal} onClose={() => setBaselineModal(false)} title={t('baseline_modal.title')} actions={
         <>
           <button onClick={() => setBaselineModal(false)} className="px-4 py-2 text-sm border border-[var(--border-default)] rounded-lg">{t('actions.cancel', { ns: 'common' })}</button>
-          <button onClick={confirmBaseline} className="px-4 py-2 text-sm bg-accent text-white rounded-lg">{t('actions.confirm', { ns: 'common' })}</button>
+          <button onClick={confirmBaseline} className="px-4 py-2 text-sm bg-brand text-white rounded-lg">{t('actions.confirm', { ns: 'common' })}</button>
         </>
       }>
         <p className="text-sm text-[var(--text-secondary)]">
@@ -308,7 +308,7 @@ function FeatureDetail({ item, onNavigate, onClose, t }: { item: MonitoringDetai
         </div>
       )}
 
-      <button onClick={onNavigate} className="text-accent hover:underline text-xs font-medium mt-1">{t('detail.view_feature')}</button>
+      <button onClick={onNavigate} className="text-brand hover:underline text-xs font-medium mt-1">{t('detail.view_feature')}</button>
     </div>
   )
 }

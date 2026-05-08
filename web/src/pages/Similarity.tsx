@@ -433,7 +433,7 @@ export function Similarity() {
             value={graphSearch}
             onChange={e => setGraphSearch(e.target.value)}
             placeholder={t('filter_placeholder')}
-            className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-1.5 text-[12px] w-36 focus:border-accent outline-none"
+            className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-1.5 text-[12px] w-36 focus:border-brand outline-none"
           />
           <label className="flex items-center gap-2 text-[12px] text-[var(--text-secondary)]">
             <span className="whitespace-nowrap">{t('threshold_label')}</span>

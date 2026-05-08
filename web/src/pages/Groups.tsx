@@ -74,7 +74,7 @@ export function Groups() {
   }
 
   const memberColumns = [
-    { key: 'name', label: t('member_table.feature'), render: (r: any) => <span className="font-medium text-accent">{r.name}</span> },
+    { key: 'name', label: t('member_table.feature'), render: (r: any) => <span className="font-medium text-brand">{r.name}</span> },
     { key: 'dtype', label: t('member_table.dtype'), render: (r: any) => <span className="font-mono text-xs">{r.dtype}</span> },
     { key: 'has_doc', label: t('member_table.docs'), sortable: false, render: (r: any) => r.has_doc ? <Badge variant="success">{t('member_table.has_docs_yes')}</Badge> : <span className="text-[var(--text-tertiary)]">-</span> },
     { key: '_remove', label: '', sortable: false, render: (r: any) => (
@@ -88,7 +88,7 @@ export function Groups() {
     <div>
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-semibold">{t('page.title')}</h1>
-        <button onClick={() => setCreateOpen(true)} className="flex items-center gap-1.5 px-4 py-2 bg-accent text-white rounded-lg text-[13px] font-medium hover:bg-accent-emphasis transition-colors">
+        <button onClick={() => setCreateOpen(true)} className="flex items-center gap-1.5 px-4 py-2 bg-brand text-white rounded-lg text-[13px] font-medium hover:bg-brand-emphasis transition-colors">
           <Plus size={16} /> {t('actions.new_group')}
         </button>
       </div>
@@ -108,7 +108,7 @@ export function Groups() {
                   onClick={() => selectGroup(g)}
                   className={`p-3 rounded-lg border cursor-pointer transition-all ${
                     selected?.name === g.name
-                      ? 'border-accent bg-accent-muted'
+                      ? 'border-brand bg-brand-muted'
                       : 'border-[var(--border-subtle)] bg-[var(--bg-primary)] hover:border-[var(--border-default)]'
                   }`}
                 >
@@ -176,7 +176,7 @@ export function Groups() {
                       onClick={() => setTab(entry.id)}
                       className={`flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium border-b-2 transition-colors ${
                         tab === entry.id
-                          ? 'border-accent text-accent'
+                          ? 'border-brand text-brand'
                           : 'border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'
                       }`}
                     >
@@ -235,7 +235,7 @@ function CreateGroupModal({ open, onClose, onCreated }: { open: boolean; onClose
     <Modal open={open} onClose={onClose} title={t('create_modal.title')} actions={
       <>
         <button onClick={onClose} className="px-4 py-2 text-sm border border-[var(--border-default)] rounded-lg">{t('actions.cancel', { ns: 'common' })}</button>
-        <button onClick={submit} disabled={!form.name} className="px-4 py-2 text-sm bg-accent text-white rounded-lg disabled:opacity-50">{t('actions.create')}</button>
+        <button onClick={submit} disabled={!form.name} className="px-4 py-2 text-sm bg-brand text-white rounded-lg disabled:opacity-50">{t('actions.create')}</button>
       </>
     }>
       <div className="space-y-3">
@@ -251,7 +251,7 @@ function CreateGroupModal({ open, onClose, onCreated }: { open: boolean; onClose
               value={(form as any)[k]}
               onChange={(e) => set(k, e.target.value)}
               placeholder={placeholder}
-              className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px] focus:border-accent outline-none"
+              className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px] focus:border-brand outline-none"
             />
           </div>
         ))}
@@ -290,7 +290,7 @@ function AddFeaturesModal({ open, onClose, groupName, onAdded }: { open: boolean
     <Modal open={open} onClose={onClose} title={t('add_modal.title', { group: groupName })} maxWidth="max-w-xl" actions={
       <>
         <button onClick={onClose} className="px-4 py-2 text-sm border border-[var(--border-default)] rounded-lg">{t('actions.cancel', { ns: 'common' })}</button>
-        <button onClick={submit} disabled={selectedSpecs.size === 0 || adding} className="px-4 py-2 text-sm bg-accent text-white rounded-lg disabled:opacity-50">
+        <button onClick={submit} disabled={selectedSpecs.size === 0 || adding} className="px-4 py-2 text-sm bg-brand text-white rounded-lg disabled:opacity-50">
           {t('actions.add')} {selectedSpecs.size > 0 ? `(${selectedSpecs.size})` : ''}
         </button>
       </>
@@ -354,7 +354,7 @@ function GroupHealthTab({ groupName }: { groupName: string }) {
       <div>
         <div className="flex items-center justify-between mb-2">
           <h4 className="text-xs font-semibold uppercase text-[var(--text-tertiary)] tracking-wide">{t('health.lowest', { defaultValue: 'Lowest scoring members' })}</h4>
-          <button onClick={load} className="flex items-center gap-1 text-[11px] text-[var(--text-tertiary)] hover:text-accent">
+          <button onClick={load} className="flex items-center gap-1 text-[11px] text-[var(--text-tertiary)] hover:text-brand">
             <RefreshCw size={11} /> {t('health.refresh', { defaultValue: 'Refresh' })}
           </button>
         </div>
@@ -363,7 +363,7 @@ function GroupHealthTab({ groupName }: { groupName: string }) {
             <p className="text-sm text-[var(--text-tertiary)] py-3 text-center">{t('health.all_healthy', { defaultValue: 'All members healthy' })}</p>
           ) : data.lowest_scored.map(m => (
             <div key={m.spec} className="flex items-center justify-between px-3 py-2 text-[13px]">
-              <span className="font-mono text-accent truncate">{m.spec}</span>
+              <span className="font-mono text-brand truncate">{m.spec}</span>
               <span className="flex items-center gap-2 shrink-0">
                 <Badge variant={m.grade === 'A' ? 'success' : m.grade === 'B' ? 'info' : m.grade === 'C' ? 'warning' : 'critical'}>{m.grade}</Badge>
                 <span className="font-mono text-xs">{m.score}/100</span>
@@ -429,7 +429,7 @@ function GroupMonitoringTab({ groupName }: { groupName: string }) {
       <div>
         <div className="flex items-center justify-between mb-2">
           <h4 className="text-xs font-semibold uppercase text-[var(--text-tertiary)] tracking-wide">{t('monitoring.with_drift', { defaultValue: 'Members with drift' })}</h4>
-          <button onClick={load} className="flex items-center gap-1 text-[11px] text-[var(--text-tertiary)] hover:text-accent">
+          <button onClick={load} className="flex items-center gap-1 text-[11px] text-[var(--text-tertiary)] hover:text-brand">
             <RefreshCw size={11} /> {t('health.refresh', { defaultValue: 'Refresh' })}
           </button>
         </div>
@@ -438,7 +438,7 @@ function GroupMonitoringTab({ groupName }: { groupName: string }) {
             <p className="text-sm text-[var(--text-tertiary)] py-3 text-center">{t('monitoring.no_drift', { defaultValue: 'No drifting members' })}</p>
           ) : data.members_with_drift.map(m => (
             <a key={m.spec} href={`/monitoring?feature=${encodeURIComponent(m.spec)}`} className="flex items-center justify-between px-3 py-2 text-[13px] hover:bg-[var(--bg-secondary)]">
-              <span className="font-mono text-accent truncate">{m.spec}</span>
+              <span className="font-mono text-brand truncate">{m.spec}</span>
               <span className="flex items-center gap-2 shrink-0">
                 <Badge variant={m.severity === 'critical' ? 'critical' : 'warning'}>{m.severity}</Badge>
                 <span className="font-mono text-xs">{m.psi !== null ? m.psi.toFixed(4) : '-'}</span>
@@ -518,7 +518,7 @@ function GroupDocsTab({ groupName, memberCount }: { groupName: string; memberCou
       <button
         onClick={start}
         disabled={!!progress && progress.status === 'running'}
-        className="flex items-center gap-1.5 px-4 py-2 bg-accent text-white rounded-lg text-[13px] font-medium hover:bg-accent-emphasis disabled:opacity-50"
+        className="flex items-center gap-1.5 px-4 py-2 bg-brand text-white rounded-lg text-[13px] font-medium hover:bg-brand-emphasis disabled:opacity-50"
       >
         <Sparkles size={14} />
         {progress?.status === 'running' ? t('docs.running', { defaultValue: 'Running…' }) : t('docs.start', { defaultValue: 'Regenerate docs' })}
@@ -534,7 +534,7 @@ function GroupDocsTab({ groupName, memberCount }: { groupName: string; memberCou
           </div>
           <div className="h-2 bg-[var(--bg-secondary)] rounded">
             <div
-              className="h-full bg-accent rounded transition-all"
+              className="h-full bg-brand rounded transition-all"
               style={{ width: `${progress.total === 0 ? 0 : Math.round(((progress.completed + progress.failed) / progress.total) * 100)}%` }}
             />
           </div>

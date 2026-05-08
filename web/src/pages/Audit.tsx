@@ -110,7 +110,7 @@ export function Audit() {
                   <td className="py-2 px-3 text-[var(--text-tertiary)] whitespace-nowrap">
                     {v.created_at ? timeAgo(v.created_at as string) : '-'}
                   </td>
-                  <td className="py-2 px-3 font-medium text-accent">{v.feature_name as string || '-'}</td>
+                  <td className="py-2 px-3 font-medium text-brand">{v.feature_name as string || '-'}</td>
                   <td className="py-2 px-3 text-[var(--text-secondary)]">{v.changed_by as string || '-'}</td>
                   <td className="py-2 px-3">
                     <Badge variant={TYPE_COLORS[v.change_type as string] || 'default'}>

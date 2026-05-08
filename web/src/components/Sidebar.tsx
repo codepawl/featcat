@@ -43,7 +43,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       {/* Brand */}
       <div className="px-5 pb-6 pt-1">
         <span className="font-mono text-base font-bold tracking-tight">
-          feat<span className="text-accent">cat</span>
+          feat<span className="text-brand">cat</span>
         </span>
       </div>
 
@@ -57,7 +57,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           className={({ isActive }) =>
             `flex items-center gap-2.5 px-5 py-2.5 text-[13px] font-medium border-l-2 transition-colors no-underline ${
               isActive
-                ? 'text-accent border-accent bg-accent-muted'
+                ? 'text-brand border-brand bg-brand-muted'
                 : 'text-[var(--text-secondary)] border-transparent hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]'
             }`
           }
@@ -65,7 +65,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           <n.icon size={16} strokeWidth={1.8} />
           <span className="flex-1">{t(`nav.${n.key}`)}</span>
           {n.to === '/actions' && pendingActions > 0 && (
-            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-accent text-[var(--bg-primary)]">
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-brand text-[var(--bg-primary)]">
               {pendingActions > 99 ? '99+' : pendingActions}
             </span>
           )}

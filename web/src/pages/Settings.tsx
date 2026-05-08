@@ -9,7 +9,7 @@ type Theme = 'light' | 'dark'
 
 const CARD = 'bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5 hover:border-[var(--border-muted)] transition-colors'
 const OPTION_BASE = 'flex items-center justify-between gap-3 px-4 py-3 rounded-lg border text-left transition-colors'
-const OPTION_SELECTED = 'border-[var(--accent)] bg-[var(--accent-subtle-bg)]'
+const OPTION_SELECTED = 'border-[var(--brand)] bg-[var(--brand-subtle-bg)]'
 const OPTION_UNSELECTED = 'border-[var(--border-default)] hover:border-[var(--border-muted)]'
 
 export function Settings() {
@@ -50,7 +50,7 @@ export function Settings() {
                 <div className="flex items-center gap-3 min-w-0">
                   <span className={`inline-flex items-center justify-center w-8 h-5 rounded text-[10px] font-mono font-semibold tracking-wider ${
                     selected
-                      ? 'bg-[var(--accent)] text-[var(--text-on-accent)]'
+                      ? 'bg-[var(--brand)] text-[var(--text-on-brand)]'
                       : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'
                   }`}>
                     {code.toUpperCase()}
@@ -60,7 +60,7 @@ export function Settings() {
                   </span>
                 </div>
                 {selected && (
-                  <span className="text-[11px] uppercase tracking-wider text-[var(--accent)] font-medium shrink-0">
+                  <span className="text-[11px] uppercase tracking-wider text-[var(--brand)] font-medium shrink-0">
                     {t('language.current')}
                   </span>
                 )}
@@ -90,7 +90,7 @@ export function Settings() {
                 <div className="flex items-center gap-3 min-w-0">
                   <span className={`inline-flex items-center justify-center w-8 h-8 rounded ${
                     selected
-                      ? 'bg-[var(--accent)] text-[var(--text-on-accent)]'
+                      ? 'bg-[var(--brand)] text-[var(--text-on-brand)]'
                       : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'
                   }`}>
                     <Icon size={16} strokeWidth={1.8} />
@@ -100,7 +100,7 @@ export function Settings() {
                   </span>
                 </div>
                 {selected && (
-                  <span className="text-[11px] uppercase tracking-wider text-[var(--accent)] font-medium shrink-0">
+                  <span className="text-[11px] uppercase tracking-wider text-[var(--brand)] font-medium shrink-0">
                     {t('language.current')}
                   </span>
                 )}
@@ -161,7 +161,7 @@ function LLMCacheCard() {
           <h2 className="text-sm font-semibold mb-1">{t('llm_cache.title', { defaultValue: 'LLM Response Cache' })}</h2>
           <p className="text-xs text-[var(--text-tertiary)]">{t('llm_cache.description', { defaultValue: 'Cached AI responses keyed by prompt + system. Clearing forces a fresh LLM call next time.' })}</p>
         </div>
-        <button onClick={load} className="text-[var(--text-tertiary)] hover:text-accent" aria-label="Refresh">
+        <button onClick={load} className="text-[var(--text-tertiary)] hover:text-brand" aria-label="Refresh">
           <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
         </button>
       </div>

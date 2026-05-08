@@ -20,12 +20,12 @@
   --text-primary: #1F2328;
   --text-secondary: #656D76;
   --text-tertiary: #848D97;
-  --text-on-accent: #FFFFFF;
-  /* Accent */
-  --accent: #0969DA;
-  --accent-hover: #0860CA;
-  --accent-subtle-bg: rgba(9, 105, 218, 0.1);
-  --accent-border: rgba(9, 105, 218, 0.4);
+  --text-on-brand: #FFFFFF;
+  /* Brand (was --accent — renamed to free up the `accent` slot for shadcn semantics) */
+  --brand: #0969DA;
+  --brand-hover: #0860CA;
+  --brand-subtle-bg: rgba(9, 105, 218, 0.1);
+  --brand-border: rgba(9, 105, 218, 0.4);
   /* Semantic */
   --success: #1A7F37;
   --success-subtle-bg: rgba(26, 127, 55, 0.1);
@@ -34,11 +34,33 @@
   --danger: #CF222E;
   --danger-subtle-bg: rgba(207, 34, 46, 0.1);
 
-  /* Legacy aliases — consumed by out-of-scope files (e.g. Chat.tsx). Pass 3 will migrate call sites. */
-  --accent-subtle: var(--accent-subtle-bg);
-  --accent-emphasis: var(--accent-hover);
-  --accent-muted: var(--accent-subtle-bg);
+  /* Legacy brand aliases — Tailwind config maps brand-{subtle,emphasis,muted} → these */
+  --brand-subtle: var(--brand-subtle-bg);
+  --brand-emphasis: var(--brand-hover);
+  --brand-muted: var(--brand-subtle-bg);
   --code-bg: var(--bg-tertiary);
+
+  /* shadcn / AI Elements HSL tokens (component-only — featcat code keeps using --brand* + --bg-* + --text-*) */
+  --background: 0 0% 100%;
+  --foreground: 213 12% 14%;
+  --card: 0 0% 100%;
+  --card-foreground: 213 12% 14%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 213 12% 14%;
+  --primary: 212 92% 45%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 213 18% 93%;
+  --secondary-foreground: 213 12% 14%;
+  --muted: 216 25% 97%;
+  --muted-foreground: 213 9% 43%;
+  --accent: 213 18% 93%;
+  --accent-foreground: 213 12% 14%;
+  --destructive: 355 71% 47%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 211 14% 84%;
+  --input: 211 14% 84%;
+  --ring: 212 92% 45%;
+  --radius: 0.5rem;
 }
 
 @supports (font-variation-settings: normal) {
@@ -56,21 +78,42 @@
   --text-primary: #E6EDF3;
   --text-secondary: #8B949E;
   --text-tertiary: #6E7681;
-  --text-on-accent: #FFFFFF;
-  --accent: #2F81F7;
-  --accent-hover: #4493F8;
-  --accent-subtle-bg: rgba(56, 139, 253, 0.1);
-  --accent-border: rgba(56, 139, 253, 0.4);
+  --text-on-brand: #FFFFFF;
+  --brand: #2F81F7;
+  --brand-hover: #4493F8;
+  --brand-subtle-bg: rgba(56, 139, 253, 0.1);
+  --brand-border: rgba(56, 139, 253, 0.4);
   --success: #3FB950;
   --success-subtle-bg: rgba(46, 160, 67, 0.15);
   --warning: #D29922;
   --warning-subtle-bg: rgba(187, 128, 9, 0.15);
   --danger: #F85149;
   --danger-subtle-bg: rgba(248, 81, 73, 0.15);
-  --accent-subtle: var(--accent-subtle-bg);
-  --accent-emphasis: var(--accent-hover);
-  --accent-muted: var(--accent-subtle-bg);
+  --brand-subtle: var(--brand-subtle-bg);
+  --brand-emphasis: var(--brand-hover);
+  --brand-muted: var(--brand-subtle-bg);
   --code-bg: var(--bg-tertiary);
+
+  /* shadcn dark overrides */
+  --background: 217 33% 7%;
+  --foreground: 213 32% 93%;
+  --card: 217 24% 11%;
+  --card-foreground: 213 32% 93%;
+  --popover: 217 24% 11%;
+  --popover-foreground: 213 32% 93%;
+  --primary: 212 92% 58%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 213 16% 16%;
+  --secondary-foreground: 213 32% 93%;
+  --muted: 213 16% 16%;
+  --muted-foreground: 213 11% 58%;
+  --accent: 213 16% 16%;
+  --accent-foreground: 213 32% 93%;
+  --destructive: 4 92% 63%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 213 12% 21%;
+  --input: 213 12% 21%;
+  --ring: 212 92% 58%;
 }
 
 body {

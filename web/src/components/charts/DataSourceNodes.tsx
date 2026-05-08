@@ -94,7 +94,7 @@ export function DataSourceNodes({ data, loading }: DataSourceNodesProps) {
                 <div className="flex items-center gap-2">
                   <div className="flex-1 h-1.5 bg-[var(--bg-tertiary)] rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-[var(--accent)] rounded-full"
+                      className="h-full bg-[var(--brand)] rounded-full"
                       style={{ width: `${docPct}%` }}
                     />
                   </div>

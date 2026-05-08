@@ -28,7 +28,7 @@ export function SearchInput({ placeholder, onSearch, delay = 300, className = ''
         value={value}
         onChange={(e) => setValue(e.target.value)}
         placeholder={placeholder ?? t('placeholders.search')}
-        className="w-full bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-lg pl-9 pr-3 py-2 text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:border-accent focus:ring-2 focus:ring-accent/15 outline-none transition-all duration-200"
+        className="w-full bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-lg pl-9 pr-3 py-2 text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:border-brand focus:ring-2 focus:ring-brand/15 outline-none transition-all duration-200"
       />
     </div>
   )

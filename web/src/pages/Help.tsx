@@ -43,7 +43,7 @@ export function Help() {
             const term = terms[key]
             if (!term) return null
             return (
-              <a key={key} href={`#${key}`} className="text-[var(--text-secondary)] hover:text-accent transition-colors">
+              <a key={key} href={`#${key}`} className="text-[var(--text-secondary)] hover:text-brand transition-colors">
                 {term.label}
               </a>
             )
