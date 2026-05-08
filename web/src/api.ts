@@ -110,6 +110,53 @@ export const api = {
         `/monitor/baseline/${encodeURIComponent(featureSpec)}`
       ),
   },
+  search: {
+    /**
+     * Ranked full-text search (T2.2a). Server returns
+     * `[{id, name, dtype, source, rank, snippet?}]` sorted by rank desc.
+     */
+    query: (params: { q: string; source?: string[]; tag?: string[]; dtype?: string[]; has_doc?: boolean | null; limit?: number }) => {
+      const qs = new URLSearchParams()
+      qs.set('q', params.q)
+      // Backend accepts a single value per filter (str | None). When multiple
+      // values are picked we send the first; the rest are filtered client-side
+      // from the result set so toggling stays interactive.
+      if (params.source && params.source.length > 0) qs.set('source', params.source[0])
+      if (params.tag && params.tag.length > 0) qs.set('tag', params.tag[0])
+      if (params.dtype && params.dtype.length > 0) qs.set('dtype', params.dtype[0])
+      if (params.has_doc != null) qs.set('has_doc', String(params.has_doc))
+      qs.set('limit', String(params.limit ?? 50))
+      return cachedRequest<{ id: string; name: string; dtype: string; source: string; rank: number; snippet?: string }[]>(
+        `/search?${qs.toString()}`
+      )
+    },
+    /**
+     * Facet counts for the search-result sidebar. Same filter set as the
+     * search itself, so applying a filter narrows other facet counts.
+     */
+    facets: (params: { q?: string; source?: string; tag?: string; dtype?: string; has_doc?: boolean | null }) => {
+      const qs = new URLSearchParams()
+      if (params.q) qs.set('q', params.q)
+      if (params.source) qs.set('source', params.source)
+      if (params.tag) qs.set('tag', params.tag)
+      if (params.dtype) qs.set('dtype', params.dtype)
+      if (params.has_doc != null) qs.set('has_doc', String(params.has_doc))
+      const suffix = qs.toString() ? `?${qs.toString()}` : ''
+      return cachedRequest<{
+        sources: { name: string; count: number }[]
+        tags: { name: string; count: number }[]
+        dtypes: { name: string; count: number }[]
+        has_doc: { true: number; false: number }
+      }>(`/search/facets${suffix}`)
+    },
+    /** Lightweight typeahead — top-N ranked names for an autocomplete dropdown. */
+    suggest: (q: string, limit = 10) => {
+      const qs = new URLSearchParams({ q, limit: String(limit) })
+      return cachedRequest<{ id: string; name: string; dtype: string; source: string; rank: number }[]>(
+        `/search?${qs.toString()}`
+      )
+    },
+  },
   ai: {
     ask: (query: string) => request<any>('/ai/ask', {
       method: 'POST',
