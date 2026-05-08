@@ -13,6 +13,7 @@ const Chat = lazy(() => import('./pages/Chat').then((m) => ({ default: m.Chat })
 const Settings = lazy(() => import('./pages/Settings').then((m) => ({ default: m.Settings })))
 const Actions = lazy(() => import('./pages/Actions').then((m) => ({ default: m.Actions })))
 const Help = lazy(() => import('./pages/Help').then((m) => ({ default: m.Help })))
+const SearchPage = lazy(() => import('./pages/Search').then((m) => ({ default: m.Search })))
 
 function RouteFallback() {
   return (
@@ -29,6 +30,7 @@ export default function App() {
         <Suspense fallback={<RouteFallback />}>
           <Routes>
             <Route path="/" element={<Dashboard />} />
+            <Route path="/search" element={<SearchPage />} />
             <Route path="/features" element={<Features />} />
             <Route path="/features/:name" element={<Features />} />
             <Route path="/groups" element={<Groups />} />

@@ -18,6 +18,7 @@ import viErrors from '../locales/vi/errors.json'
 import viActions from '../locales/vi/actions.json'
 import viHelp from '../locales/vi/help.json'
 import viGlossary from '../locales/vi/glossary.json'
+import viSearch from '../locales/vi/search.json'
 
 import enCommon from '../locales/en/common.json'
 import enSidebar from '../locales/en/sidebar.json'
@@ -35,6 +36,7 @@ import enErrors from '../locales/en/errors.json'
 import enActions from '../locales/en/actions.json'
 import enHelp from '../locales/en/help.json'
 import enGlossary from '../locales/en/glossary.json'
+import enSearch from '../locales/en/search.json'
 
 export const SUPPORTED_LANGS = ['vi', 'en'] as const
 export type SupportedLang = typeof SUPPORTED_LANGS[number]
@@ -62,6 +64,7 @@ const resources = {
     actions: viActions,
     help: viHelp,
     glossary: viGlossary,
+    search: viSearch,
   },
   en: {
     common: enCommon,
@@ -80,6 +83,7 @@ const resources = {
     actions: enActions,
     help: enHelp,
     glossary: enGlossary,
+    search: enSearch,
   },
 }
 

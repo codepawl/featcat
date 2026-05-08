@@ -1,6 +1,7 @@
 {
   "nav": {
     "dashboard": "Dashboard",
+    "search": "Search",
     "features": "Features",
     "groups": "Groups",
     "similarity": "Similarity",
