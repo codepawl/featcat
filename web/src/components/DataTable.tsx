@@ -7,6 +7,8 @@ interface Column<T> {
   label: string
   sortable?: boolean
   render?: (row: T) => React.ReactNode
+  /** Optional override for the header cell content (e.g. tri-state checkbox). */
+  headerRender?: () => React.ReactNode
 }
 
 interface Props<T> {
@@ -52,7 +54,7 @@ export function DataTable<T extends Record<string, any>>({ columns, data, onRowC
                   onClick={() => c.sortable !== false && toggleSort(c.key)}
                 >
                   <span className="inline-flex items-center gap-1">
-                    {c.label}
+                    {c.headerRender ? c.headerRender() : c.label}
                     {sortCol === c.key && (
                       sortDir === 'asc' ? <ChevronUp size={11} /> : <ChevronDown size={11} />
                     )}

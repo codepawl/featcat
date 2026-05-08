@@ -215,6 +215,23 @@ export const api = {
     cacheClear: () => request<{ deleted: number }>('/admin/cache/clear', { method: 'POST' }),
     cacheClearExpired: () => request<{ deleted: number }>('/admin/cache/clear-expired', { method: 'POST' }),
   },
+  bulk: {
+    tags: (data: { feature_ids: string[]; action: 'add' | 'remove' | 'replace'; tags: string[] }) =>
+      request<{ updated: number; requested: number }>('/features/bulk/tags', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    groups: (data: { feature_ids: string[]; action: 'add_to' | 'remove_from'; group_id: string }) =>
+      request<{ changed: number; requested: number }>('/features/bulk/groups', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    delete: (data: { feature_ids: string[]; confirm: boolean }) =>
+      request<{ deleted: number; requested: number }>('/features/bulk/delete', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+  },
   actions: {
     list: (params?: { feature_name?: string; status?: string; source?: string; limit?: number }) => {
       const qs = new URLSearchParams()

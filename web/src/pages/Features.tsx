@@ -1,7 +1,7 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Plus, RefreshCw, Check, AlertTriangle, Shield, FileText, FolderSearch, X, ChevronDown, ChevronRight, Pencil, Download } from 'lucide-react'
+import { Plus, RefreshCw, Check, AlertTriangle, Shield, FileText, FolderSearch, X, ChevronDown, ChevronRight, Pencil, Download, Tag as TagIcon, FolderPlus, Trash2 } from 'lucide-react'
 import { api, invalidateCache, timeAgo } from '../api'
 import { DataTable } from '../components/DataTable'
 import { VirtualizedTable } from '../components/VirtualizedTable'
@@ -70,6 +70,15 @@ export function Features() {
   const [genModalOpen, setGenModalOpen] = useState(false)
   const [genProgress, setGenProgress] = useState<string | null>(null)
   const [batchJob, setBatchJob] = useState<{ jobId: string; total: number } | null>(null)
+
+  // Bulk-select toolbar state (T1.3b). `selectedForExport` is also used as
+  // the master selection set for bulk-tag, bulk-group, and bulk-delete flows.
+  const [bulkAddTagOpen, setBulkAddTagOpen] = useState(false)
+  const [bulkAddGroupOpen, setBulkAddGroupOpen] = useState(false)
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
+  const [bulkBanner, setBulkBanner] = useState<{ kind: 'success' | 'error'; message: string } | null>(null)
+  // For shift+click range selection on table rows.
+  const lastCheckedRef = useRef<string | null>(null)
 
   // Pagination state — only consulted in paginated mode (see isPaginated below).
   // pageTotal carries the server's reported total count for "1-50 of 5234".
@@ -215,22 +224,90 @@ export function Features() {
     e.stopPropagation()
     setSelectedForExport(prev => {
       const next = new Set(prev)
+      // Shift+click range-select between lastCheckedRef and this row, using
+      // the currently-rendered page's order (filtered).
+      if (e.shiftKey && lastCheckedRef.current && lastCheckedRef.current !== name) {
+        const order = filtered.map(f => f.name)
+        const a = order.indexOf(lastCheckedRef.current)
+        const b = order.indexOf(name)
+        if (a >= 0 && b >= 0) {
+          const range = order.slice(Math.min(a, b), Math.max(a, b) + 1)
+          // Mirror FeatureSelector: shift-click adds to selection.
+          range.forEach(n => next.add(n))
+          lastCheckedRef.current = name
+          return next
+        }
+      }
       if (next.has(name)) next.delete(name)
       else next.add(name)
+      lastCheckedRef.current = name
       return next
     })
   }
 
+  // Tri-state "select all on current page" header checkbox.
+  const pageSelectedCount = filtered.reduce((n, r) => n + (selectedForExport.has(r.name) ? 1 : 0), 0)
+  const pageAllSelected = filtered.length > 0 && pageSelectedCount === filtered.length
+  const pageSomeSelected = pageSelectedCount > 0 && pageSelectedCount < filtered.length
+
+  const togglePageAll = () => {
+    setSelectedForExport(prev => {
+      const next = new Set(prev)
+      if (pageAllSelected) {
+        // Deselect everything on this page (don't touch other pages).
+        filtered.forEach(r => next.delete(r.name))
+      } else {
+        // Select everything on this page.
+        filtered.forEach(r => next.add(r.name))
+      }
+      return next
+    })
+  }
+
+  const clearSelection = () => {
+    setSelectedForExport(new Set())
+    lastCheckedRef.current = null
+  }
+
+  // Resolve selected names → ids. The bulk endpoints operate on `feature_ids`,
+  // but the row state and selection are keyed by name (names are stable across
+  // re-fetches; ids may not be present on every loaded row in the future).
+  const resolveSelectedIds = (): string[] => {
+    const byName = new Map(features.map(f => [f.name, f.id]))
+    const ids: string[] = []
+    selectedForExport.forEach(name => {
+      const id = byName.get(name)
+      if (id) ids.push(id)
+    })
+    return ids
+  }
+
   const columns = [
-    { key: '_select', label: '', sortable: false, render: (r: FeatureRow) => (
-      <input
-        type="checkbox"
-        checked={selectedForExport.has(r.name)}
-        onChange={() => undefined}
-        onClick={(e) => toggleExportSelect(r.name, e)}
-        className="accent-accent"
-      />
-    )},
+    {
+      key: '_select',
+      label: '',
+      sortable: false,
+      headerRender: () => (
+        <input
+          type="checkbox"
+          aria-label={t('bulk.select_all_on_page')}
+          checked={pageAllSelected}
+          ref={(el) => { if (el) el.indeterminate = pageSomeSelected }}
+          onChange={togglePageAll}
+          onClick={(e) => e.stopPropagation()}
+          className="accent-accent"
+        />
+      ),
+      render: (r: FeatureRow) => (
+        <input
+          type="checkbox"
+          checked={selectedForExport.has(r.name)}
+          onChange={() => undefined}
+          onClick={(e) => toggleExportSelect(r.name, e)}
+          className="accent-accent"
+        />
+      ),
+    },
     { key: 'name', label: 'Name', render: (r: FeatureRow) => {
       const hl = (r as FeatureRow & { highlight?: Record<string, string[]> }).highlight
       const terms = hl ? [...new Set(Object.values(hl).flat())] : []
@@ -330,6 +407,60 @@ export function Features() {
         </button>
       </div>
 
+      {bulkBanner && (
+        <div
+          role="status"
+          className={`mb-3 flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-[13px] ${
+            bulkBanner.kind === 'success'
+              ? 'border-[var(--success)]/40 bg-[var(--success)]/10 text-[var(--success)]'
+              : 'border-[var(--danger)]/40 bg-[var(--danger)]/10 text-[var(--danger)]'
+          }`}
+        >
+          <span>{bulkBanner.message}</span>
+          <button
+            onClick={() => setBulkBanner(null)}
+            className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
+            aria-label={t('actions.close', { ns: 'common' })}
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
+      {selectedForExport.size > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-brand/40 bg-brand/10 px-3 py-2">
+          <span className="text-[13px] font-medium text-brand">
+            {t('bulk.n_selected', { count: selectedForExport.size })}
+          </span>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setBulkAddTagOpen(true)}
+              className="flex items-center gap-1.5 rounded-lg border border-[var(--border-default)] bg-[var(--bg-primary)] px-3 py-1.5 text-[12px] font-medium hover:bg-[var(--bg-secondary)]"
+            >
+              <TagIcon size={13} /> {t('bulk.add_tag')}
+            </button>
+            <button
+              onClick={() => setBulkAddGroupOpen(true)}
+              className="flex items-center gap-1.5 rounded-lg border border-[var(--border-default)] bg-[var(--bg-primary)] px-3 py-1.5 text-[12px] font-medium hover:bg-[var(--bg-secondary)]"
+            >
+              <FolderPlus size={13} /> {t('bulk.add_to_group')}
+            </button>
+            <button
+              onClick={() => setBulkDeleteOpen(true)}
+              className="flex items-center gap-1.5 rounded-lg border border-[var(--danger)]/40 bg-[var(--bg-primary)] px-3 py-1.5 text-[12px] font-medium text-[var(--danger)] hover:bg-[var(--danger)]/10"
+            >
+              <Trash2 size={13} /> {t('bulk.delete')}
+            </button>
+            <button
+              onClick={clearSelection}
+              className="flex items-center gap-1 text-[12px] text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
+            >
+              <X size={12} /> {t('bulk.clear_selection')}
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-xl overflow-hidden p-3">
         {loading && features.length === 0 ? (
           <Skeleton className="h-48" />
@@ -374,6 +505,82 @@ export function Features() {
         onClose={() => setExportOpen(false)}
         title={t('count_label', { count: selectedForExport.size })}
         featureSpecs={[...selectedForExport]}
+      />
+
+      <BulkAddTagModal
+        open={bulkAddTagOpen}
+        onClose={() => setBulkAddTagOpen(false)}
+        selectedCount={selectedForExport.size}
+        onConfirm={async (tag) => {
+          const ids = resolveSelectedIds()
+          if (ids.length === 0) return
+          try {
+            const res = await api.bulk.tags({ feature_ids: ids, action: 'add', tags: [tag] })
+            setBulkBanner({
+              kind: 'success',
+              message: t('bulk.banner.tag_success', { tag, updated: res.updated, requested: res.requested }),
+            })
+            setBulkAddTagOpen(false)
+            invalidateCache('/features')
+            load()
+          } catch (e) {
+            setBulkBanner({ kind: 'error', message: (e as Error).message })
+          }
+        }}
+      />
+
+      <BulkAddToGroupModal
+        open={bulkAddGroupOpen}
+        onClose={() => setBulkAddGroupOpen(false)}
+        selectedCount={selectedForExport.size}
+        onConfirm={async (group) => {
+          const ids = resolveSelectedIds()
+          if (ids.length === 0) return
+          try {
+            const res = await api.bulk.groups({
+              feature_ids: ids,
+              action: 'add_to',
+              group_id: group.id,
+            })
+            setBulkBanner({
+              kind: 'success',
+              message: t('bulk.banner.group_success', {
+                group: group.name,
+                changed: res.changed,
+                requested: res.requested,
+              }),
+            })
+            setBulkAddGroupOpen(false)
+            invalidateCache('/features')
+            invalidateCache('/groups')
+            load()
+          } catch (e) {
+            setBulkBanner({ kind: 'error', message: (e as Error).message })
+          }
+        }}
+      />
+
+      <BulkDeleteModal
+        open={bulkDeleteOpen}
+        onClose={() => setBulkDeleteOpen(false)}
+        names={[...selectedForExport]}
+        onConfirm={async () => {
+          const ids = resolveSelectedIds()
+          if (ids.length === 0) return
+          try {
+            const res = await api.bulk.delete({ feature_ids: ids, confirm: true })
+            setBulkBanner({
+              kind: 'success',
+              message: t('bulk.banner.delete_success', { deleted: res.deleted, requested: res.requested }),
+            })
+            setBulkDeleteOpen(false)
+            clearSelection()
+            invalidateCache('/features')
+            load()
+          } catch (e) {
+            setBulkBanner({ kind: 'error', message: (e as Error).message })
+          }
+        }}
       />
     </div>
   )
@@ -1307,5 +1514,269 @@ function HighlightedText({ text, terms }: { text: string; terms: string[] }) {
           : <span key={i}>{part}</span>
       )}
     </span>
+  )
+}
+
+
+// ---- Bulk-action modals (T1.3b) ----
+
+function BulkAddTagModal({
+  open,
+  onClose,
+  selectedCount,
+  onConfirm,
+}: {
+  open: boolean
+  onClose: () => void
+  selectedCount: number
+  onConfirm: (tag: string) => Promise<void>
+}) {
+  const { t } = useTranslation('features')
+  const [tag, setTag] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+
+  useEffect(() => {
+    if (open) {
+      setTag('')
+      setSubmitting(false)
+    }
+  }, [open])
+
+  const submit = async () => {
+    const value = tag.trim()
+    if (!value) return
+    setSubmitting(true)
+    try {
+      await onConfirm(value)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={t('bulk.add_tag_modal.title', { count: selectedCount })}
+      maxWidth="max-w-md"
+      actions={
+        <>
+          <button onClick={onClose} className="px-4 py-2 text-sm border border-[var(--border-default)] rounded-lg">
+            {t('actions.cancel', { ns: 'common' })}
+          </button>
+          <button
+            onClick={submit}
+            disabled={!tag.trim() || submitting}
+            className="px-4 py-2 text-sm bg-brand text-white rounded-lg disabled:opacity-50"
+          >
+            {submitting ? t('actions.loading', { ns: 'common' }) : t('actions.apply', { ns: 'common' })}
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-2">
+        <label className="block text-xs font-medium">{t('bulk.add_tag_modal.label')}</label>
+        <input
+          autoFocus
+          value={tag}
+          onChange={(e) => setTag(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              submit()
+            }
+          }}
+          placeholder={t('bulk.add_tag_modal.placeholder')}
+          className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px] focus:border-brand outline-none"
+        />
+        <p className="text-[11px] text-[var(--text-tertiary)]">
+          {t('bulk.add_tag_modal.hint', { count: selectedCount })}
+        </p>
+      </div>
+    </Modal>
+  )
+}
+
+
+function BulkAddToGroupModal({
+  open,
+  onClose,
+  selectedCount,
+  onConfirm,
+}: {
+  open: boolean
+  onClose: () => void
+  selectedCount: number
+  onConfirm: (group: { id: string; name: string }) => Promise<void>
+}) {
+  const { t } = useTranslation('features')
+  const [groups, setGroups] = useState<{ id: string; name: string; member_count?: number }[]>([])
+  const [groupId, setGroupId] = useState('')
+  const [loadingGroups, setLoadingGroups] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+
+  useEffect(() => {
+    if (open) {
+      setGroupId('')
+      setSubmitting(false)
+      setLoadingGroups(true)
+      api.groups
+        .list()
+        .then((g) => setGroups(Array.isArray(g) ? (g as { id: string; name: string; member_count?: number }[]) : []))
+        .catch(() => setGroups([]))
+        .finally(() => setLoadingGroups(false))
+    }
+  }, [open])
+
+  const submit = async () => {
+    const group = groups.find((g) => g.id === groupId)
+    if (!group) return
+    setSubmitting(true)
+    try {
+      await onConfirm({ id: group.id, name: group.name })
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={t('bulk.add_to_group_modal.title', { count: selectedCount })}
+      maxWidth="max-w-md"
+      actions={
+        <>
+          <button onClick={onClose} className="px-4 py-2 text-sm border border-[var(--border-default)] rounded-lg">
+            {t('actions.cancel', { ns: 'common' })}
+          </button>
+          <button
+            onClick={submit}
+            disabled={!groupId || submitting}
+            className="px-4 py-2 text-sm bg-brand text-white rounded-lg disabled:opacity-50"
+          >
+            {submitting ? t('actions.loading', { ns: 'common' }) : t('actions.apply', { ns: 'common' })}
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-2">
+        <label className="block text-xs font-medium">{t('bulk.add_to_group_modal.label')}</label>
+        {loadingGroups ? (
+          <p className="text-sm text-[var(--text-tertiary)]">{t('actions.loading', { ns: 'common' })}</p>
+        ) : groups.length === 0 ? (
+          <p className="text-sm text-[var(--text-tertiary)]">{t('bulk.add_to_group_modal.empty')}</p>
+        ) : (
+          <select
+            value={groupId}
+            onChange={(e) => setGroupId(e.target.value)}
+            className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px] focus:border-brand outline-none"
+          >
+            <option value="">{t('bulk.add_to_group_modal.placeholder')}</option>
+            {groups.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.name}
+                {typeof g.member_count === 'number' ? ` (${g.member_count})` : ''}
+              </option>
+            ))}
+          </select>
+        )}
+        <p className="text-[11px] text-[var(--text-tertiary)]">
+          {t('bulk.add_to_group_modal.hint', { count: selectedCount })}
+        </p>
+      </div>
+    </Modal>
+  )
+}
+
+
+function BulkDeleteModal({
+  open,
+  onClose,
+  names,
+  onConfirm,
+}: {
+  open: boolean
+  onClose: () => void
+  names: string[]
+  onConfirm: () => Promise<void>
+}) {
+  const { t } = useTranslation('features')
+  const [submitting, setSubmitting] = useState(false)
+  const [acknowledged, setAcknowledged] = useState(false)
+
+  useEffect(() => {
+    if (open) {
+      setSubmitting(false)
+      setAcknowledged(false)
+    }
+  }, [open])
+
+  const preview = names.slice(0, 50)
+  const overflow = Math.max(0, names.length - preview.length)
+
+  const submit = async () => {
+    setSubmitting(true)
+    try {
+      await onConfirm()
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={t('bulk.delete_modal.title', { count: names.length })}
+      maxWidth="max-w-lg"
+      actions={
+        <>
+          <button onClick={onClose} className="px-4 py-2 text-sm border border-[var(--border-default)] rounded-lg">
+            {t('actions.cancel', { ns: 'common' })}
+          </button>
+          <button
+            onClick={submit}
+            disabled={!acknowledged || submitting || names.length === 0}
+            className="px-4 py-2 text-sm bg-[var(--danger)] text-white rounded-lg disabled:opacity-50"
+          >
+            {submitting
+              ? t('actions.loading', { ns: 'common' })
+              : t('bulk.delete_modal.confirm_button', { count: names.length })}
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <div className="flex items-start gap-2 rounded-lg border border-[var(--danger)]/40 bg-[var(--danger)]/10 px-3 py-2">
+          <AlertTriangle size={16} className="mt-0.5 shrink-0 text-[var(--danger)]" />
+          <p className="text-[13px] text-[var(--danger)]">
+            {t('bulk.delete_modal.warning', { count: names.length })}
+          </p>
+        </div>
+        <p className="text-xs text-[var(--text-tertiary)]">{t('bulk.delete_modal.cleanup_note')}</p>
+        <div className="max-h-48 overflow-y-auto overscroll-contain rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-primary)] p-2">
+          <ul className="space-y-0.5 text-[12px] font-mono">
+            {preview.map((n) => (
+              <li key={n} className="truncate">{n}</li>
+            ))}
+          </ul>
+          {overflow > 0 && (
+            <p className="mt-1 text-[11px] text-[var(--text-tertiary)]">
+              {t('bulk.delete_modal.and_more', { count: overflow })}
+            </p>
+          )}
+        </div>
+        <label className="flex items-center gap-2 text-[13px] cursor-pointer">
+          <input
+            type="checkbox"
+            checked={acknowledged}
+            onChange={(e) => setAcknowledged(e.target.checked)}
+            className="accent-accent"
+          />
+          {t('bulk.delete_modal.acknowledge')}
+        </label>
+      </div>
+    </Modal>
   )
 }
