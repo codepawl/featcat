@@ -1,3 +1,14 @@
+export type ToolState = 'input-streaming' | 'input-available' | 'output-available' | 'output-error'
+
+export interface ToolCall {
+  id: string
+  name: string
+  state: ToolState
+  input?: any
+  output?: any
+  error?: string
+}
+
 export interface ChatMessage {
   id: string
   role: 'user' | 'ai'
@@ -7,6 +18,7 @@ export interface ChatMessage {
   isStreaming?: boolean
   result?: any
   html?: string
+  tools?: ToolCall[]
   timestamp: number
 }
 
@@ -37,6 +49,20 @@ export const chatStore = {
     if (messages.length === 0) return
     const last = messages[messages.length - 1]
     messages = [...messages.slice(0, -1), { ...last, [field]: (last[field] || '') + text }]
+    notify()
+  },
+
+  upsertToolCall: (id: string, patch: Partial<ToolCall> & { name?: string }) => {
+    if (messages.length === 0) return
+    const last = messages[messages.length - 1]
+    const tools = last.tools ? [...last.tools] : []
+    const idx = tools.findIndex((t) => t.id === id)
+    if (idx >= 0) {
+      tools[idx] = { ...tools[idx], ...patch }
+    } else {
+      tools.push({ id, name: patch.name || 'tool', state: 'input-available', ...patch })
+    }
+    messages = [...messages.slice(0, -1), { ...last, tools }]
     notify()
   },
 
