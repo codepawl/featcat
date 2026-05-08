@@ -47,5 +47,44 @@
       "Saturday": "Saturday"
     }
   },
-  "confirm_run": "Run \"{{name}}\" now? This may take 30-60 seconds."
+  "confirm_run": "Run \"{{name}}\" now? This may take 30-60 seconds.",
+  "scheduler": {
+    "title": "Scheduler",
+    "subtitle": "Live job-status overview (T1.5c API)",
+    "status": {
+      "success": "success",
+      "failed": "failed",
+      "error": "error",
+      "running": "running",
+      "queued": "queued",
+      "never": "never run"
+    },
+    "card": {
+      "last_run": "Last run",
+      "next_run": "Next run",
+      "duration": "Duration",
+      "details": "Details"
+    },
+    "trigger": {
+      "running": "Running…",
+      "success": "{{name}} ran in {{duration}}",
+      "failed": "{{name}} failed: {{error}}",
+      "queued": "{{name}} queued",
+      "dismiss": "Dismiss"
+    },
+    "detail": {
+      "title": "Job details",
+      "cron": "Schedule",
+      "active_tasks": "Active Celery tasks",
+      "live": "Live",
+      "recent_runs": "Recent runs",
+      "no_runs": "No runs yet.",
+      "started_at": "Started",
+      "finished_at": "Finished",
+      "duration": "Duration",
+      "status": "Status",
+      "error": "Error",
+      "expand_error": "Click row to expand error"
+    }
+  }
 }
