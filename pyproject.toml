@@ -58,7 +58,12 @@ docs = [
     "mkdocstrings[python]>=0.24",
     "mkdocs-mermaid2-plugin>=1.1",
 ]
-all = ["featcat[tui,s3,server,embeddings,tasks,docs]"]
+# T1.1b — sqlglot-based lineage auto-detect from SQL transformation files.
+# Optional because most users record lineage manually; only ops that run the
+# scanner / scheduled detect job need the parser. Keeping the default install
+# lean (sqlglot pulls a small but non-trivial parser tree).
+lineage-sql = ["sqlglot>=20.0"]
+all = ["featcat[tui,s3,server,embeddings,tasks,docs,lineage-sql]"]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",

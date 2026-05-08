@@ -11,7 +11,7 @@ Lineage answers the question "if I change X, what breaks?" featcat tracks two ki
 
 ## Recording lineage
 
-Today, lineage is **manual** — you record relationships explicitly. T1.1b adds sqlglot-based auto-detection from SQL transformation files, but that's not landed yet.
+You can record lineage **manually** at definition time, or **auto-detect** it from SQL transformation files (T1.1b). Manual stays the source of truth — auto-detect is a confirmation flow, not a background scan.
 
 CLI:
 
@@ -94,25 +94,54 @@ for edge in graph["edges"]:
     G.add_edge(edge["from"], edge["to"], label=edge["transform"])
 ```
 
-## Auto-detection (preview)
+## Auto-detection from SQL (T1.1b)
 
-T1.1b will scan SQL transformation files and propose lineage automatically using `sqlglot`. Sketch:
+Point `featcat lineage detect` at one or more `.sql` files; the parser walks the AST (via `sqlglot`) and proposes `output.column ← input.column` edges. Without `--apply`, it just prints the table — review, then re-run with `--apply` to write edges into the catalog.
 
 ```bash
+# Preview only (default)
 featcat lineage detect --from sql/transforms/*.sql
-# Proposed 47 lineage edges:
-#   user_behavior.session_count_30d ← user_events.session_id (sql/transforms/sessions.sql:12)
-#   ...
-# Apply with --confirm.
+
+# Different SQL dialect (postgres is the default)
+featcat lineage detect --from sql/sessions.sql --dialect snowflake
+
+# Interactive prompt before writing
+featcat lineage detect --from sql/*.sql --apply
+
+# Skip the prompt (for scripts / CI / scheduled jobs)
+featcat lineage detect --from sql/*.sql --apply --confirm
 ```
 
-For now, recording lineage by hand at definition time is the only path. Conventional pattern: pair every `featcat docs generate` with a `featcat lineage set` call in the same script that built the feature.
+What the parser handles:
+
+- `CREATE TABLE foo AS SELECT a + b AS c FROM bar` — child `foo.c`, parents `bar.a`, `bar.b`.
+- `CREATE OR REPLACE VIEW foo AS SELECT count(distinct session_id) AS sessions FROM events GROUP BY user_id` — child `foo.sessions`, parent `events.session_id`.
+- `INSERT INTO foo SELECT ... FROM bar` — same logic, target is `foo`.
+- Multiple output columns, aggregations, joins with table aliases (`FROM bar t JOIN sup s` resolves correctly back to `bar`/`sup`).
+
+What it skips with a warning (rather than erroring out):
+
+- Plain `SELECT` statements with no output target.
+- DDL like `CREATE TABLE foo (a int)` with no `AS SELECT` body.
+- Unparseable SQL.
+
+The applier looks up each parent in the catalog: feature-by-name first, then source-by-name (treating the part before the dot as a source). Anything it can't resolve is skipped with a printed warning, leaving the parser conservative — better to under-emit than to dangle bogus edges.
+
+> **Requires the optional `[lineage-sql]` extra.** Install with:
+>
+> ```bash
+> uv pip install 'featcat[lineage-sql]'
+> ```
+>
+> The default install stays lean and falls back to the manual `featcat lineage set` path; auto-detect surfaces a clear error if the extra is missing.
+
+Conventional pattern: pair every `featcat docs generate` with either a `featcat lineage set` call (when the SQL lives in your dbt repo, not the catalog) or a `featcat lineage detect --from <file> --apply --confirm` call in the same script that built the feature.
 
 ## Limitations
 
 - **No event-time lineage.** featcat tracks logical dependency, not run-time provenance ("which Spark job populated this row?"). For that, integrate with your data platform's metadata store and import into featcat.
 - **No column-level lineage within a single source.** If `user_events` has 50 columns and `user_behavior.session_count_30d` derives from 3 of them, you record those 3 explicitly.
-- **No SQL parsing today.** Coming with T1.1b.
+- **SQL auto-detect is a single-statement parser.** Multi-statement scripts and CTE-heavy pipelines should be split file-per-output-table for cleanest results. Statements without a clear `CREATE TABLE/VIEW AS SELECT` or `INSERT INTO ... SELECT` target are skipped with a warning.
 
 ## Related
 
