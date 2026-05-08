@@ -31,6 +31,7 @@ job_app = typer.Typer(help="Scheduled job management")
 group_app = typer.Typer(help="Feature groups management")
 usage_app = typer.Typer(help="Feature usage analytics")
 actions_app = typer.Typer(help="Recommended actions (lifecycle loop)")
+lineage_app = typer.Typer(help="Lineage management (T1.1)")
 app.add_typer(source_app, name="source")
 app.add_typer(feature_app, name="feature")
 app.add_typer(doc_app, name="doc")
@@ -41,6 +42,7 @@ app.add_typer(job_app, name="job")
 app.add_typer(group_app, name="group")
 app.add_typer(usage_app, name="usage")
 app.add_typer(actions_app, name="actions")
+app.add_typer(lineage_app, name="lineage")
 
 console = Console()
 
@@ -2902,6 +2904,197 @@ def impact(
             label = "direct" if current_depth == 1 else f"depth {current_depth}"
             console.print(f"\n[dim]{label}[/dim]")
         console.print(f"  [cyan]{r['name']}[/cyan]  [dim]({r['dtype']})[/dim]  via [magenta]{r['via']}[/magenta]")
+
+
+# =========================================================================
+# Lineage subcommands (T1.1b — sqlglot auto-detect)
+# =========================================================================
+
+
+@lineage_app.command("detect")
+def lineage_detect(
+    from_: list[str] = typer.Option(  # noqa: B008
+        ...,
+        "--from",
+        "-f",
+        help="SQL file(s) or glob(s) to scan. Repeat the flag or pass shell-expanded paths.",
+    ),
+    dialect: str = typer.Option(
+        "postgres",
+        "--dialect",
+        "-d",
+        help="sqlglot dialect (postgres|snowflake|bigquery|mysql|sqlite|...). Default: postgres.",
+    ),
+    apply: bool = typer.Option(
+        False,
+        "--apply",
+        help="Write proposed edges to the catalog. Without this flag, just print a summary.",
+    ),
+    confirm: bool = typer.Option(
+        False,
+        "--confirm",
+        help="With --apply, skip the interactive confirmation prompt (for scripts / CI).",
+    ),
+) -> None:
+    """Auto-detect feature lineage from SQL transformation files.
+
+    Parses each file with sqlglot, extracts ``output_table.column ←
+    input_table.column`` edges, and either prints a summary or writes them
+    to the catalog. Unmatched parents (columns whose table isn't in the
+    catalog as either a feature or a data source) are skipped with a
+    warning instead of erroring.
+
+    Requires the optional ``[lineage-sql]`` extra:
+
+        uv pip install 'featcat[lineage-sql]'
+
+    Examples:
+
+        featcat lineage detect --from sql/transforms/*.sql
+        featcat lineage detect --from sql/sessions.sql --dialect snowflake
+        featcat lineage detect --from sql/*.sql --apply --confirm
+    """
+    try:
+        from .lineage import detect_lineage_from_file
+    except ImportError:
+        console.print(
+            r"[red]sqlglot is required.[/red] Install with: [cyan]uv pip install 'featcat\[lineage-sql]'[/cyan]"
+        )
+        raise typer.Exit(1) from None
+
+    paths = _expand_sql_globs(from_)
+    if not paths:
+        console.print("[yellow]No SQL files matched the --from patterns.[/yellow]")
+        raise typer.Exit(1)
+
+    all_edges = []
+    for p in paths:
+        try:
+            edges = detect_lineage_from_file(p, dialect=dialect)
+        except ImportError:
+            console.print(
+                r"[red]sqlglot is required.[/red] Install with: [cyan]uv pip install 'featcat\[lineage-sql]'[/cyan]"
+            )
+            raise typer.Exit(1) from None
+        except OSError as e:
+            console.print(f"[yellow]Skipping {p}: {e}[/yellow]")
+            continue
+        all_edges.extend(edges)
+
+    if not all_edges:
+        console.print("[yellow]No lineage edges detected.[/yellow]")
+        return
+
+    # Print summary table.
+    table = Table(title=f"Proposed lineage edges ({len(all_edges)})")
+    table.add_column("Child", style="cyan")
+    table.add_column("Parent", style="magenta")
+    table.add_column("Transform", style="dim", overflow="fold")
+    table.add_column("Source")
+    for edge in all_edges:
+        loc = ""
+        if edge.source_file:
+            loc = f"{Path(edge.source_file).name}"
+            if edge.source_line is not None:
+                loc += f":{edge.source_line}"
+        table.add_row(edge.child, edge.parent, edge.transform, loc)
+    console.print(table)
+
+    if not apply:
+        console.print("\n[dim]Preview only. Run with [cyan]--apply --confirm[/cyan] to write edges.[/dim]")
+        return
+
+    if not confirm and not typer.confirm(
+        f"Write {len(all_edges)} lineage edges to the catalog?",
+        default=False,
+    ):
+        console.print("[yellow]Aborted.[/yellow]")
+        raise typer.Exit(0)
+
+    db = _get_db()
+    written, skipped = _apply_proposed_edges(db, all_edges)
+    console.print(f"[green]Wrote {written} edge(s).[/green] [dim]Skipped {skipped} (unknown child or parent).[/dim]")
+
+
+def _expand_sql_globs(patterns: list[str]) -> list[Path]:
+    """Expand a list of SQL paths/globs into a sorted, deduplicated list of
+    files. Plain non-glob paths pass through; missing paths are dropped
+    silently (typer prints the original ``--from`` value if everything
+    misses).
+    """
+    import glob as _glob
+
+    seen: set[Path] = set()
+    out: list[Path] = []
+    for pat in patterns:
+        # Shells (zsh/bash with glob) usually expand globs before they
+        # reach us, but pass-through globs still work for users who quote
+        # the pattern.
+        matches = _glob.glob(pat, recursive=True)
+        if matches:
+            for m in matches:
+                p = Path(m)
+                if p.is_file() and p not in seen:
+                    seen.add(p)
+                    out.append(p)
+        else:
+            p = Path(pat)
+            if p.is_file() and p not in seen:
+                seen.add(p)
+                out.append(p)
+    return sorted(out)
+
+
+def _apply_proposed_edges(db, edges) -> tuple[int, int]:
+    """Resolve each ProposedEdge against the catalog and write it.
+
+    Returns ``(written, skipped)``. We try, in order:
+
+    1. Look up the child by name. If it doesn't exist in the catalog, skip
+       (we can't dangle an edge off a missing feature).
+    2. Look up the parent by feature name → ``add_lineage``.
+    3. If parent isn't a feature, split on the first dot and look up the
+       source name → ``add_source_lineage``.
+    4. Otherwise skip with a warning.
+    """
+    written = 0
+    skipped = 0
+    for edge in edges:
+        child = db.get_feature_by_name(edge.child)
+        if child is None:
+            console.print(f"[yellow]  skip:[/yellow] child not in catalog: {edge.child}")
+            skipped += 1
+            continue
+
+        parent_feature = db.get_feature_by_name(edge.parent)
+        if parent_feature is not None:
+            # detected_method is a LocalBackend-only kwarg (T1.1a). Pass it
+            # via kwargs so RemoteBackend's narrower signature still works.
+            try:
+                db.add_lineage(child.id, parent_feature.id, edge.transform, detected_method="sql_parse")
+            except TypeError:
+                db.add_lineage(child.id, parent_feature.id, edge.transform)
+            written += 1
+            continue
+
+        # Fall back to source-column lookup.
+        if "." in edge.parent:
+            src_name, col_name = edge.parent.split(".", 1)
+            src = db.get_source_by_name(src_name)
+            if src is not None and hasattr(db, "add_source_lineage"):
+                db.add_source_lineage(
+                    child.id,
+                    src.id,
+                    col_name,
+                    transform=edge.transform,
+                    detected_method="sql_parse",
+                )
+                written += 1
+                continue
+
+        console.print(f"[yellow]  skip:[/yellow] parent not in catalog: {edge.parent}")
+        skipped += 1
+    return written, skipped
 
 
 # =========================================================================
