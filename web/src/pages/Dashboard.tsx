@@ -1,13 +1,53 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Layers, FileText, AlertTriangle, HardDrive, RefreshCw, HeartPulse } from 'lucide-react'
+import { Layers, FileText, AlertTriangle, HardDrive, RefreshCw, HeartPulse, ShieldCheck } from 'lucide-react'
 import { api, invalidateCache, timeAgo } from '../api'
 import { MetricCard } from '../components/MetricCard'
 import { Badge } from '../components/Badge'
 import { Skeleton } from '../components/Skeleton'
 import { DocDebtHeatmap } from '../components/charts/DocDebtHeatmap'
 import { DataSourceNodes } from '../components/charts/DataSourceNodes'
+
+type FeatureStatus = 'draft' | 'reviewed' | 'certified' | 'deprecated'
+type StatusCounts = Record<FeatureStatus, number>
+
+const STATUS_ORDER: readonly FeatureStatus[] = ['draft', 'reviewed', 'certified', 'deprecated'] as const
+
+// Each segment uses a semantic CSS var so dark/light themes pick up the
+// right contrast — same colors the Features list pill uses.
+const STATUS_BAR_BG: Record<FeatureStatus, string> = {
+  draft: 'bg-[var(--text-tertiary)]',
+  reviewed: 'bg-[var(--brand)]',
+  certified: 'bg-[var(--success)]',
+  deprecated: 'bg-[var(--danger)]',
+}
+
+const STATUS_TEXT: Record<FeatureStatus, string> = {
+  draft: 'text-[var(--text-tertiary)]',
+  reviewed: 'text-[var(--brand)]',
+  certified: 'text-[var(--success)]',
+  deprecated: 'text-[var(--danger)]',
+}
+
+interface FeatureStatusItem {
+  status?: string
+}
+
+function aggregateStatusCounts(features: FeatureStatusItem[]): StatusCounts {
+  const counts: StatusCounts = { draft: 0, reviewed: 0, certified: 0, deprecated: 0 }
+  for (const f of features) {
+    const s = f.status
+    if (s === 'draft' || s === 'reviewed' || s === 'certified' || s === 'deprecated') {
+      counts[s] += 1
+    } else {
+      // Default to draft for any feature without an explicit status — matches
+      // the backend, which defaults the column to 'draft' on insert.
+      counts.draft += 1
+    }
+  }
+  return counts
+}
 
 export function Dashboard() {
   const { t } = useTranslation('dashboard')
@@ -21,6 +61,7 @@ export function Dashboard() {
   const [orphaned, setOrphaned] = useState<{ name: string; last_seen: string | null }[]>([])
   const [docDebt, setDocDebt] = useState<{ owner: string; source: string; total: number; undocumented: number; pct_undocumented: number }[]>([])
   const [sourceStats, setSourceStats] = useState<{ source_name: string; path: string; feature_count: number; documented_count: number; drift_alerts: number; critical_alerts: number; last_scanned: string | null; top_drifting_feature: string | null }[]>([])
+  const [statusCounts, setStatusCounts] = useState<StatusCounts | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -38,8 +79,13 @@ export function Dashboard() {
       api.docDebt().catch(() => []),
       api.statsBySource().catch(() => []),
       api.features.healthSummary().catch(() => null),
+      // Status totals aggregated client-side from the unbounded feature
+      // list — there's no dedicated counts endpoint yet, but the response
+      // already carries each feature's `status` field. Cached for 10s by
+      // api.ts so a reload doesn't re-fetch.
+      api.features.list().catch((): FeatureStatusItem[] => []),
     ])
-      .then(([s, m, l, j, tf, o, dd, ss, hs]) => {
+      .then(([s, m, l, j, tf, o, dd, ss, hs, fl]) => {
         setStats(s)
         setMonitor(m)
         setLogs(Array.isArray(l) ? l : [])
@@ -49,6 +95,7 @@ export function Dashboard() {
         setDocDebt(Array.isArray(dd) ? dd : [])
         setSourceStats(Array.isArray(ss) ? ss : [])
         setHealthSummary(hs)
+        setStatusCounts(aggregateStatusCounts(Array.isArray(fl) ? (fl as FeatureStatusItem[]) : []))
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
@@ -143,6 +190,62 @@ export function Dashboard() {
               return <span key={g} className="flex items-center gap-1"><span className={`font-bold ${color}`}>{g}</span> {count}</span>
             })}
           </div>
+        </div>
+      )}
+
+      {/* Certification distribution (T3.1b) — clickable segments deep-link
+         to the Features list filtered by status. */}
+      {!loading && statusCounts && (
+        <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5 mb-4">
+          <div className="flex items-center gap-2 mb-3">
+            <ShieldCheck size={16} className="text-[var(--success)]" />
+            <h3 className="text-sm font-semibold">{t('certification_card.title')}</h3>
+            <span className="ml-auto text-2xl font-semibold">
+              {statusCounts.certified}
+              <span className="text-sm font-normal text-[var(--text-tertiary)]"> {t('certification_card.certified_suffix')}</span>
+            </span>
+          </div>
+          {(() => {
+            const total = STATUS_ORDER.reduce((a, s) => a + statusCounts[s], 0)
+            return (
+              <>
+                <div className="flex items-center gap-1 h-4 rounded-full overflow-hidden mb-2 bg-[var(--bg-tertiary)]">
+                  {STATUS_ORDER.map(s => {
+                    const count = statusCounts[s]
+                    const pct = total > 0 ? (count / total) * 100 : 0
+                    if (pct === 0) return null
+                    return (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => navigate(`/features?status=${s}`)}
+                        title={t(`certification_card.status_tooltip.${s}`, { count })}
+                        aria-label={t(`certification_card.status_tooltip.${s}`, { count })}
+                        className={`h-full ${STATUS_BAR_BG[s]} transition-opacity hover:opacity-80 cursor-pointer`}
+                        style={{ width: `${pct}%` }}
+                      />
+                    )
+                  })}
+                </div>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--text-secondary)]">
+                  {STATUS_ORDER.map(s => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => navigate(`/features?status=${s}`)}
+                      className="flex items-center gap-1 hover:underline"
+                    >
+                      <span className={`font-bold ${STATUS_TEXT[s]}`}>{t(`certification_card.status.${s}`)}</span>
+                      <span>{statusCounts[s]}</span>
+                    </button>
+                  ))}
+                  {total === 0 && (
+                    <span className="text-[var(--text-tertiary)]">{t('certification_card.empty')}</span>
+                  )}
+                </div>
+              </>
+            )
+          })()}
         </div>
       )}
 

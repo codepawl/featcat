@@ -20,6 +20,23 @@
     "title": "Sức khỏe Catalog",
     "of_100": "/100"
   },
+  "certification_card": {
+    "title": "Chứng nhận",
+    "certified_suffix": "đã chứng nhận",
+    "empty": "Chưa có feature nào",
+    "status": {
+      "draft": "Nháp",
+      "reviewed": "Đã xem xét",
+      "certified": "Đã chứng nhận",
+      "deprecated": "Đã ngừng dùng"
+    },
+    "status_tooltip": {
+      "draft": "Nháp: {{count}}",
+      "reviewed": "Đã xem xét: {{count}}",
+      "certified": "Đã chứng nhận: {{count}}",
+      "deprecated": "Đã ngừng dùng: {{count}}"
+    }
+  },
   "drift_panel": {
     "title": "Cảnh báo Drift gần đây",
     "empty_no_baseline": "Chưa tính baseline. Hãy chạy baseline trước.",

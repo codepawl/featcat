@@ -6,8 +6,18 @@
     "all_sources": "Tất cả nguồn",
     "all_types": "Tất cả loại",
     "all_grades": "Tất cả điểm",
+    "all_statuses": "Tất cả trạng thái",
     "grade_only": "Chỉ điểm {{grade}}",
     "needs_attention": "Cần lưu ý (C hoặc D)"
+  },
+  "columns": {
+    "status": "Trạng thái"
+  },
+  "status": {
+    "draft": "Nháp",
+    "reviewed": "Đã xem xét",
+    "certified": "Đã chứng nhận",
+    "deprecated": "Đã ngừng dùng"
   },
   "tabs": {
     "overview": "Tổng quan",
