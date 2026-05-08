@@ -94,6 +94,11 @@ class Settings(BaseSettings):
     job_source_scan_cron: str = "0 1 * * *"
     job_baseline_refresh_cron: str = "0 3 * * 0"
 
+    # Tasks backend: "apscheduler" (default, in-process) or "celery" (out-of-process via Redis broker).
+    # When "celery", the FeatcatScheduler still drives cron triggers but dispatches the actual job
+    # work to Celery workers via .delay(). The [tasks] extra must be installed for "celery" mode.
+    tasks_backend: str = "apscheduler"
+
 
 # Keep a record of which keys came from which source for `config show`
 _setting_sources: dict[str, str] = {}

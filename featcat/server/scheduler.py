@@ -241,6 +241,14 @@ class FeatcatScheduler:
     async def _execute(self, job_name: str) -> dict:
         from starlette.concurrency import run_in_threadpool
 
+        # Celery dispatch path. The cron schedule is still owned by APScheduler
+        # here (so operators can keep using the in-process beat); Celery is
+        # just the worker pool. When FEATCAT_TASKS_BACKEND=celery, ship the
+        # job to the queue and wait for the worker's serialized return value
+        # so job_logs ends up with the same shape as the in-process path.
+        if getattr(self.settings, "tasks_backend", "apscheduler") == "celery":
+            return await run_in_threadpool(self._dispatch_via_celery, job_name)
+
         if job_name == "monitor_check":
             return await run_in_threadpool(self._run_monitor_check)
         if job_name == "doc_generate":
@@ -250,6 +258,47 @@ class FeatcatScheduler:
         if job_name == "baseline_refresh":
             return await run_in_threadpool(self._run_baseline_refresh)
         raise ValueError(f"Unknown job: {job_name}")
+
+    # Mapping of in-process job name -> Celery dotted task path. Lives at
+    # method scope (not module scope) so the [tasks] extra stays optional —
+    # we only import featcat.tasks.* when we're actually about to dispatch.
+    _CELERY_TASK_MAP = {  # noqa: RUF012
+        "monitor_check": "featcat.tasks.monitoring.monitor_check",
+        "doc_generate": "featcat.tasks.docs.doc_generate",
+        "source_scan": "featcat.tasks.sources.source_scan",
+        "baseline_refresh": "featcat.tasks.monitoring.baseline_refresh",
+    }
+
+    def _dispatch_via_celery(self, job_name: str) -> dict:
+        """Send the job to a Celery worker and return the worker's result dict.
+
+        Raises ValueError on unknown job names so the parent ``run_job``
+        error path records the failure to job_logs. Worker failures
+        propagate as the original exception once ``.get()`` is awaited,
+        which ``run_job`` catches and serialises.
+        """
+        try:
+            from ..tasks.app import app as celery_app
+        except ImportError as exc:  # noqa: BLE001
+            raise ValueError(f"FEATCAT_TASKS_BACKEND=celery but [tasks] extra not installed: {exc}") from exc
+
+        task_name = self._CELERY_TASK_MAP.get(job_name)
+        if task_name is None:
+            raise ValueError(f"Unknown job: {job_name}")
+
+        # send_task lets us dispatch by string without importing the worker
+        # module (which would pull plugin / LLM deps into the API process).
+        async_result = celery_app.send_task(task_name)
+        # Block on the worker. Time-bounded by Celery's task_time_limit
+        # (30 min), and the soft limit gives the task a chance to return
+        # a partial result instead of being killed mid-write.
+        outcome = async_result.get(disable_sync_subtasks=False)
+        # Tasks return ``{"status": ..., "data": ..., "task_id": ...}``.
+        # The scheduler's job_logs.result_summary expects just the data
+        # dict, matching what the in-process _run_* helpers return.
+        if isinstance(outcome, dict):
+            return outcome.get("data") or {}
+        return {"celery_result": outcome}
 
     def _run_monitor_check(self) -> dict:
         from ..plugins.monitoring import MonitoringPlugin

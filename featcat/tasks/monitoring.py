@@ -1,10 +1,16 @@
-"""Monitoring tasks (T1.5a).
+"""Monitoring tasks (T1.5a + T1.5b).
 
-Currently contains a single task — ``monitor_check`` — to prove the
-Celery integration end-to-end. The implementation reuses
-``MonitoringPlugin.execute(..., action="check")`` so business logic stays
-in one place and the in-process APScheduler path keeps working
-identically during the parallel-run migration window.
+Two tasks live here:
+
+- ``monitor_check`` — drift detection across the catalog (T1.5a).
+- ``baseline_refresh`` — recompute baseline statistics so ``monitor_check``
+  has fresh comparison data (T1.5b).
+
+Both reuse ``MonitoringPlugin.execute(...)`` so business logic stays in
+one place; the in-process APScheduler path in ``server/scheduler.py``
+calls the same plugin entrypoints. That means switching
+``FEATCAT_TASKS_BACKEND`` between ``apscheduler`` and ``celery`` doesn't
+change behaviour, only the worker pool.
 
 Retry policy: transient infrastructure errors (LLM unreachable, brief DB
 hiccup) bounce up to 3 times with 60s delay; ValueErrors and other
@@ -66,4 +72,35 @@ def monitor_check(self: Any) -> dict:
         backend.close()
 
 
-__all__ = ["monitor_check"]
+@app.task(
+    bind=True,
+    name="featcat.tasks.monitoring.baseline_refresh",
+    max_retries=3,
+    default_retry_delay=60,
+    autoretry_for=(ConnectionError, TimeoutError),
+    retry_backoff=True,
+)
+def baseline_refresh(self: Any) -> dict:
+    """Recompute monitoring baselines for every feature with stats.
+
+    Thin wrapper around ``MonitoringPlugin.execute(..., action="baseline")``.
+    Idempotent — re-running just overwrites the same baseline rows with
+    the same numbers, so Celery retries are safe.
+    """
+    from ..catalog.factory import get_backend
+    from ..plugins.monitoring import MonitoringPlugin
+
+    log.info("baseline_refresh starting (task_id=%s, retry=%s)", self.request.id, self.request.retries)
+    backend = get_backend()
+    try:
+        try:
+            result = MonitoringPlugin().execute(backend, None, action="baseline")
+        except SoftTimeLimitExceeded:
+            log.warning("baseline_refresh soft-time-limit reached; returning partial result")
+            return {"status": "timeout", "task_id": self.request.id}
+        return {"status": result.status, "data": result.data, "task_id": self.request.id}
+    finally:
+        backend.close()
+
+
+__all__ = ["baseline_refresh", "monitor_check"]
