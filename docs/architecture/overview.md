@@ -87,7 +87,7 @@ Every interface goes through `CatalogBackend`, defined in `featcat/catalog/backe
 Two paths coexist during the migration window:
 
 - **APScheduler** (in-process) — current production. Lives in `featcat/server/scheduler.py`. Four default jobs: `monitor_check`, `doc_generate`, `source_scan`, `baseline_refresh`.
-- **Celery + Redis** (opt-in) — distributed. `featcat/tasks/app.py` defines the Celery app + queues. Currently only `monitor_check` is migrated; the rest follow in T1.5b/c. Activated via the `tasks` Docker Compose profile.
+- **Celery + Redis** (opt-in) — distributed. `featcat/tasks/app.py` defines the Celery app + queues. All four default jobs (`monitor_check`, `doc_generate`, `source_scan`, `baseline_refresh`) have Celery tasks as of T1.5b. Toggle with `FEATCAT_TASKS_BACKEND=celery`; APScheduler still drives the cron triggers and ships work to Celery via `send_task()`. Activated via the `tasks` Docker Compose profile.
 
 → [Architecture › Deployment](deployment.md) *(coming soon)*
 

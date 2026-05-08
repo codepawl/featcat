@@ -38,9 +38,8 @@ app = Celery(
     backend=REDIS_URL,
     include=[
         "featcat.tasks.monitoring",
-        # ``docs`` and ``sources`` modules land in T1.5b — registering the
-        # paths now would cause Celery to fail loading them. Add when the
-        # tasks are written.
+        "featcat.tasks.docs",
+        "featcat.tasks.sources",
     ],
 )
 
@@ -64,21 +63,18 @@ app.conf.beat_schedule = {
         "task": "featcat.tasks.monitoring.monitor_check",
         "schedule": crontab(minute=0, hour="*/6"),
     },
-    # docs / sources / baseline_refresh land in T1.5b alongside the task
-    # implementations. Empty schedule keys here would error at beat startup,
-    # so they're commented until then.
-    # "doc-generate-daily": {
-    #     "task": "featcat.tasks.docs.generate_missing",
-    #     "schedule": crontab(hour=2, minute=0),
-    # },
-    # "source-scan-daily": {
-    #     "task": "featcat.tasks.sources.scan_all",
-    #     "schedule": crontab(hour=1, minute=0),
-    # },
-    # "baseline-refresh-weekly": {
-    #     "task": "featcat.tasks.monitoring.baseline_refresh",
-    #     "schedule": crontab(day_of_week=0, hour=3, minute=0),
-    # },
+    "doc-generate-daily": {
+        "task": "featcat.tasks.docs.doc_generate",
+        "schedule": crontab(hour=2, minute=0),
+    },
+    "source-scan-daily": {
+        "task": "featcat.tasks.sources.source_scan",
+        "schedule": crontab(hour=1, minute=0),
+    },
+    "baseline-refresh-weekly": {
+        "task": "featcat.tasks.monitoring.baseline_refresh",
+        "schedule": crontab(day_of_week=0, hour=3, minute=0),
+    },
 }
 
 __all__ = ["REDIS_URL", "app"]
