@@ -16,6 +16,16 @@
     "hide_isolated": "Hide isolated nodes",
     "node_cap_notice": "Showing {{shown}} of {{total}} nodes"
   },
+  "render_mode": {
+    "label": "Renderer",
+    "auto": "Auto",
+    "svg": "SVG",
+    "canvas": "Canvas",
+    "auto_title": "Pick automatically (SVG ≤ 500 nodes, Canvas above)",
+    "svg_title": "Force SVG — crisper, slower with many nodes",
+    "canvas_title": "Force Canvas — handles large graphs ({{count}} nodes)",
+    "active": "Active: {{mode}} ({{count}} nodes)"
+  },
   "legend": {
     "title": "Legend",
     "edge_dir": "parent → child",

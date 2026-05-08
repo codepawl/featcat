@@ -11,7 +11,17 @@ const SOURCE_PALETTE = [
   '#06B6D4', '#EC4899', '#84CC16', '#F97316', '#14B8A6',
 ]
 
-const NODE_RENDER_CAP = 500
+// Auto-pick canvas above this many nodes — SVG above ~500 nodes (~3 elements
+// each = 1500+ DOM nodes plus event listeners) starts to drag in modern
+// Chromium. Canvas keeps frame budget headroom up to ~10k nodes because the
+// cost moves from DOM mutation to a single bitmap blit per tick.
+const CANVAS_THRESHOLD = 500
+
+// Click / hover hit radius (in pre-zoom screen pixels). The SVG version got
+// this for free via per-element listeners; canvas needs an explicit value.
+const HIT_RADIUS_PX = 20
+
+type RenderMode = 'auto' | 'svg' | 'canvas'
 
 function columnName(name: string): string {
   const col = name.includes('.') ? name.split('.').pop()! : name
@@ -59,9 +69,10 @@ export function Lineage() {
   const { t } = useTranslation('lineage')
   const navigate = useNavigate()
   const svgRef = useRef<SVGSVGElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const simulationRef = useRef<d3.Simulation<SimNode, SimEdge> | null>(null)
-  const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null)
+  const zoomRef = useRef<d3.ZoomBehavior<Element, unknown> | null>(null)
   const navigateRef = useRef(navigate)
   navigateRef.current = navigate
 
@@ -70,9 +81,9 @@ export function Lineage() {
   const [sources, setSources] = useState<string[]>([])
   const [visibleSources, setVisibleSources] = useState<Set<string>>(new Set())
   const [hideIsolated, setHideIsolated] = useState(false)
-  const [showAll, setShowAll] = useState(false)
   const [selectedNode, setSelectedNode] = useState<string | null>(null)
   const [graphSearch, setGraphSearch] = useState('')
+  const [renderMode, setRenderMode] = useState<RenderMode>('auto')
 
   // Fetch once on mount
   const load = useCallback(() => {
@@ -106,10 +117,11 @@ export function Lineage() {
     [sources],
   )
 
-  // Filter pipeline: source filter -> isolated filter -> node cap.
-  // Memoised so d3 effects don't re-run unless inputs actually change.
+  // Filter pipeline: source filter -> isolated filter. No node cap anymore;
+  // canvas mode handles large graphs. Memoised so d3 effects don't re-run
+  // unless inputs actually change.
   const filtered = useMemo(() => {
-    if (!data) return { nodes: [] as ApiNode[], edges: [] as ApiEdge[], totalShown: 0, totalAvailable: 0 }
+    if (!data) return { nodes: [] as ApiNode[], edges: [] as ApiEdge[], total: 0 }
     const srcOk = (n: ApiNode) => visibleSources.size === 0 || visibleSources.has(n.source)
     const baseNodes = data.nodes.filter(srcOk)
     const baseIds = new Set(baseNodes.map(n => n.name))
@@ -125,25 +137,58 @@ export function Lineage() {
       nodes = baseNodes.filter(n => connected.has(n.name))
     }
 
-    const totalAvailable = nodes.length
-    if (!showAll && nodes.length > NODE_RENDER_CAP) {
-      // Cap: keep nodes that participate in the most edges first so the
-      // visible subgraph stays meaningful instead of an arbitrary slice.
-      const degree = new Map<string, number>()
-      for (const e of baseEdges) {
-        degree.set(e.child, (degree.get(e.child) ?? 0) + 1)
-        degree.set(e.parent, (degree.get(e.parent) ?? 0) + 1)
-      }
-      nodes = [...nodes].sort((a, b) => (degree.get(b.name) ?? 0) - (degree.get(a.name) ?? 0)).slice(0, NODE_RENDER_CAP)
-    }
-
     const ids = new Set(nodes.map(n => n.name))
     const edges = baseEdges.filter(e => ids.has(e.child) && ids.has(e.parent))
-    return { nodes, edges, totalShown: nodes.length, totalAvailable }
-  }, [data, visibleSources, hideIsolated, showAll])
+    return { nodes, edges, total: nodes.length }
+  }, [data, visibleSources, hideIsolated])
 
-  // D3 render
+  // Build ancestor + descendant sets for the selected node from full data
+  const reachable = useMemo(() => {
+    if (!selectedNode || !data) return null
+    const upstream = new Set<string>([selectedNode])
+    const downstream = new Set<string>([selectedNode])
+    const parentsOf = new Map<string, string[]>()
+    const childrenOf = new Map<string, string[]>()
+    for (const e of data.edges) {
+      if (!parentsOf.has(e.child)) parentsOf.set(e.child, [])
+      parentsOf.get(e.child)!.push(e.parent)
+      if (!childrenOf.has(e.parent)) childrenOf.set(e.parent, [])
+      childrenOf.get(e.parent)!.push(e.child)
+    }
+    const stackUp = [selectedNode]
+    while (stackUp.length > 0) {
+      const cur = stackUp.pop()!
+      for (const p of parentsOf.get(cur) ?? []) {
+        if (!upstream.has(p)) {
+          upstream.add(p)
+          stackUp.push(p)
+        }
+      }
+    }
+    const stackDown = [selectedNode]
+    while (stackDown.length > 0) {
+      const cur = stackDown.pop()!
+      for (const c of childrenOf.get(cur) ?? []) {
+        if (!downstream.has(c)) {
+          downstream.add(c)
+          stackDown.push(c)
+        }
+      }
+    }
+    const all = new Set([...upstream, ...downstream])
+    return { all, upstream, downstream }
+  }, [selectedNode, data])
+
+  // Resolve auto -> svg/canvas based on node count threshold.
+  const effectiveMode: 'svg' | 'canvas' = useMemo(() => {
+    if (renderMode === 'svg') return 'svg'
+    if (renderMode === 'canvas') return 'canvas'
+    return filtered.nodes.length > CANVAS_THRESHOLD ? 'canvas' : 'svg'
+  }, [renderMode, filtered.nodes.length])
+
+  // ----- SVG renderer -------------------------------------------------------
   useEffect(() => {
+    if (effectiveMode !== 'svg') return
     if (!svgRef.current || !containerRef.current) return
     if (filtered.nodes.length === 0) return
 
@@ -188,7 +233,7 @@ export function Lineage() {
       .scaleExtent([0.15, 4])
       .on('zoom', (event) => g.attr('transform', event.transform))
     svg.call(zoom)
-    zoomRef.current = zoom
+    zoomRef.current = zoom as unknown as d3.ZoomBehavior<Element, unknown>
 
     svg.on('click', (event) => {
       if (event.target === svgRef.current) setSelectedNode(null)
@@ -378,47 +423,356 @@ export function Lineage() {
       simulation.stop()
       tooltip.remove()
     }
-  }, [filtered, colorMap, t])
+  }, [filtered, colorMap, t, effectiveMode])
 
-  // Build ancestor + descendant sets for the selected node from full data
-  const reachable = useMemo(() => {
-    if (!selectedNode || !data) return null
-    const upstream = new Set<string>([selectedNode])
-    const downstream = new Set<string>([selectedNode])
-    const parentsOf = new Map<string, string[]>()
-    const childrenOf = new Map<string, string[]>()
-    for (const e of data.edges) {
-      if (!parentsOf.has(e.child)) parentsOf.set(e.child, [])
-      parentsOf.get(e.child)!.push(e.parent)
-      if (!childrenOf.has(e.parent)) childrenOf.set(e.parent, [])
-      childrenOf.get(e.parent)!.push(e.child)
-    }
-    const stackUp = [selectedNode]
-    while (stackUp.length > 0) {
-      const cur = stackUp.pop()!
-      for (const p of parentsOf.get(cur) ?? []) {
-        if (!upstream.has(p)) {
-          upstream.add(p)
-          stackUp.push(p)
-        }
-      }
-    }
-    const stackDown = [selectedNode]
-    while (stackDown.length > 0) {
-      const cur = stackDown.pop()!
-      for (const c of childrenOf.get(cur) ?? []) {
-        if (!downstream.has(c)) {
-          downstream.add(c)
-          stackDown.push(c)
-        }
-      }
-    }
-    const all = new Set([...upstream, ...downstream])
-    return { all, upstream, downstream }
-  }, [selectedNode, data])
-
-  // Selection highlight effect — paints over whatever the render effect produced
+  // ----- Canvas renderer ----------------------------------------------------
+  // Mirrors the SVG path's physics (same forces, same y-rank bias). Differences:
+  //   - One <canvas> blit per tick instead of per-node DOM mutation.
+  //   - Hit-testing for click/hover/drag is manual: brute-force nearest-node
+  //     within HIT_RADIUS_PX. O(N) per pointer event, fine up to ~20k nodes.
+  //   - Zoom + pan are applied by transforming the canvas context (translate +
+  //     scale) before draw — d3.zoom drives the same transform value as SVG.
   useEffect(() => {
+    if (effectiveMode !== 'canvas') return
+    if (!canvasRef.current || !containerRef.current) return
+    if (filtered.nodes.length === 0) return
+
+    const canvas = canvasRef.current
+    const container = containerRef.current
+    const rect = container.getBoundingClientRect()
+    const dpr = window.devicePixelRatio || 1
+    const width = rect.width
+    const height = rect.height
+    canvas.width = Math.floor(width * dpr)
+    canvas.height = Math.floor(height * dpr)
+    canvas.style.width = `${width}px`
+    canvas.style.height = `${height}px`
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const nodes: SimNode[] = filtered.nodes.map(n => ({ ...n, id: n.name }))
+    const edges: SimEdge[] = filtered.edges.map(e => ({
+      source: e.parent,
+      target: e.child,
+      transform: e.transform,
+      detected_method: e.detected_method,
+    }))
+
+    // Resolve string sources/targets to node refs once so tick draws can
+    // skip the `typeof === 'string'` dance per edge per frame.
+    const byId = new Map<string, SimNode>(nodes.map(n => [n.id, n]))
+    const resolvedEdges: { src: SimNode; tgt: SimNode; e: SimEdge }[] = []
+    for (const e of edges) {
+      const src = typeof e.source === 'string' ? byId.get(e.source) : (e.source as SimNode)
+      const tgt = typeof e.target === 'string' ? byId.get(e.target) : (e.target as SimNode)
+      if (src && tgt) resolvedEdges.push({ src, tgt, e })
+    }
+
+    // Tooltip — created once, removed in cleanup. Same DOM tooltip as SVG mode
+    // so styling is identical.
+    const tooltip = d3.select(container)
+      .append('div')
+      .attr('class', 'lineage-tooltip')
+      .style('position', 'absolute')
+      .style('pointer-events', 'none')
+      .style('opacity', '0')
+      .style('background', 'var(--bg-primary)')
+      .style('border', '1px solid var(--border-default)')
+      .style('border-radius', '8px')
+      .style('padding', '10px 12px')
+      .style('font-size', '12px')
+      .style('color', 'var(--text-primary)')
+      .style('box-shadow', '0 4px 12px rgba(0,0,0,0.15)')
+      .style('z-index', '20')
+      .style('max-width', '320px')
+      .style('line-height', '1.5')
+
+    // Current zoom transform — d3.zoomIdentity until the user pans/zooms.
+    let transform = d3.zoomIdentity
+
+    const draw = () => {
+      ctx.save()
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+      ctx.clearRect(0, 0, width, height)
+      ctx.translate(transform.x, transform.y)
+      ctx.scale(transform.k, transform.k)
+
+      const reach = reachableRef.current
+      const search = searchRef.current.toLowerCase().trim()
+
+      // Edges first so nodes paint on top.
+      ctx.lineWidth = 1.4 / Math.max(transform.k, 0.5)
+      for (const { src, tgt, e } of resolvedEdges) {
+        const sx = src.x ?? 0, sy = src.y ?? 0
+        const tx = tgt.x ?? 0, ty = tgt.y ?? 0
+        let stroke = '#64748B'
+        let alpha = 0.55
+        if (reach) {
+          const inPath = reach.all.has(src.id) && reach.all.has(tgt.id)
+          stroke = inPath ? '#1D9E75' : '#1f2937'
+          alpha = inPath ? 0.9 : 0.06
+        }
+        ctx.strokeStyle = stroke
+        ctx.globalAlpha = alpha
+        if (e.detected_method === 'sqlglot') {
+          ctx.setLineDash([4, 3])
+        } else {
+          ctx.setLineDash([])
+        }
+        ctx.beginPath()
+        ctx.moveTo(sx, sy)
+        ctx.lineTo(tx, ty)
+        ctx.stroke()
+
+        // Arrowhead — small filled triangle at the target end. Computed in
+        // simulation space so it scales with zoom for free.
+        const dx = tx - sx, dy = ty - sy
+        const len = Math.hypot(dx, dy) || 1
+        const ux = dx / len, uy = dy / len
+        // Back the head off the target node by ~26 units (matches SVG marker refX).
+        const hx = tx - ux * 26
+        const hy = ty - uy * 26
+        const ah = 7  // arrow length
+        const aw = 4  // half-width
+        ctx.fillStyle = stroke
+        ctx.beginPath()
+        ctx.moveTo(hx, hy)
+        ctx.lineTo(hx - ux * ah - uy * aw, hy - uy * ah + ux * aw)
+        ctx.lineTo(hx - ux * ah + uy * aw, hy - uy * ah - ux * aw)
+        ctx.closePath()
+        ctx.fill()
+      }
+      ctx.setLineDash([])
+      ctx.globalAlpha = 1
+
+      // Nodes — circles (with a label adjacent) instead of rounded rects.
+      // Rendering thousands of rounded-rect text bubbles per tick costs more
+      // than circles + text-on-zoom, and circles read better at far-zoom.
+      const NODE_RADIUS = 8
+      // Only render text labels above this zoom level; at far-zoom they're
+      // unreadable AND dominate the per-frame budget.
+      const showLabels = transform.k > 0.7
+      ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, monospace'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+
+      for (const n of nodes) {
+        const x = n.x ?? 0, y = n.y ?? 0
+        let alpha = 0.95
+        if (reach) alpha = reach.all.has(n.id) ? 1 : 0.15
+        if (search && !`${n.name} ${n.source} ${n.dtype} ${n.owner}`.toLowerCase().includes(search)) {
+          alpha = Math.min(alpha, 0.18)
+        }
+        ctx.globalAlpha = alpha
+        const color = colorMap.get(n.source) || '#94A3B8'
+        ctx.fillStyle = color
+        ctx.strokeStyle = color
+        ctx.lineWidth = 1.5
+        ctx.beginPath()
+        ctx.arc(x, y, NODE_RADIUS, 0, Math.PI * 2)
+        ctx.fill()
+        if (showLabels) {
+          ctx.fillStyle = 'rgba(0,0,0,0.35)'
+          ctx.fillText(columnName(n.name), x + 1, y + NODE_RADIUS + 11)
+          ctx.fillStyle = '#fff'
+          ctx.fillText(columnName(n.name), x, y + NODE_RADIUS + 10)
+        }
+      }
+      ctx.globalAlpha = 1
+      ctx.restore()
+    }
+
+    const simulation = d3.forceSimulation<SimNode>(nodes)
+      .force('link', d3.forceLink<SimNode, SimEdge>(edges).id(d => d.id).distance(80).strength(0.5))
+      .force('charge', d3.forceManyBody<SimNode>().strength(-160).distanceMax(400))
+      .force('center', d3.forceCenter(width / 2, height / 2))
+      .force('collision', d3.forceCollide(20))
+      .force('y', d3.forceY<SimNode>(rankYTarget(nodes, edges, height)).strength(0.18))
+      // Cool the simulation faster for big graphs — otherwise we spend ~30s
+      // rendering visibly-wiggling nodes that have already settled.
+      .alphaDecay(0.04)
+
+    simulation.on('tick', draw)
+    simulationRef.current = simulation
+
+    // ----- Hit-testing helpers ------------------------------------------------
+    // Convert a pointer event to simulation-space coordinates (inverse of the
+    // current zoom transform). Brute-force nearest-node search; for catalogs
+    // <10k nodes this is well under 1ms per pointer event in modern V8.
+    const pointerToSim = (event: PointerEvent | MouseEvent): { x: number; y: number } => {
+      const r = canvas.getBoundingClientRect()
+      const px = event.clientX - r.left
+      const py = event.clientY - r.top
+      // Apply inverse transform: (px - tx) / k
+      return { x: (px - transform.x) / transform.k, y: (py - transform.y) / transform.k }
+    }
+
+    const findNearest = (sx: number, sy: number): SimNode | null => {
+      // Hit threshold is in screen pixels; convert to simulation space so it
+      // stays clickable at all zoom levels.
+      const threshold = HIT_RADIUS_PX / transform.k
+      let best: SimNode | null = null
+      let bestDist = threshold * threshold
+      for (const n of nodes) {
+        const dx = (n.x ?? 0) - sx
+        const dy = (n.y ?? 0) - sy
+        const d2 = dx * dx + dy * dy
+        if (d2 < bestDist) {
+          bestDist = d2
+          best = n
+        }
+      }
+      return best
+    }
+
+    // ----- Drag (manual; can't use d3.drag on canvas elements directly) -----
+    let dragging: SimNode | null = null
+    let dragStart: { x: number; y: number } | null = null
+
+    const onPointerDown = (event: PointerEvent) => {
+      const { x, y } = pointerToSim(event)
+      const hit = findNearest(x, y)
+      if (hit) {
+        dragging = hit
+        dragStart = { x, y }
+        hit.fx = hit.x
+        hit.fy = hit.y
+        simulation.alphaTarget(0.3).restart()
+        canvas.setPointerCapture(event.pointerId)
+        event.preventDefault()
+      }
+    }
+
+    const onPointerMove = (event: PointerEvent) => {
+      const sim = pointerToSim(event)
+      if (dragging) {
+        dragging.fx = sim.x
+        dragging.fy = sim.y
+        return
+      }
+      // Hover: tooltip + cursor change
+      const hit = findNearest(sim.x, sim.y)
+      if (hit) {
+        canvas.style.cursor = 'pointer'
+        const upstreamCount = resolvedEdges.filter(({ tgt }) => tgt.id === hit.id).length
+        const downstreamCount = resolvedEdges.filter(({ src }) => src.id === hit.id).length
+        tooltip.html(`
+          <div style="font-weight:600;margin-bottom:4px">${hit.name}</div>
+          <div style="color:var(--text-secondary)">${t('tooltip.dtype')}: ${hit.dtype || '-'} &nbsp;|&nbsp; ${t('tooltip.source')}: ${hit.source || '-'}</div>
+          <div style="color:var(--text-secondary)">${t('tooltip.owner')}: ${hit.owner || t('tooltip.owner_unset')}</div>
+          <div style="color:var(--text-tertiary);margin-top:4px;border-top:1px solid var(--border-subtle);padding-top:4px">
+            ↑ ${t('tooltip.upstream')}: ${upstreamCount} &nbsp;—&nbsp; ↓ ${t('tooltip.downstream')}: ${downstreamCount}
+          </div>
+        `).style('opacity', '1')
+        const cr = container.getBoundingClientRect()
+        tooltip.style('left', (event.clientX - cr.left + 12) + 'px')
+          .style('top', (event.clientY - cr.top - 10) + 'px')
+      } else {
+        canvas.style.cursor = 'grab'
+        tooltip.style('opacity', '0')
+      }
+    }
+
+    const onPointerUp = (event: PointerEvent) => {
+      if (dragging) {
+        const sim = pointerToSim(event)
+        // Treat as click if pointer barely moved.
+        const moved = dragStart && (Math.hypot(sim.x - dragStart.x, sim.y - dragStart.y) > 4)
+        const clicked = dragging
+        // Release physics pin — let the force layout absorb the node again.
+        dragging.fx = null
+        dragging.fy = null
+        simulation.alphaTarget(0)
+        if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId)
+        dragging = null
+        dragStart = null
+        if (!moved) {
+          setSelectedNode(prev => prev === clicked.id ? null : clicked.id)
+        }
+      }
+    }
+
+    const onDblClick = (event: MouseEvent) => {
+      const { x, y } = pointerToSim(event)
+      const hit = findNearest(x, y)
+      if (hit) navigateRef.current(`/features/${encodeURIComponent(hit.name)}`)
+    }
+
+    const onClickEmpty = (event: MouseEvent) => {
+      // Background click clears selection. We piggyback on pointerup for nodes,
+      // so this only fires when nothing was hit.
+      const { x, y } = pointerToSim(event)
+      if (!findNearest(x, y)) setSelectedNode(null)
+    }
+
+    canvas.addEventListener('pointerdown', onPointerDown)
+    canvas.addEventListener('pointermove', onPointerMove)
+    canvas.addEventListener('pointerup', onPointerUp)
+    canvas.addEventListener('pointercancel', onPointerUp)
+    canvas.addEventListener('dblclick', onDblClick)
+    canvas.addEventListener('click', onClickEmpty)
+    canvas.style.cursor = 'grab'
+
+    // ----- Zoom + pan via d3.zoom on the canvas element ---------------------
+    // The wheel/drag-on-empty interactions are owned by d3.zoom; node-drag
+    // listeners above stop propagation by calling preventDefault on
+    // pointerdown when a node was hit, which keeps d3.zoom from kicking in
+    // during a node drag.
+    const zoom = d3.zoom<HTMLCanvasElement, unknown>()
+      .scaleExtent([0.15, 4])
+      .filter((event: Event) => {
+        // Block zoom-pan when the pointer is down on a node (we handle it
+        // ourselves above). Wheel events always pass through for zoom.
+        if (event.type === 'wheel') return true
+        if (dragging) return false
+        // Also block on mousedown over a node so d3.zoom's drag-pan doesn't
+        // fight with our node-drag.
+        const me = event as MouseEvent
+        const { x, y } = pointerToSim(me)
+        return !findNearest(x, y)
+      })
+      .on('zoom', (event) => {
+        transform = event.transform
+        draw()
+      })
+    d3.select(canvas).call(zoom)
+    zoomRef.current = zoom as unknown as d3.ZoomBehavior<Element, unknown>
+
+    return () => {
+      simulation.stop()
+      tooltip.remove()
+      canvas.removeEventListener('pointerdown', onPointerDown)
+      canvas.removeEventListener('pointermove', onPointerMove)
+      canvas.removeEventListener('pointerup', onPointerUp)
+      canvas.removeEventListener('pointercancel', onPointerUp)
+      canvas.removeEventListener('dblclick', onDblClick)
+      canvas.removeEventListener('click', onClickEmpty)
+      d3.select(canvas).on('.zoom', null)
+    }
+  }, [filtered, colorMap, t, effectiveMode])
+
+  // Selection / search use refs to avoid restarting the canvas effect every
+  // keystroke. The canvas tick redraws automatically via simulation; for
+  // selection changes after the simulation has cooled we trigger one redraw.
+  const reachableRef = useRef(reachable)
+  reachableRef.current = reachable
+  const searchRef = useRef(graphSearch)
+  searchRef.current = graphSearch
+
+  // After selection / search changes in canvas mode, nudge the simulation so
+  // the tick handler repaints with new highlights even when forces have settled.
+  useEffect(() => {
+    if (effectiveMode !== 'canvas') return
+    const sim = simulationRef.current
+    if (!sim) return
+    sim.alpha(Math.max(sim.alpha(), 0.02)).restart()
+  }, [reachable, graphSearch, effectiveMode])
+
+  // Selection highlight effect for SVG mode — paints over whatever the render
+  // effect produced. (Canvas mode handles this inside the draw call.)
+  useEffect(() => {
+    if (effectiveMode !== 'svg') return
     if (!svgRef.current) return
     const svg = d3.select(svgRef.current)
     const nodeG = svg.selectAll<SVGGElement, SimNode>('g.nodes > g')
@@ -453,10 +807,12 @@ export function Lineage() {
           ? 'url(#lineage-arrow-highlight)'
           : 'url(#lineage-arrow-fade)'
       })
-  }, [reachable])
+  }, [reachable, effectiveMode])
 
-  // Search highlight: dim non-matching nodes (independent of selection)
+  // Search highlight: dim non-matching nodes (independent of selection).
+  // SVG-only — canvas reads searchRef inside its draw loop.
   useEffect(() => {
+    if (effectiveMode !== 'svg') return
     if (!svgRef.current) return
     const svg = d3.select(svgRef.current)
     const nodeG = svg.selectAll<SVGGElement, SimNode>('g.nodes > g')
@@ -475,24 +831,52 @@ export function Lineage() {
       d3.select(this).select('rect').attr('opacity', match ? 1 : 0.15)
       d3.select(this).selectAll('text').attr('opacity', match ? 1 : 0.18)
     })
-  }, [graphSearch, reachable])
+  }, [graphSearch, reachable, effectiveMode])
 
   const handleFit = () => {
-    if (!svgRef.current || !zoomRef.current) return
-    const svg = d3.select(svgRef.current)
-    const gNode = svg.select<SVGGElement>('g').node()
-    if (!gNode) return
-    const bounds = gNode.getBBox()
-    const w = svgRef.current.clientWidth
-    const h = svgRef.current.clientHeight
-    if (bounds.width === 0 || bounds.height === 0) return
-    const scale = 0.85 / Math.max(bounds.width / w, bounds.height / h)
-    const tx = (w - scale * (bounds.x * 2 + bounds.width)) / 2
-    const ty = (h - scale * (bounds.y * 2 + bounds.height)) / 2
-    svg.transition().duration(500).call(
-      zoomRef.current.transform,
-      d3.zoomIdentity.translate(tx, ty).scale(scale),
-    )
+    if (effectiveMode === 'svg') {
+      if (!svgRef.current || !zoomRef.current) return
+      const svg = d3.select(svgRef.current)
+      const gNode = svg.select<SVGGElement>('g').node()
+      if (!gNode) return
+      const bounds = gNode.getBBox()
+      const w = svgRef.current.clientWidth
+      const h = svgRef.current.clientHeight
+      if (bounds.width === 0 || bounds.height === 0) return
+      const scale = 0.85 / Math.max(bounds.width / w, bounds.height / h)
+      const tx = (w - scale * (bounds.x * 2 + bounds.width)) / 2
+      const ty = (h - scale * (bounds.y * 2 + bounds.height)) / 2
+      svg.transition().duration(500).call(
+        (zoomRef.current as unknown as d3.ZoomBehavior<SVGSVGElement, unknown>).transform,
+        d3.zoomIdentity.translate(tx, ty).scale(scale),
+      )
+    } else {
+      // Canvas: compute bounds from node positions, then apply via d3.zoom.
+      if (!canvasRef.current || !zoomRef.current) return
+      const sim = simulationRef.current
+      if (!sim) return
+      const nodes = sim.nodes()
+      if (nodes.length === 0) return
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+      for (const n of nodes) {
+        const x = n.x ?? 0, y = n.y ?? 0
+        if (x < minX) minX = x
+        if (y < minY) minY = y
+        if (x > maxX) maxX = x
+        if (y > maxY) maxY = y
+      }
+      const bw = maxX - minX, bh = maxY - minY
+      if (bw <= 0 || bh <= 0) return
+      const w = canvasRef.current.clientWidth
+      const h = canvasRef.current.clientHeight
+      const scale = 0.85 / Math.max(bw / w, bh / h)
+      const tx = (w - scale * (minX + maxX)) / 2
+      const ty = (h - scale * (minY + maxY)) / 2
+      d3.select(canvasRef.current).transition().duration(500).call(
+        (zoomRef.current as unknown as d3.ZoomBehavior<HTMLCanvasElement, unknown>).transform,
+        d3.zoomIdentity.translate(tx, ty).scale(scale),
+      )
+    }
   }
 
   const handleResetLayout = () => {
@@ -510,7 +894,6 @@ export function Lineage() {
   }
 
   const isEmpty = data && data.edges.length === 0
-  const overCap = filtered.totalAvailable > NODE_RENDER_CAP && !showAll
 
   return (
     <div className="flex flex-col" style={{ height: 'calc(100vh - 64px)' }}>
@@ -545,7 +928,10 @@ export function Lineage() {
         </div>
       ) : (
         <div ref={containerRef} className="relative flex-1 min-h-[500px] bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-xl overflow-hidden">
-          <svg ref={svgRef} className="w-full h-full" />
+          {effectiveMode === 'svg'
+            ? <svg ref={svgRef} className="w-full h-full" />
+            : <canvas ref={canvasRef} className="w-full h-full block" />
+          }
 
           {/* Top-right controls */}
           <div className="absolute top-3 right-3 flex flex-col gap-2 z-10 max-w-[220px]">
@@ -568,6 +954,35 @@ export function Lineage() {
               </label>
             </div>
 
+            {/* Render-mode toggle: Auto / SVG / Canvas. Auto picks based on
+                node count, SVG/Canvas force the choice for debugging or when
+                operators want crisper text on small graphs. */}
+            <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg shadow-sm p-2">
+              <p className="text-[10px] font-medium text-[var(--text-tertiary)] uppercase tracking-wide mb-1">
+                {t('render_mode.label')}
+              </p>
+              <div className="flex gap-1">
+                {(['auto', 'svg', 'canvas'] as const).map(mode => (
+                  <button
+                    key={mode}
+                    onClick={() => setRenderMode(mode)}
+                    className={
+                      'flex-1 px-2 py-1 text-[10px] font-medium rounded border transition-colors ' +
+                      (renderMode === mode
+                        ? 'bg-brand/10 border-brand text-brand'
+                        : 'bg-[var(--bg-primary)] border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)]')
+                    }
+                    title={t(`render_mode.${mode}_title`, { count: filtered.total })}
+                  >
+                    {t(`render_mode.${mode}`)}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[10px] text-[var(--text-tertiary)] mt-1.5">
+                {t('render_mode.active', { mode: t(`render_mode.${effectiveMode}`), count: filtered.total })}
+              </p>
+            </div>
+
             {sources.length > 1 && (
               <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg shadow-sm p-2">
                 <p className="text-[10px] font-medium text-[var(--text-tertiary)] uppercase tracking-wide mb-1">{t('filters.sources_label')}</p>
@@ -586,16 +1001,6 @@ export function Lineage() {
                   ))}
                 </div>
               </div>
-            )}
-
-            {overCap && (
-              <button
-                onClick={() => setShowAll(true)}
-                className="px-3 py-1.5 text-[11px] font-medium bg-[var(--warning-bg,rgba(245,158,11,0.12))] border border-[var(--warning,#F59E0B)] text-[var(--warning,#F59E0B)] rounded-lg hover:opacity-90"
-                title={t('filters.node_cap_notice', { shown: filtered.totalShown, total: filtered.totalAvailable })}
-              >
-                {t('actions.show_all', { count: filtered.totalAvailable })}
-              </button>
             )}
           </div>
 

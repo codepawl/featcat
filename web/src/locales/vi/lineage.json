@@ -16,6 +16,16 @@
     "hide_isolated": "Ẩn node đơn lẻ",
     "node_cap_notice": "Đang hiển thị {{shown}} / {{total}} node"
   },
+  "render_mode": {
+    "label": "Bộ vẽ",
+    "auto": "Tự động",
+    "svg": "SVG",
+    "canvas": "Canvas",
+    "auto_title": "Chọn tự động (SVG ≤ 500 node, Canvas khi nhiều hơn)",
+    "svg_title": "Bắt buộc SVG — nét hơn, chậm khi nhiều node",
+    "canvas_title": "Bắt buộc Canvas — xử lý đồ thị lớn ({{count}} node)",
+    "active": "Đang dùng: {{mode}} ({{count}} node)"
+  },
   "legend": {
     "title": "Chú thích",
     "edge_dir": "cha → con",
