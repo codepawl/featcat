@@ -7,6 +7,7 @@ import { useChatStore } from '../hooks/useChatStore'
 import { ChatMessage } from '../components/ChatMessage'
 import { Reasoning, ReasoningTrigger, ReasoningContent } from '@/components/ai-elements/reasoning'
 import { Tool, ToolHeader, ToolContent, ToolInput, ToolOutput } from '@/components/ai-elements/tool'
+import { Response } from '@/components/ai-elements/response'
 import { chatStore } from '../stores/chatStore'
 import type { ChatMessage as ChatMsg } from '../stores/chatStore'
 
@@ -359,7 +360,7 @@ export function Chat() {
           ? <ResultTable data={tryParseResult(msg.content)} />
           : msg.content.startsWith('⚠')
             ? <div className="text-[var(--warning)] text-sm italic">{msg.content}</div>
-            : <span>{msg.content}</span>
+            : <Response>{msg.content}</Response>
       )}
     </>
   )
