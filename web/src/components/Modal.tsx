@@ -38,6 +38,9 @@ export function Modal({ open, onClose, title, children, actions, maxWidth = 'max
       onClick={handleClose}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
         className={`bg-[var(--bg-secondary)] border border-[var(--border-default)] rounded-2xl shadow-2xl ${maxWidth} w-[calc(100%-2rem)] sm:w-[90%] max-h-[85vh] sm:max-h-[80vh] flex flex-col ${closing ? 'animate-modal-out' : 'animate-modal-in'}`}
         onClick={(e) => e.stopPropagation()}
       >
