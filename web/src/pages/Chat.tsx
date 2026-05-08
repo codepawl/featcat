@@ -8,6 +8,7 @@ import { ChatMessage } from '../components/ChatMessage'
 import { Reasoning, ReasoningTrigger, ReasoningContent } from '@/components/ai-elements/reasoning'
 import { Tool, ToolHeader, ToolContent, ToolInput, ToolOutput } from '@/components/ai-elements/tool'
 import { Response } from '@/components/ai-elements/response'
+import { Suggestion, Suggestions } from '@/components/ai-elements/suggestion'
 import { chatStore } from '../stores/chatStore'
 import type { ChatMessage as ChatMsg } from '../stores/chatStore'
 
@@ -415,12 +416,25 @@ export function Chat() {
 
       <div className="border-t border-[var(--border-subtle)] bg-[var(--bg-primary)] p-4">
         {!isEmpty && (
-          <div className="flex gap-2 mb-2">
-            <button onClick={() => { clear(); sessionIdRef.current = null }} title={t('input.clear_title')}
-              className="ml-auto flex items-center gap-1 px-3 py-1 text-[11px] text-[var(--text-tertiary)] border border-[var(--border-default)] rounded-md hover:bg-[var(--bg-secondary)] transition-colors">
-              <Trash2 size={12} /> {t('input.clear')}
-            </button>
-          </div>
+          <>
+            <Suggestions className="mb-2">
+              {SUGGESTIONS.map((s) => (
+                <Suggestion
+                  key={s.promptKey}
+                  suggestion={t(s.promptKey)}
+                  onClick={(text) => send(text)}
+                >
+                  {t(s.titleKey)}
+                </Suggestion>
+              ))}
+            </Suggestions>
+            <div className="flex gap-2 mb-2">
+              <button onClick={() => { clear(); sessionIdRef.current = null }} title={t('input.clear_title')}
+                className="ml-auto flex items-center gap-1 px-3 py-1 text-[11px] text-[var(--text-tertiary)] border border-[var(--border-default)] rounded-md hover:bg-[var(--bg-secondary)] transition-colors">
+                <Trash2 size={12} /> {t('input.clear')}
+              </button>
+            </div>
+          </>
         )}
         <div className="flex gap-2">
           <input
