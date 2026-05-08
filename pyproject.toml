@@ -63,7 +63,12 @@ docs = [
 # scanner / scheduled detect job need the parser. Keeping the default install
 # lean (sqlglot pulls a small but non-trivial parser tree).
 lineage-sql = ["sqlglot>=20.0"]
-all = ["featcat[tui,s3,server,embeddings,tasks,docs,lineage-sql]"]
+# Live-Postgres pgvector benches (tests/perf/test_pgvector_bench.py). Kept
+# separate from [dev] so ``make check`` runs don't pull pytest-benchmark and
+# so opting into bench infra is an explicit choice. See
+# docs/contributing/benchmarks.md for the live-DB setup.
+bench = ["pytest-benchmark>=4"]
+all = ["featcat[tui,s3,server,embeddings,tasks,docs,lineage-sql,bench]"]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
@@ -105,6 +110,9 @@ select = ["E", "F", "W", "I", "N", "UP", "B", "A", "SIM", "TCH"]
 testpaths = ["tests"]
 addopts = "--cov=featcat --cov-report=term-missing --cov-report=xml"
 timeout = 10
+markers = [
+    "perf: opt-in performance bench (tests/perf/); requires --bench flag and live Postgres",
+]
 
 [tool.mypy]
 python_version = "3.10"

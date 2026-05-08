@@ -1,0 +1,59 @@
+{
+  "started_at": "2026-05-08T07:48:00.401016+00:00",
+  "bench_db_url": "postgresql+psycopg2://featcat:featcat@localhost:5433/featcat",
+  "embedding_dim": 384,
+  "entries": [
+    {
+      "name": "insert",
+      "n": 1000,
+      "elapsed_seconds": 7.955582163005602,
+      "rows_per_sec": 125.69790362421475
+    },
+    {
+      "name": "index_build",
+      "n": 1000,
+      "elapsed_seconds": 0.20560747699346393
+    },
+    {
+      "name": "similarity_top_k",
+      "n": 1000,
+      "ef_search": 40,
+      "top_k": 10,
+      "reps": 100,
+      "median_seconds": 0.0044058004568796605,
+      "p95_seconds": 0.006695739983115345
+    },
+    {
+      "name": "similarity_top_k",
+      "n": 1000,
+      "ef_search": 100,
+      "top_k": 10,
+      "reps": 100,
+      "median_seconds": 0.004284939001081511,
+      "p95_seconds": 0.006029950047377497
+    },
+    {
+      "name": "similarity_top_k",
+      "n": 1000,
+      "ef_search": 200,
+      "top_k": 10,
+      "reps": 100,
+      "median_seconds": 0.004097854980500415,
+      "p95_seconds": 0.0065633689519017935
+    },
+    {
+      "name": "bulk_similarity",
+      "n": 1000,
+      "queries": 100,
+      "top_k": 10,
+      "elapsed_seconds": 0.2521288340212777
+    },
+    {
+      "name": "seq_scan_vs_hnsw",
+      "n": 1000,
+      "hnsw_seconds": 0.004448436025995761,
+      "seq_scan_seconds": 0.09825548197841272,
+      "speedup": 22.08764640071871
+    }
+  ]
+}

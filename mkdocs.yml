@@ -94,3 +94,4 @@ nav:
     - Setup: contributing/setup.md
     - Code Style: contributing/style.md
     - Testing: contributing/testing.md
+    - Benchmarks: contributing/benchmarks.md
