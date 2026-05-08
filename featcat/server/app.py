@@ -111,6 +111,7 @@ def build_app() -> FastAPI:
     from .routes.monitor import router as monitor_router
     from .routes.notifications import router as notifications_router
     from .routes.scan import router as scan_router
+    from .routes.scheduler import router as scheduler_router
     from .routes.search import router as search_router
     from .routes.sources import router as sources_router
     from .routes.usage import router as usage_router
@@ -123,6 +124,7 @@ def build_app() -> FastAPI:
     app.include_router(monitor_router, prefix="/api/monitor", tags=["monitor"])
     app.include_router(ai_router, prefix="/api/ai", tags=["ai"])
     app.include_router(jobs_router, prefix="/api/jobs", tags=["jobs"])
+    app.include_router(scheduler_router, prefix="/api/scheduler", tags=["scheduler"])
     app.include_router(groups_router, prefix="/api/groups", tags=["groups"])
     app.include_router(actions_router, prefix="/api/actions", tags=["actions"])
     app.include_router(admin_router, prefix="/api/admin", tags=["admin"])
