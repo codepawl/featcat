@@ -1,3 +1,5 @@
+import i18n from './i18n/config'
+
 const API = '/api'
 
 // Simple client-side cache for GET requests
@@ -408,8 +410,6 @@ export type ActionItem = {
   created_at: string
   updated_at: string
 }
-
-import i18n from './i18n/config'
 
 /**
  * Human-friendly duration: 45ms / 1.2s / 2m 15s / 1h 5m. Accepts milliseconds
