@@ -7,10 +7,17 @@ Phase 2: dual backend (SQLite + PostgreSQL). Backend resolution:
   - sqlite:    ``sqlite:///<FEATCAT_CATALOG_DB_PATH>`` (or ``sqlite:///catalog.db``)
   - postgres:  ``postgresql+psycopg2://featcat:featcat@postgres:5432/featcat``
 
-SQLite uses ``StaticPool`` (one shared connection) to match legacy
-``sqlite3.connect(check_same_thread=False)`` semantics. Postgres uses
-``QueuePool(pool_size=5, max_overflow=10)`` per the Phase 2 spec — sufficient
-for the 4-worker uvicorn deployment without tuning.
+SQLite uses ``NullPool`` so each session gets a fresh ``sqlite3.connect``.
+A previous version used ``StaticPool`` (one shared connection) which fell over
+under FastAPI's ``run_in_threadpool`` concurrency: parallel anyio worker threads
+sharing one DBAPI connection corrupted the SQLite state machine, surfacing as
+``sqlite3.OperationalError: not an error`` and
+``SystemError: <Connection> returned NULL without setting an exception``
+on later requests. WAL journaling (set per-database, idempotent on connect)
+lets readers and the writer coexist so the per-call open is cheap.
+
+Postgres uses ``QueuePool(pool_size=5, max_overflow=10)`` per the Phase 2 spec —
+sufficient for the 4-worker uvicorn deployment without tuning.
 """
 
 from __future__ import annotations
@@ -20,7 +27,7 @@ from typing import Any, Literal
 
 from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import QueuePool, StaticPool
+from sqlalchemy.pool import NullPool, QueuePool
 
 Backend = Literal["sqlite", "postgres"]
 
@@ -83,19 +90,21 @@ def make_engine(backend: Backend | None = None, url: str | None = None, db_path:
         engine = create_engine(
             url,
             connect_args={"check_same_thread": False, "timeout": 30.0},
-            poolclass=StaticPool,
+            poolclass=NullPool,
             future=True,
         )
 
-        # SQLite defaults foreign_keys=OFF per connection. Without this hook,
-        # ON DELETE CASCADE silently no-ops (e.g. deleting a feature_group
-        # would leave orphaned feature_group_members rows). The legacy raw
-        # ``self.conn`` already sets this PRAGMA explicitly; the event
-        # listener gives the engine's pooled connections the same behavior.
+        # PRAGMAs that must hold for every connection. SQLite defaults
+        # foreign_keys=OFF per connection — without this, ON DELETE CASCADE
+        # silently no-ops (e.g. deleting a feature_group would leave orphaned
+        # feature_group_members rows). journal_mode=WAL is set on the file the
+        # first time it's connected and persists; reapplying is a cheap no-op
+        # that also covers fresh databases.
         @event.listens_for(engine, "connect")
-        def _enable_sqlite_fk(dbapi_conn: Any, _record: Any) -> None:
+        def _on_sqlite_connect(dbapi_conn: Any, _record: Any) -> None:
             cur = dbapi_conn.cursor()
             cur.execute("PRAGMA foreign_keys=ON")
+            cur.execute("PRAGMA journal_mode=WAL")
             cur.close()
 
         return engine
