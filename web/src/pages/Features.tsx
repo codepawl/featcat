@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Plus, RefreshCw, Check, AlertTriangle, Shield, FileText, FolderSearch, X, ChevronDown, ChevronRight, Pencil, Download } from 'lucide-react'
 import { api, invalidateCache, timeAgo } from '../api'
@@ -17,6 +17,10 @@ import { useDebouncedValue } from '../hooks/useDebouncedValue'
 
 const PAGE_LIMIT = 50
 
+type FeatureStatus = 'draft' | 'reviewed' | 'certified' | 'deprecated'
+
+const FEATURE_STATUSES: readonly FeatureStatus[] = ['draft', 'reviewed', 'certified', 'deprecated'] as const
+
 interface FeatureRow {
   name: string
   has_doc: boolean
@@ -33,6 +37,9 @@ interface FeatureRow {
   description: string
   definition: string | null
   definition_type: string | null
+  status?: FeatureStatus
+  status_changed_at?: string | null
+  status_notes?: string | null
   health_score?: number
   health_grade?: string
   health_breakdown?: { documentation: number; drift: number; usage: number }
@@ -46,6 +53,23 @@ const GRADE_COLORS: Record<string, string> = {
   B: 'bg-teal-500/15 text-teal-600 dark:text-teal-400',
   C: 'bg-amber-500/15 text-amber-600 dark:text-amber-400',
   D: 'bg-red-500/15 text-red-600 dark:text-red-400',
+}
+
+// Status pill semantics:
+//   draft      → muted (no signal yet)
+//   reviewed   → brand (peer-checked, in flight)
+//   certified  → success (sign-off complete)
+//   deprecated → danger (don't use; usually struck through too)
+// Uses semantic CSS vars so dark/light modes pick up the right contrast.
+const STATUS_PILL_CLASSES: Record<FeatureStatus, string> = {
+  draft: 'bg-[var(--bg-tertiary)] text-[var(--text-tertiary)] border border-transparent',
+  reviewed: 'bg-[var(--brand-subtle-bg)] text-[var(--brand)] border border-[var(--brand-subtle-bg)]',
+  certified: 'bg-[var(--success-subtle-bg)] text-[var(--success)] border border-[var(--success-subtle-bg)]',
+  deprecated: 'bg-[var(--danger-subtle-bg)] text-[var(--danger)] border border-[var(--danger-subtle-bg)] line-through',
+}
+
+function isFeatureStatus(v: string): v is FeatureStatus {
+  return (FEATURE_STATUSES as readonly string[]).includes(v)
 }
 
 export function Features() {
@@ -63,6 +87,11 @@ export function Features() {
   const [dtypeFilter, setDtypeFilter] = useState('')
   const [docFilter, setDocFilter] = useState(false)
   const [tagFilter, setTagFilter] = useState('')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const initialStatus = searchParams.get('status') ?? ''
+  const [statusFilter, setStatusFilter] = useState<FeatureStatus | ''>(
+    isFeatureStatus(initialStatus) ? initialStatus : ''
+  )
   const [selectedForExport, setSelectedForExport] = useState<Set<string>>(new Set())
   const [exportOpen, setExportOpen] = useState(false)
   const [addModalOpen, setAddModalOpen] = useState(false)
@@ -105,8 +134,14 @@ export function Features() {
       Promise.all([api.features.listPaginated(pagedParams), sourcesPromise])
         .then(([res, s]) => {
           const items = (res?.items ?? []) as FeatureRow[]
+          // Status filter is applied client-side over the current page slice
+          // because the backend list endpoint doesn't yet accept ?status=.
+          // For the page-level UX (badge column + chip filter) this is fine
+          // — Dashboard tile counts are derived server-wide via the
+          // unbounded list to stay accurate.
+          const visible = statusFilter ? items.filter(r => r.status === statusFilter) : items
           setFeatures(items)
-          setFiltered(items)
+          setFiltered(visible)
           setPageTotal(res?.total ?? items.length)
           setSources(Array.isArray(s) ? s : [])
         })
@@ -122,13 +157,14 @@ export function Features() {
       .then(([f, s]) => {
         let list = Array.isArray(f) ? (f as FeatureRow[]) : []
         list = list.filter((r) => r.health_grade === 'C' || r.health_grade === 'D')
+        if (statusFilter) list = list.filter(r => r.status === statusFilter)
         setFeatures(list)
         setFiltered(list)
         setPageTotal(list.length)
         setSources(Array.isArray(s) ? s : [])
       })
       .finally(() => setLoading(false))
-  }, [sourceFilter, searchQuery, dtypeFilter, healthFilter, docFilter, tagFilter, isPaginated, pageOffset])
+  }, [sourceFilter, searchQuery, dtypeFilter, healthFilter, docFilter, tagFilter, statusFilter, isPaginated, pageOffset])
 
   useEffect(() => { load() }, [load])
 
@@ -136,7 +172,22 @@ export function Features() {
   // returns fewer rows than the current offset would render an empty page.
   useEffect(() => {
     setPageOffset(0)
-  }, [sourceFilter, searchQuery, dtypeFilter, healthFilter, docFilter, tagFilter])
+  }, [sourceFilter, searchQuery, dtypeFilter, healthFilter, docFilter, tagFilter, statusFilter])
+
+  // Keep the URL ?status=… in sync so Dashboard click-throughs and
+  // shareable links round-trip cleanly. Other filters live in component
+  // state only — adding them here is out of scope for T3.1b.
+  useEffect(() => {
+    setSearchParams(
+      prev => {
+        const next = new URLSearchParams(prev)
+        if (statusFilter) next.set('status', statusFilter)
+        else next.delete('status')
+        return next
+      },
+      { replace: true }
+    )
+  }, [statusFilter, setSearchParams])
 
   // Poll batch job progress
   useEffect(() => {
@@ -172,7 +223,7 @@ export function Features() {
     }
   }, [paramName, features])
 
-  const hasActiveFilters = !!(sourceFilter || searchQuery || dtypeFilter || healthFilter || docFilter || tagFilter)
+  const hasActiveFilters = !!(sourceFilter || searchQuery || dtypeFilter || healthFilter || docFilter || tagFilter || statusFilter)
 
   const clearAllFilters = () => {
     setSourceFilter('')
@@ -181,6 +232,7 @@ export function Features() {
     setHealthFilter('')
     setDocFilter(false)
     setTagFilter('')
+    setStatusFilter('')
   }
 
   const selectFeature = (f: FeatureRow) => {
@@ -238,6 +290,14 @@ export function Features() {
     }},
     { key: 'source', label: 'Source', sortable: false, render: (r: FeatureRow) => <span className="text-[var(--text-secondary)]">{r.name?.split('.')[0] || ''}</span> },
     { key: 'dtype', label: 'Dtype', render: (r: FeatureRow) => <span className="font-mono text-xs">{r.dtype}</span> },
+    { key: 'status', label: t('columns.status'), sortable: false, render: (r: FeatureRow) => {
+      const s = (r.status && isFeatureStatus(r.status)) ? r.status : 'draft'
+      return (
+        <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium ${STATUS_PILL_CLASSES[s]}`}>
+          {t(`status.${s}`)}
+        </span>
+      )
+    }},
     { key: 'tags', label: 'Tags', sortable: false, render: (r: FeatureRow) => (
       <div className="flex gap-1 flex-wrap">{(r.tags || []).map((t: string, i: number) => <Tag key={i}>{t}</Tag>)}</div>
     )},
@@ -296,6 +356,17 @@ export function Features() {
           <option value="">{t('filters.all_grades')}</option>
           <option value="attention">{t('filters.needs_attention')}</option>
           <option value="A">{t('filters.grade_only', { grade: 'A' })}</option>
+        </select>
+        <select value={statusFilter}
+          onChange={(e) => {
+            const v = e.target.value
+            setStatusFilter(isFeatureStatus(v) ? v : '')
+          }}
+          className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px]">
+          <option value="">{t('filters.all_statuses')}</option>
+          {FEATURE_STATUSES.map(s => (
+            <option key={s} value={s}>{t(`status.${s}`)}</option>
+          ))}
         </select>
         <button
           onClick={() => setDocFilter(!docFilter)}

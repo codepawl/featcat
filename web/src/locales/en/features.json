@@ -6,8 +6,18 @@
     "all_sources": "All Sources",
     "all_types": "All Types",
     "all_grades": "All Grades",
+    "all_statuses": "All Statuses",
     "grade_only": "Grade {{grade}} Only",
     "needs_attention": "Needs Attention (C or D)"
+  },
+  "columns": {
+    "status": "Status"
+  },
+  "status": {
+    "draft": "Draft",
+    "reviewed": "Reviewed",
+    "certified": "Certified",
+    "deprecated": "Deprecated"
   },
   "tabs": {
     "overview": "Overview",

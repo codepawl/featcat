@@ -20,6 +20,23 @@
     "title": "Catalog Health",
     "of_100": "/100"
   },
+  "certification_card": {
+    "title": "Certification",
+    "certified_suffix": "certified",
+    "empty": "No features yet",
+    "status": {
+      "draft": "Draft",
+      "reviewed": "Reviewed",
+      "certified": "Certified",
+      "deprecated": "Deprecated"
+    },
+    "status_tooltip": {
+      "draft": "Draft: {{count}}",
+      "reviewed": "Reviewed: {{count}}",
+      "certified": "Certified: {{count}}",
+      "deprecated": "Deprecated: {{count}}"
+    }
+  },
   "drift_panel": {
     "title": "Recent Drift Alerts",
     "empty_no_baseline": "No baselines computed yet. Run baseline first.",
