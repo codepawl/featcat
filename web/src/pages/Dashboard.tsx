@@ -62,7 +62,7 @@ export function Dashboard() {
     return (
       <div className="text-center py-20">
         <p className="text-[var(--danger)] mb-4">{t('fetch_failed', { ns: 'errors' })}</p>
-        <button onClick={load} className="px-4 py-2 bg-accent text-white rounded-lg text-sm">{t('actions.retry', { ns: 'common' })}</button>
+        <button onClick={load} className="px-4 py-2 bg-brand text-white rounded-lg text-sm">{t('actions.retry', { ns: 'common' })}</button>
       </div>
     )
   }
@@ -122,7 +122,7 @@ export function Dashboard() {
           onClick={() => navigate('/features?sort=health&order=asc')}
         >
           <div className="flex items-center gap-2 mb-3">
-            <HeartPulse size={16} className="text-accent" />
+            <HeartPulse size={16} className="text-brand" />
             <h3 className="text-sm font-semibold">{t('health_card.title')}</h3>
             <span className="ml-auto text-2xl font-semibold">{healthSummary.average_score}<span className="text-sm font-normal text-[var(--text-tertiary)]">{t('health_card.of_100')}</span></span>
           </div>
@@ -225,7 +225,7 @@ export function Dashboard() {
                   <div key={i} className="text-[13px] text-[var(--text-secondary)]">{f.name}</div>
                 ))}
                 {orphaned.length > 5 && (
-                  <a href="/features" className="text-xs text-accent hover:underline">{t('orphaned.view_all')}</a>
+                  <a href="/features" className="text-xs text-brand hover:underline">{t('orphaned.view_all')}</a>
                 )}
               </div>
             </div>

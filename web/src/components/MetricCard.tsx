@@ -28,7 +28,7 @@ export function MetricCard({ label, value, icon: Icon, color = 'default', progre
       {progress != null && (
         <div className="mt-2.5 h-1.5 rounded-full bg-[var(--bg-tertiary)] overflow-hidden">
           <div
-            className="h-full rounded-full bg-[var(--accent)]"
+            className="h-full rounded-full bg-[var(--brand)]"
             style={{ width: `${Math.min(progress, 100)}%` }}
           />
         </div>

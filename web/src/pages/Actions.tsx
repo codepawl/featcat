@@ -149,7 +149,7 @@ export function Actions() {
                       <span>{sourceLabel}</span>
                       <span>·</span>
                       <button
-                        className="font-mono text-accent hover:underline truncate"
+                        className="font-mono text-brand hover:underline truncate"
                         onClick={() => navigate(`/features/${encodeURIComponent(it.feature_name)}`)}
                       >
                         {it.feature_name}
@@ -209,7 +209,7 @@ export function Actions() {
             <button
               onClick={applyMutation}
               disabled={busy}
-              className="px-4 py-2 text-[13px] font-medium bg-accent text-[var(--bg-primary)] rounded-lg disabled:opacity-50"
+              className="px-4 py-2 text-[13px] font-medium bg-brand text-[var(--bg-primary)] rounded-lg disabled:opacity-50"
             >
               {busy ? t('actions_buttons.saving') : t('actions_buttons.confirm')}
             </button>
@@ -220,7 +220,7 @@ export function Actions() {
           <div className="space-y-3">
             <div className="text-[13px]">
               <span className="text-[var(--text-tertiary)]">{t('modal.feature_label')}:</span>{' '}
-              <span className="font-mono text-accent">{confirm.item.feature_name}</span>
+              <span className="font-mono text-brand">{confirm.item.feature_name}</span>
             </div>
             <div className="text-[13px]">
               <span className="text-[var(--text-tertiary)]">{t('modal.title_label')}:</span> {confirm.item.title}

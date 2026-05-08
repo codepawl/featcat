@@ -32,7 +32,7 @@ export function ScoreTooltip({ name, children, iconOnly }: Props) {
         onMouseLeave={() => setOpen(false)}
         onFocus={() => setOpen(true)}
         onBlur={() => setOpen(false)}
-        className="text-[var(--text-tertiary)] hover:text-accent transition-colors p-0.5 -m-0.5 rounded cursor-help"
+        className="text-[var(--text-tertiary)] hover:text-brand transition-colors p-0.5 -m-0.5 rounded cursor-help"
         aria-label={t('tooltip.definition_of', { label: term.label })}
       >
         <Info size={12} strokeWidth={2} />
@@ -68,7 +68,7 @@ export function ScoreTooltip({ name, children, iconOnly }: Props) {
           )}
           <Link
             to={`/help#${name}`}
-            className="block mt-2 text-[11px] text-accent hover:underline"
+            className="block mt-2 text-[11px] text-brand hover:underline"
             onClick={(e) => e.stopPropagation()}
           >
             {t('tooltip.learn_more')}

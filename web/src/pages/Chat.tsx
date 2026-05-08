@@ -40,7 +40,7 @@ function ResultTable({ data }: { data: any }) {
         <p className="text-[var(--text-tertiary)] italic text-sm">{t('result_table.no_matches')}</p>
       )}
       {data.interpretation && <p className="text-xs text-[var(--text-secondary)]">{data.interpretation}</p>}
-      {data.follow_up && <p className="text-xs text-[var(--accent)]">{t('result_table.try_follow_up', { text: data.follow_up })}</p>}
+      {data.follow_up && <p className="text-xs text-[var(--brand)]">{t('result_table.try_follow_up', { text: data.follow_up })}</p>}
       {data.summary && <p className="text-sm text-[var(--text-secondary)] mt-2">{data.summary}</p>}
 
       {existingFeatures.length > 0 && (
@@ -70,7 +70,7 @@ function ResultTable({ data }: { data: any }) {
           <h4 className="text-xs font-semibold mt-3">{t('result_table.suggested_new')}</h4>
           <div className="space-y-2">
             {suggestions.map((s: any, i: number) => (
-              <div key={i} className="p-3 bg-[var(--bg-secondary)] rounded-lg border-l-2 border-accent">
+              <div key={i} className="p-3 bg-[var(--bg-secondary)] rounded-lg border-l-2 border-brand">
                 <span className="font-medium text-sm">{s.name}</span>
                 <span className="text-[11px] text-[var(--text-tertiary)] ml-2">{t('result_table.from_source', { source: s.source })}</span>
                 <p className="text-xs text-[var(--text-secondary)] mt-1">{s.reason}</p>
@@ -105,7 +105,7 @@ function SuggestionCard({ icon: Icon, title, example, onClick }: { icon: LucideI
       onClick={onClick}
       className="text-left p-4 bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg hover:border-[var(--border-muted)] hover:bg-[var(--bg-secondary)] transition-colors"
     >
-      <Icon size={18} className="text-[var(--accent)] mb-2" />
+      <Icon size={18} className="text-[var(--brand)] mb-2" />
       <div className="text-sm font-medium text-[var(--text-primary)] mb-1">{title}</div>
       <div className="text-xs text-[var(--text-tertiary)] leading-relaxed">{example}</div>
     </button>
@@ -346,8 +346,8 @@ export function Chat() {
       {isEmpty ? (
         <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 overflow-y-auto">
           <div className="max-w-3xl w-full text-center">
-            <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-[var(--accent-subtle-bg)] mb-6">
-              <Bot size={24} className="text-[var(--accent)]" />
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-[var(--brand-subtle-bg)] mb-6">
+              <Bot size={24} className="text-[var(--brand)]" />
             </div>
 
             <h1 className="text-2xl font-semibold text-[var(--text-primary)] mb-2">
@@ -397,10 +397,10 @@ export function Chat() {
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
             placeholder={t('input.placeholder')}
             disabled={busy}
-            className="flex-1 bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px] focus:border-accent focus:ring-2 focus:ring-accent/20 outline-none disabled:opacity-50"
+            className="flex-1 bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px] focus:border-brand focus:ring-2 focus:ring-brand/20 outline-none disabled:opacity-50"
           />
           <button onClick={() => send()} disabled={busy || !input.trim()}
-            className="flex items-center gap-1.5 px-4 py-2 bg-accent text-white rounded-lg text-[13px] font-medium disabled:opacity-50 hover:bg-accent-emphasis transition-colors">
+            className="flex items-center gap-1.5 px-4 py-2 bg-brand text-white rounded-lg text-[13px] font-medium disabled:opacity-50 hover:bg-brand-emphasis transition-colors">
             {busy ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
             {t('input.send')}
           </button>

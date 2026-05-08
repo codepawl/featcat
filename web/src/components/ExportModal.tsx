@@ -83,7 +83,7 @@ export function ExportModal({ open, onClose, title, featureSpecs, groupName }: E
           <button
             onClick={handleExport}
             disabled={exporting || selected.size === 0}
-            className="px-4 py-2 text-sm bg-accent text-white rounded-lg disabled:opacity-50"
+            className="px-4 py-2 text-sm bg-brand text-white rounded-lg disabled:opacity-50"
           >
             {exporting ? t('modals:export.actions.exporting') : t('modals:export.actions.export_and_download', { count: selected.size })}
           </button>
@@ -105,7 +105,7 @@ export function ExportModal({ open, onClose, title, featureSpecs, groupName }: E
 
           <button
             onClick={handleDownload}
-            className="flex items-center gap-2 w-full px-4 py-2.5 bg-accent text-white rounded-lg text-sm font-medium hover:bg-accent-emphasis transition-colors"
+            className="flex items-center gap-2 w-full px-4 py-2.5 bg-brand text-white rounded-lg text-sm font-medium hover:bg-brand-emphasis transition-colors"
           >
             <Download size={16} /> {format === 'csv' ? t('modals:export.actions.download_csv') : t('modals:export.actions.download_parquet')}
           </button>
@@ -125,7 +125,7 @@ export function ExportModal({ open, onClose, title, featureSpecs, groupName }: E
               </span>
               <button
                 onClick={handleCopy}
-                className="flex items-center gap-1 text-xs text-accent hover:underline"
+                className="flex items-center gap-1 text-xs text-brand hover:underline"
               >
                 {copied ? <><Check size={12} /> {t('common:actions.copied')}</> : <><Copy size={12} /> {t('common:actions.copy')}</>}
               </button>
@@ -159,7 +159,7 @@ export function ExportModal({ open, onClose, title, featureSpecs, groupName }: E
               value={joinOn}
               onChange={e => setJoinOn(e.target.value)}
               placeholder={t('modals:export.form.auto_detect_placeholder')}
-              className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px] focus:border-accent outline-none"
+              className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px] focus:border-brand outline-none"
             />
             <p className="text-[10px] text-[var(--text-tertiary)] mt-0.5">
               {t('modals:export.form.auto_detect_help')}

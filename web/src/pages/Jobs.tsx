@@ -129,7 +129,7 @@ export function Jobs() {
                 <button
                   onClick={() => runJob(j.job_name)}
                   disabled={runningJob === j.job_name}
-                  className="flex items-center gap-1 px-2.5 py-1 text-xs bg-accent text-white rounded-md disabled:opacity-50"
+                  className="flex items-center gap-1 px-2.5 py-1 text-xs bg-brand text-white rounded-md disabled:opacity-50"
                 >
                   {runningJob === j.job_name ? <><Loader2 size={12} className="animate-spin" /> {t('job_card.actions.running')}</> : <><Play size={12} /> {t('job_card.actions.run_now')}</>}
                 </button>
@@ -214,7 +214,7 @@ export function Jobs() {
       <Modal open={!!scheduleModal} onClose={() => setScheduleModal(null)} title={t('schedule_modal.title')} actions={
         <>
           <button onClick={() => setScheduleModal(null)} className="px-4 py-2 text-sm border border-[var(--border-default)] rounded-lg">{t('actions.cancel', { ns: 'common' })}</button>
-          <button onClick={saveSchedule} disabled={saving || !cronInput} className="flex items-center gap-1.5 px-4 py-2 text-sm bg-accent text-white rounded-lg disabled:opacity-50">
+          <button onClick={saveSchedule} disabled={saving || !cronInput} className="flex items-center gap-1.5 px-4 py-2 text-sm bg-brand text-white rounded-lg disabled:opacity-50">
             {saving && <Loader2 size={14} className="animate-spin" />}
             {saving ? t('schedule_modal.saving') : t('actions.save', { ns: 'common' })}
           </button>
@@ -223,7 +223,7 @@ export function Jobs() {
         <p className="text-xs text-[var(--text-secondary)] mb-3">{scheduleModal ? getJobLabel(scheduleModal.job_name) : ''}</p>
         <label className="block text-xs font-medium mb-1">{t('schedule_modal.cron_expression')}</label>
         <input value={cronInput} onChange={(e) => setCronInput(e.target.value)} placeholder="0 * * * *"
-          className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px] font-mono focus:border-accent outline-none mb-2" />
+          className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px] font-mono focus:border-brand outline-none mb-2" />
         <p className="text-xs text-[var(--text-secondary)]">{cronToHuman(cronInput, t)}</p>
         <div className="flex gap-2 mt-3">
           {['0 * * * *', '0 */6 * * *', '0 2 * * *', '0 3 * * 0'].map((p) => (
