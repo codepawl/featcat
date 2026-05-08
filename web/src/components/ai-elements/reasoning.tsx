@@ -8,7 +8,10 @@ import {
 } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import { cjk } from "@streamdown/cjk";
-import { code } from "@streamdown/code";
+// Slim shiki plugin (whitelist of ~10 languages) replaces @streamdown/code
+// to avoid pulling in shiki's full bundled-languages registry. See
+// `shiki-slim.ts` for the language whitelist + how to extend it.
+import { code } from "./shiki-slim";
 import { math } from "@streamdown/math";
 import { mermaid } from "@streamdown/mermaid";
 import { BrainIcon, ChevronDownIcon } from "lucide-react";
