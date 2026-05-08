@@ -6,6 +6,7 @@ import { api, invalidateCache } from '../api'
 import { useChatStore } from '../hooks/useChatStore'
 import { ChatMessage } from '../components/ChatMessage'
 import { Reasoning, ReasoningTrigger, ReasoningContent } from '@/components/ai-elements/reasoning'
+import { Tool, ToolHeader, ToolContent, ToolInput, ToolOutput } from '@/components/ai-elements/tool'
 import { chatStore } from '../stores/chatStore'
 import type { ChatMessage as ChatMsg } from '../stores/chatStore'
 
@@ -114,7 +115,7 @@ function SuggestionCard({ icon: Icon, title, example, onClick }: { icon: LucideI
 
 export function Chat() {
   const { t } = useTranslation('chat')
-  const { messages, addMessage, updateLastMessage, appendToLastMessage, clear } = useChatStore()
+  const { messages, addMessage, updateLastMessage, appendToLastMessage, upsertToolCall, clear } = useChatStore()
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const [llmAvailable, setLlmAvailable] = useState<boolean | null>(null)
@@ -197,14 +198,26 @@ export function Chat() {
           case 'thinking_end':
             updateLastMessage({ isDoneThinking: true })
             return false
-          case 'tool_start':
-            appendToLastMessage('thinking', '\n' + t('thinking_stream.looking_up', { tool: data.tool }))
+          case 'tool_start': {
+            const id = data.id || data.tool || `tool-${Date.now()}`
+            upsertToolCall(id, { name: data.tool || data.name || 'tool', state: 'input-available', input: data.input })
             return false
-          case 'tool_call':
-            appendToLastMessage('thinking', '\n' + t('thinking_stream.using_tool', { tool: data.name }))
+          }
+          case 'tool_call': {
+            const id = data.id || data.name || `tool-${Date.now()}`
+            upsertToolCall(id, { name: data.name || 'tool', state: 'input-available', input: data.input ?? data.args })
             return false
-          case 'tool_result':
+          }
+          case 'tool_result': {
+            const id = data.id || data.tool || data.name || `tool-${Date.now()}`
+            const isError = data.error || data.status === 'error'
+            upsertToolCall(id, {
+              state: isError ? 'output-error' : 'output-available',
+              output: data.result ?? data.content ?? data.output,
+              error: isError ? (data.error || 'Tool error') : undefined,
+            })
             return false
+          }
           case 'token':
             appendToLastMessage('content', data.content)
             return false
@@ -318,6 +331,21 @@ export function Chat() {
           <ReasoningTrigger />
           <ReasoningContent>{msg.thinking || ''}</ReasoningContent>
         </Reasoning>
+      )}
+      {msg.tools && msg.tools.length > 0 && (
+        <div className="mb-3 space-y-2">
+          {msg.tools.map((tool) => (
+            <Tool key={tool.id} defaultOpen={false}>
+              <ToolHeader type="dynamic-tool" toolName={tool.name} state={tool.state} />
+              <ToolContent>
+                {tool.input !== undefined && <ToolInput input={tool.input} />}
+                {(tool.output !== undefined || tool.error) && (
+                  <ToolOutput output={tool.output} errorText={tool.error} />
+                )}
+              </ToolContent>
+            </Tool>
+          ))}
+        </div>
       )}
       {msg.isStreaming && !msg.content && !msg.thinking && !msg.result && (
         <div className="flex items-center gap-2 text-sm text-[var(--text-tertiary)]">
