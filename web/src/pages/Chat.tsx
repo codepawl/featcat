@@ -5,7 +5,7 @@ import type { LucideIcon } from 'lucide-react'
 import { api, invalidateCache } from '../api'
 import { useChatStore } from '../hooks/useChatStore'
 import { ChatMessage } from '../components/ChatMessage'
-import { ThinkingBlock } from '../components/ThinkingBlock'
+import { Reasoning, ReasoningTrigger, ReasoningContent } from '@/components/ai-elements/reasoning'
 import { chatStore } from '../stores/chatStore'
 import type { ChatMessage as ChatMsg } from '../stores/chatStore'
 
@@ -311,10 +311,13 @@ export function Chat() {
   const renderAiContent = (msg: ChatMsg) => (
     <>
       {(msg.thinking || (msg.isStreaming && !msg.content && !msg.result)) && (
-        <ThinkingBlock
-          content={msg.thinking || ''}
-          isDone={(msg.isDoneThinking ?? false) || !msg.isStreaming}
-        />
+        <Reasoning
+          className="mb-3"
+          isStreaming={msg.isStreaming === true && !(msg.isDoneThinking ?? false)}
+        >
+          <ReasoningTrigger />
+          <ReasoningContent>{msg.thinking || ''}</ReasoningContent>
+        </Reasoning>
       )}
       {msg.isStreaming && !msg.content && !msg.thinking && !msg.result && (
         <div className="flex items-center gap-2 text-sm text-[var(--text-tertiary)]">
