@@ -1,12 +1,66 @@
+import type { HTMLAttributes, ReactNode } from 'react'
 import { memo } from 'react'
-import { Streamdown } from 'streamdown'
+import { Streamdown, useIsCodeFenceIncomplete } from 'streamdown'
+import type { BundledLanguage } from 'streamdown'
 import { cjk } from '@streamdown/cjk'
-import { code } from '@streamdown/code'
 import { math } from '@streamdown/math'
 
+import { CodeBlock, CodeBlockCopyButton } from '@/components/ai-elements/code-block'
+import { code } from '@/components/ai-elements/shiki-slim'
 import { cn } from '@/lib/utils'
 
 const plugins = { cjk, code, math }
+
+// Streamdown's `components.code` override receives both inline (`backtick`) and
+// fenced (```...```) code. We distinguish via className: fenced blocks come
+// through with `language-<id>`, while inline code has no className. Inline
+// code keeps default rendering; fenced code is replaced with our AI Elements
+// <CodeBlock> + copy button so chat replies match the SQL CodeBlocks rendered
+// in ResultTable.
+type CodeElProps = HTMLAttributes<HTMLElement> & { children?: ReactNode }
+
+const FencedCodeBlock = ({
+  language,
+  source,
+}: {
+  language: string
+  source: string
+}) => {
+  // Streamdown sets a context flag while the fence is unclosed. Gate the
+  // copy button until the block is complete (avoids copying mid-stream).
+  const isIncomplete = useIsCodeFenceIncomplete()
+  return (
+    <CodeBlock
+      className="relative my-2"
+      code={source}
+      language={(language || 'plaintext') as BundledLanguage}
+    >
+      {!isIncomplete && <CodeBlockCopyButton className="absolute right-2 top-2" />}
+    </CodeBlock>
+  )
+}
+
+const codeRenderer = ({ className, children, ...rest }: CodeElProps) => {
+  // Fenced blocks always come with a `language-X` className from remark.
+  // Anything else is inline — preserve the default <code> rendering.
+  const match = /^language-([\w-]+)/.exec(className ?? '')
+  if (!match) {
+    return (
+      <code className={className} {...rest}>
+        {children}
+      </code>
+    )
+  }
+  const language = match[1]
+  // children is the raw source text. Strip the trailing newline added by
+  // remark (matches how AI Elements CodeBlock expects clean code).
+  const source = String(children ?? '').replace(/\n$/, '')
+  return <FencedCodeBlock language={language} source={source} />
+}
+
+const components = {
+  code: codeRenderer,
+}
 
 export type ResponseProps = {
   children: string
@@ -33,7 +87,9 @@ export const Response = memo(({ children, className }: ResponseProps) => (
       className,
     )}
   >
-    <Streamdown plugins={plugins}>{children}</Streamdown>
+    <Streamdown components={components} plugins={plugins}>
+      {children}
+    </Streamdown>
   </div>
 ))
 

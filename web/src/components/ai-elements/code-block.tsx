@@ -27,7 +27,10 @@ import type {
   HighlighterGeneric,
   ThemedToken,
 } from "shiki";
-import { createHighlighter } from "shiki";
+// Slim highlighter: only the whitelisted languages in shiki-slim.ts are
+// loaded — keeps the shared async-chunk count tiny instead of pulling in
+// shiki's full bundled-languages registry.
+import { createSlimHighlighter as createHighlighter } from "./shiki-slim";
 
 // Shiki uses bitflags for font styles: 1=italic, 2=bold, 4=underline
 // oxlint-disable-next-line eslint(no-bitwise)
