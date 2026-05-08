@@ -1,0 +1,28 @@
+{
+  "page": {
+    "title": "Tìm kiếm"
+  },
+  "input": {
+    "placeholder": "Tìm theo tên, mô tả, tag..."
+  },
+  "header": {
+    "loading": "Đang tìm...",
+    "count_one": "{{count}} kết quả cho \"{{query}}\"",
+    "count_other": "{{count}} kết quả cho \"{{query}}\""
+  },
+  "facets": {
+    "title": "Bộ lọc",
+    "source": "Nguồn",
+    "dtype": "Kiểu dữ liệu",
+    "tag": "Tag",
+    "documentation": "Tài liệu",
+    "documented": "Đã có tài liệu",
+    "undocumented": "Chưa có tài liệu",
+    "clear": "Xóa tất cả"
+  },
+  "empty": {
+    "prompt": "Nhập từ khóa để tìm theo tên, tag và tài liệu.",
+    "no_match": "Không có kết quả cho \"{{query}}\".",
+    "suggest": "Thử từ khóa rộng hơn hoặc bỏ bớt bộ lọc."
+  }
+}

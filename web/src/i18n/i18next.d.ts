@@ -15,6 +15,7 @@ import errors from '../locales/en/errors.json'
 import actions from '../locales/en/actions.json'
 import help from '../locales/en/help.json'
 import glossary from '../locales/en/glossary.json'
+import search from '../locales/en/search.json'
 
 declare module 'i18next' {
   interface CustomTypeOptions {
@@ -36,6 +37,7 @@ declare module 'i18next' {
       actions: typeof actions
       help: typeof help
       glossary: typeof glossary
+      search: typeof search
     }
   }
 }
