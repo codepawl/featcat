@@ -161,3 +161,46 @@ class TestImpactEndpoint:
         )
         body = resp.json()
         assert all(r["depth"] == 1 for r in body)
+
+
+# --------------------------------------------------------------------------- #
+# /api/lineage/full (T1.1c)                                                   #
+# --------------------------------------------------------------------------- #
+
+
+class TestLineageFullEndpoint:
+    def _client(self, db: LocalBackend) -> TestClient:
+        from featcat.server import create_app
+        from featcat.server.deps import get_db
+
+        app = create_app()
+        app.dependency_overrides[get_db] = lambda: db
+        return TestClient(app)
+
+    def test_empty_catalog_returns_empty_graph(self, tmp_path: Path) -> None:
+        db = LocalBackend(str(tmp_path / "empty.db"))
+        db.init_db()
+        resp = self._client(db).get("/api/lineage/full")
+        assert resp.status_code == 200
+        assert resp.json() == {"nodes": [], "edges": []}
+
+    def test_full_endpoint_returns_feature_to_feature_edges(self, lineage_db: LocalBackend) -> None:
+        resp = self._client(lineage_db).get("/api/lineage/full")
+        assert resp.status_code == 200
+        body = resp.json()
+        # Only feature→feature edges (source-column edges excluded);
+        # the fixture wires exactly one such edge: feat_a2 → feat_b1.
+        assert len(body["edges"]) == 1
+        edge = body["edges"][0]
+        assert edge["child"] == "src_b.feat_b1"
+        assert edge["parent"] == "src_a.feat_a2"
+        assert edge["transform"] == "aggregate"
+        assert edge["detected_method"] == "manual"
+        # Nodes are exactly the endpoints of those edges (no orphans, no
+        # source-column-only features).
+        names = {n["name"] for n in body["nodes"]}
+        assert names == {"src_a.feat_a2", "src_b.feat_b1"}
+        for n in body["nodes"]:
+            assert n["source"] in {"src_a", "src_b"}
+            assert "dtype" in n
+            assert "owner" in n

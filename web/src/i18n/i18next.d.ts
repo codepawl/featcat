@@ -5,6 +5,7 @@ import dashboard from '../locales/en/dashboard.json'
 import features from '../locales/en/features.json'
 import groups from '../locales/en/groups.json'
 import similarity from '../locales/en/similarity.json'
+import lineage from '../locales/en/lineage.json'
 import audit from '../locales/en/audit.json'
 import monitoring from '../locales/en/monitoring.json'
 import jobs from '../locales/en/jobs.json'
@@ -27,6 +28,7 @@ declare module 'i18next' {
       features: typeof features
       groups: typeof groups
       similarity: typeof similarity
+      lineage: typeof lineage
       audit: typeof audit
       monitoring: typeof monitoring
       jobs: typeof jobs

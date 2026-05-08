@@ -1,0 +1,44 @@
+{
+  "page": {
+    "title": "Feature Lineage",
+    "subtitle": "Catalog-wide dependency graph. Arrows point from parent to child — follow them to see how a feature flows downstream."
+  },
+  "filter_placeholder": "Search nodes...",
+  "actions": {
+    "fit": "Fit",
+    "fit_title": "Fit to screen",
+    "reset_layout": "Reset",
+    "reset_title": "Re-run layout",
+    "show_all": "Show all ({{count}})"
+  },
+  "filters": {
+    "sources_label": "Sources",
+    "hide_isolated": "Hide isolated nodes",
+    "node_cap_notice": "Showing {{shown}} of {{total}} nodes"
+  },
+  "legend": {
+    "title": "Legend",
+    "edge_dir": "parent → child",
+    "manual": "Manual edge",
+    "sqlglot": "Auto-detected (sqlglot)"
+  },
+  "tooltip": {
+    "source": "Source",
+    "dtype": "Type",
+    "owner": "Owner",
+    "owner_unset": "unset",
+    "transform": "Transform",
+    "method": "Method",
+    "no_transform": "(no description)",
+    "upstream": "Upstream",
+    "downstream": "Downstream"
+  },
+  "empty": {
+    "title": "No lineage recorded yet",
+    "subtitle": "Lineage edges connect a feature to its parents — sources, columns, or other features it derives from.",
+    "cta_detect": "Auto-detect from SQL files:",
+    "cta_detect_cmd": "featcat lineage detect --from sql/*.sql",
+    "cta_manual": "Or record manually:",
+    "cta_manual_cmd": "featcat lineage set <child> <parent>"
+  }
+}

@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { LayoutDashboard, Database, Activity, Clock, MessageSquare, FolderKanban, GitBranch, History, Settings, ListChecks, BookOpen, Search as SearchIcon } from 'lucide-react'
+import { LayoutDashboard, Database, Activity, Clock, MessageSquare, FolderKanban, GitBranch, GitFork, History, Settings, ListChecks, BookOpen, Search as SearchIcon } from 'lucide-react'
 import { api } from '../api'
 
 const NAV = [
@@ -12,6 +12,7 @@ const NAV = [
   { to: '/monitoring', key: 'monitoring', icon: Activity },
   { to: '/actions', key: 'actions', icon: ListChecks },
   { to: '/similarity', key: 'similarity', icon: GitBranch },
+  { to: '/lineage', key: 'lineage', icon: GitFork },
   { to: '/audit', key: 'audit', icon: History },
   { to: '/jobs', key: 'jobs', icon: Clock },
   { to: '/chat', key: 'chat', icon: MessageSquare },

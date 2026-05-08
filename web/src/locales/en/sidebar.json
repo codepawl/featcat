@@ -5,6 +5,7 @@
     "features": "Features",
     "groups": "Groups",
     "similarity": "Similarity",
+    "lineage": "Lineage",
     "audit": "Audit",
     "monitoring": "Monitoring",
     "actions": "Actions",
