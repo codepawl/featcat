@@ -8,6 +8,8 @@ interface Column<T> {
   /** Disables the sort affordance; default true for headers. */
   sortable?: boolean
   render?: (row: T) => React.ReactNode
+  /** Optional override for the header cell content (e.g. tri-state checkbox). */
+  headerRender?: () => React.ReactNode
 }
 
 interface Props<T> {
@@ -82,7 +84,7 @@ export function VirtualizedTable<T extends Record<string, any>>({
       >
         {columns.map((c) => (
           <div key={c.key} className="px-3 py-2.5 text-left truncate">
-            {c.label}
+            {c.headerRender ? c.headerRender() : c.label}
           </div>
         ))}
       </div>
