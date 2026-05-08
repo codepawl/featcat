@@ -234,6 +234,16 @@ class CatalogBackend(ABC):
         del status
         return []
 
+    def get_status_counts(self) -> dict:
+        """Return ``{draft, reviewed, certified, deprecated, total}`` counts.
+
+        Default returns all-zero so RemoteBackend (and any other backend
+        without a dedicated SQL path) cleanly satisfies the interface.
+        LocalBackend overrides with a single ``GROUP BY status`` query —
+        cheaper than fetching every row and counting client-side.
+        """
+        return {"draft": 0, "reviewed": 0, "certified": 0, "deprecated": 0, "total": 0}
+
     def search_by_embedding(self, query_vec: list[float], top_k: int = 50) -> list:
         """Return up to ``top_k`` features closest to a given query embedding.
 

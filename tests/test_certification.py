@@ -154,6 +154,25 @@ class TestListByStatus:
         assert {f.name for f in reviewed} == {feature_ready.name}
 
 
+class TestStatusCounts:
+    def test_status_counts_endpoint_shape_and_values(
+        self, db: LocalBackend, feature_minimal: Feature, feature_ready: Feature
+    ) -> None:
+        # Move one feature out of the default "draft" bucket so the response
+        # exercises more than one status.
+        db.set_feature_status(feature_ready.id, "reviewed")
+
+        resp = _client(db).get("/api/features/stats/status-counts")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert set(data.keys()) == {"draft", "reviewed", "certified", "deprecated", "total"}
+        assert data["draft"] == 1  # feature_minimal stays draft by default
+        assert data["reviewed"] == 1
+        assert data["certified"] == 0
+        assert data["deprecated"] == 0
+        assert data["total"] == 2
+
+
 # --------------------------------------------------------------------------- #
 # API                                                                         #
 # --------------------------------------------------------------------------- #

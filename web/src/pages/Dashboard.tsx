@@ -30,25 +30,6 @@ const STATUS_TEXT: Record<FeatureStatus, string> = {
   deprecated: 'text-[var(--danger)]',
 }
 
-interface FeatureStatusItem {
-  status?: string
-}
-
-function aggregateStatusCounts(features: FeatureStatusItem[]): StatusCounts {
-  const counts: StatusCounts = { draft: 0, reviewed: 0, certified: 0, deprecated: 0 }
-  for (const f of features) {
-    const s = f.status
-    if (s === 'draft' || s === 'reviewed' || s === 'certified' || s === 'deprecated') {
-      counts[s] += 1
-    } else {
-      // Default to draft for any feature without an explicit status — matches
-      // the backend, which defaults the column to 'draft' on insert.
-      counts.draft += 1
-    }
-  }
-  return counts
-}
-
 export function Dashboard() {
   const { t } = useTranslation('dashboard')
   const navigate = useNavigate()
@@ -79,13 +60,12 @@ export function Dashboard() {
       api.docDebt().catch(() => []),
       api.statsBySource().catch(() => []),
       api.features.healthSummary().catch(() => null),
-      // Status totals aggregated client-side from the unbounded feature
-      // list — there's no dedicated counts endpoint yet, but the response
-      // already carries each feature's `status` field. Cached for 10s by
-      // api.ts so a reload doesn't re-fetch.
-      api.features.list().catch((): FeatureStatusItem[] => []),
+      // Aggregate status counts come from a dedicated GROUP BY endpoint —
+      // O(1) on the wire vs. fetching the full feature list and counting
+      // client-side (mattered at 5k+ features). Cached for 10s by api.ts.
+      api.features.statusCounts().catch(() => null),
     ])
-      .then(([s, m, l, j, tf, o, dd, ss, hs, fl]) => {
+      .then(([s, m, l, j, tf, o, dd, ss, hs, sc]) => {
         setStats(s)
         setMonitor(m)
         setLogs(Array.isArray(l) ? l : [])
@@ -95,7 +75,16 @@ export function Dashboard() {
         setDocDebt(Array.isArray(dd) ? dd : [])
         setSourceStats(Array.isArray(ss) ? ss : [])
         setHealthSummary(hs)
-        setStatusCounts(aggregateStatusCounts(Array.isArray(fl) ? (fl as FeatureStatusItem[]) : []))
+        if (sc) {
+          setStatusCounts({
+            draft: sc.draft,
+            reviewed: sc.reviewed,
+            certified: sc.certified,
+            deprecated: sc.deprecated,
+          })
+        } else {
+          setStatusCounts({ draft: 0, reviewed: 0, certified: 0, deprecated: 0 })
+        }
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
