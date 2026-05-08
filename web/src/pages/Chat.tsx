@@ -9,6 +9,7 @@ import { Reasoning, ReasoningTrigger, ReasoningContent } from '@/components/ai-e
 import { Tool, ToolHeader, ToolContent, ToolInput, ToolOutput } from '@/components/ai-elements/tool'
 import { Response } from '@/components/ai-elements/response'
 import { Suggestion, Suggestions } from '@/components/ai-elements/suggestion'
+import { CodeBlock, CodeBlockCopyButton } from '@/components/ai-elements/code-block'
 import { chatStore } from '../stores/chatStore'
 import type { ChatMessage as ChatMsg } from '../stores/chatStore'
 
@@ -77,7 +78,13 @@ function ResultTable({ data }: { data: any }) {
                 <span className="font-medium text-sm">{s.name}</span>
                 <span className="text-[11px] text-[var(--text-tertiary)] ml-2">{t('result_table.from_source', { source: s.source })}</span>
                 <p className="text-xs text-[var(--text-secondary)] mt-1">{s.reason}</p>
-                {s.column_expression && <code className="text-[11px] bg-[var(--code-bg)] px-1.5 py-0.5 rounded mt-1 inline-block font-mono">{s.column_expression}</code>}
+                {s.column_expression && (
+                  <div className="mt-2">
+                    <CodeBlock code={s.column_expression} language="sql">
+                      <CodeBlockCopyButton />
+                    </CodeBlock>
+                  </div>
+                )}
               </div>
             ))}
           </div>
