@@ -30,7 +30,7 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 from sqlalchemy.exc import OperationalError
 
 from ..db.connection import make_engine, make_session_factory, resolve_backend
@@ -44,6 +44,84 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 DEFAULT_DB = "catalog.db"
+
+
+def _name_tokens(name: str) -> set[str]:
+    return {t for t in name.replace(".", "_").split("_") if t}
+
+
+def _jaccard(a: set[str], b: set[str]) -> float:
+    if not a or not b:
+        return 0.0
+    return len(a & b) / len(a | b)
+
+
+def _parse_stats(raw: Any) -> dict:
+    """Normalize a feature's ``stats`` column into a dict.
+
+    The column may be a JSON string, an already-parsed dict, or absent. Returns
+    ``{}`` for any unparseable / missing input so downstream callers can do
+    ``.get("mean")`` without guarding.
+    """
+    if isinstance(raw, str) and raw:
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    if isinstance(raw, dict):
+        return raw
+    return {}
+
+
+def _compute_pair_reasons(
+    name_a: str,
+    dtype_a: str | None,
+    stats_a: dict,
+    name_b: str,
+    dtype_b: str | None,
+    stats_b: dict,
+    score: float,
+) -> list[dict]:
+    """Build the reason-code breakdown for a pair of features.
+
+    Always emits ``semantic_match`` (the TF-IDF cosine score). Adds
+    ``name_similarity`` when name-token Jaccard ≥ 0.5, ``schema_match`` when
+    dtypes match, and ``distribution_match`` when both features carry numeric
+    mean+std within 10% relative tolerance. Pre-parsed ``stats_a`` / ``stats_b``
+    avoid re-parsing the JSON column on every pair.
+    """
+    reasons: list[dict] = [{"code": "semantic_match", "detail": f"TF-IDF cosine {round(score, 3)}"}]
+    tokens_a = _name_tokens(name_a)
+    tokens_b = _name_tokens(name_b)
+    if _jaccard(tokens_a, tokens_b) >= 0.5:
+        shared = sorted(tokens_a & tokens_b)
+        reasons.append({"code": "name_similarity", "detail": "shared tokens: " + ", ".join(shared)})
+    if dtype_a and dtype_a == dtype_b:
+        reasons.append({"code": "schema_match", "detail": f"both {dtype_a}"})
+    mean_a, mean_b = stats_a.get("mean"), stats_b.get("mean")
+    std_a, std_b = stats_a.get("std"), stats_b.get("std")
+    if (
+        isinstance(mean_a, (int, float))
+        and isinstance(mean_b, (int, float))
+        and isinstance(std_a, (int, float))
+        and isinstance(std_b, (int, float))
+    ):
+
+        def _rel_delta(x: float, y: float) -> float:
+            denom = max(abs(x), abs(y), 1e-9)
+            return abs(x - y) / denom
+
+        m_delta = _rel_delta(float(mean_a), float(mean_b))
+        s_delta = _rel_delta(float(std_a), float(std_b))
+        if m_delta <= 0.10 and s_delta <= 0.10:
+            reasons.append(
+                {
+                    "code": "distribution_match",
+                    "detail": f"mean Δ={m_delta:.0%}, std Δ={s_delta:.0%}",
+                }
+            )
+    return reasons
 
 
 # Override sqlite3's built-in datetime adapter (deprecated in Python 3.12+).
@@ -1733,18 +1811,9 @@ class LocalBackend(CatalogBackend):
         _, matrix, ids = self._build_corpus(row_dicts)
         sim_matrix = cosine_similarity(matrix)
 
-        # Pre-parse stats once per feature for distribution_match.
-        parsed_stats: list[dict] = []
-        for r in row_dicts:
-            raw = r.get("stats")
-            if isinstance(raw, str):
-                with contextlib.suppress(json.JSONDecodeError):
-                    parsed_stats.append(json.loads(raw))
-                    continue
-            elif isinstance(raw, dict):
-                parsed_stats.append(raw)
-                continue
-            parsed_stats.append({})
+        # Pre-parse stats once per feature so the per-pair reason builder
+        # doesn't re-parse JSON for every candidate.
+        parsed_stats = [_parse_stats(r.get("stats")) for r in row_dicts]
 
         # Upper-triangle scan.
         candidates: list[tuple[float, int, int]] = []
@@ -1754,53 +1823,6 @@ class LocalBackend(CatalogBackend):
                 if score >= threshold:
                     candidates.append((score, i, j))
         total_before_limit = len(candidates)
-
-        def _name_tokens(name: str) -> set[str]:
-            return {t for t in name.replace(".", "_").split("_") if t}
-
-        def _jaccard(a: set[str], b: set[str]) -> float:
-            if not a or not b:
-                return 0.0
-            return len(a & b) / len(a | b)
-
-        def _build_reasons(idx_a: int, idx_b: int, score: float) -> list[dict]:
-            row_a = row_dicts[idx_a]
-            row_b = row_dicts[idx_b]
-            reasons: list[dict] = [{"code": "semantic_match", "detail": f"TF-IDF cosine {round(score, 3)}"}]
-            tokens_a = _name_tokens(row_a["name"])
-            tokens_b = _name_tokens(row_b["name"])
-            jaccard = _jaccard(tokens_a, tokens_b)
-            if jaccard >= 0.5:
-                shared = sorted(tokens_a & tokens_b)
-                reasons.append({"code": "name_similarity", "detail": "shared tokens: " + ", ".join(shared)})
-            if row_a["dtype"] and row_a["dtype"] == row_b["dtype"]:
-                reasons.append({"code": "schema_match", "detail": f"both {row_a['dtype']}"})
-            # distribution_match: numeric-only. Needs both mean and std.
-            sa, sb = parsed_stats[idx_a], parsed_stats[idx_b]
-            mean_a, mean_b = sa.get("mean"), sb.get("mean")
-            std_a, std_b = sa.get("std"), sb.get("std")
-            if (
-                isinstance(mean_a, (int, float))
-                and isinstance(mean_b, (int, float))
-                and isinstance(std_a, (int, float))
-                and isinstance(std_b, (int, float))
-            ):
-                # Relative tolerance against the larger absolute value, guarding
-                # against 0/0 with a small epsilon.
-                def _rel_delta(x: float, y: float) -> float:
-                    denom = max(abs(x), abs(y), 1e-9)
-                    return abs(x - y) / denom
-
-                m_delta = _rel_delta(float(mean_a), float(mean_b))
-                s_delta = _rel_delta(float(std_a), float(std_b))
-                if m_delta <= 0.10 and s_delta <= 0.10:
-                    reasons.append(
-                        {
-                            "code": "distribution_match",
-                            "detail": f"mean Δ={m_delta:.0%}, std Δ={s_delta:.0%}",
-                        }
-                    )
-            return reasons
 
         def _brief(idx: int) -> dict:
             r = row_dicts[idx]
@@ -1815,12 +1837,21 @@ class LocalBackend(CatalogBackend):
 
         pairs: list[dict] = []
         for score, i, j in candidates:
+            row_a, row_b = row_dicts[i], row_dicts[j]
             pairs.append(
                 {
                     "a": _brief(i),
                     "b": _brief(j),
                     "score": round(score, 4),
-                    "reasons": _build_reasons(i, j, score),
+                    "reasons": _compute_pair_reasons(
+                        row_a["name"],
+                        row_a["dtype"],
+                        parsed_stats[i],
+                        row_b["name"],
+                        row_b["dtype"],
+                        parsed_stats[j],
+                        score,
+                    ),
                 }
             )
 
@@ -1828,6 +1859,152 @@ class LocalBackend(CatalogBackend):
         pairs.sort(key=lambda p: (-p["score"], -len(p["reasons"])))
 
         return pairs[:limit], total_before_limit, None
+
+    # --- Similarity matrix (caller-selected feature subset) ---
+
+    SIMILARITY_MATRIX_MAX_FEATURES = 100  # caller-side filter cap; matches the UI cap
+
+    def compute_similarity_matrix(
+        self,
+        feature_ids: list[str],
+        threshold: float,
+    ) -> tuple[list[dict], list[dict]]:
+        """Score the upper triangle of an N×N similarity matrix over a caller-
+        selected feature subset.
+
+        Returns ``(features, cells)`` where ``features`` is a list of
+        :class:`FeatureBrief`-shaped dicts in the same order the caller passed
+        them in (so the UI can index ``cells.a`` / ``cells.b`` directly), and
+        ``cells`` is ``[{a: int, b: int, score: float}, …]`` — upper triangle
+        only (``a < b``), filtered to ``score >= threshold``. Diagonal cells
+        are not returned (always 1.0; UI renders them locally).
+
+        Raises:
+            ValueError: when ``feature_ids`` is empty, contains duplicates, or
+                exceeds :attr:`SIMILARITY_MATRIX_MAX_FEATURES`.
+            KeyError: when one or more ids are not present in the catalog.
+        """
+        from sklearn.metrics.pairwise import cosine_similarity
+
+        if not feature_ids:
+            raise ValueError("feature_ids must not be empty")
+        if len(set(feature_ids)) != len(feature_ids):
+            raise ValueError("feature_ids must be unique")
+        if len(feature_ids) > self.SIMILARITY_MATRIX_MAX_FEATURES:
+            raise ValueError(f"feature_ids length {len(feature_ids)} exceeds cap {self.SIMILARITY_MATRIX_MAX_FEATURES}")
+
+        # Single round-trip; preserve the caller's order via a manual lookup
+        # since SQL ``IN`` returns whatever order the engine prefers.
+        with self.session() as s:
+            rows = (
+                s.execute(
+                    text("SELECT id, name, dtype, description, tags, stats FROM features WHERE id IN :ids").bindparams(
+                        bindparam("ids", expanding=True)
+                    ),
+                    {"ids": feature_ids},
+                )
+                .mappings()
+                .all()
+            )
+        by_id = {r["id"]: dict(r) for r in rows}
+        missing = [fid for fid in feature_ids if fid not in by_id]
+        if missing:
+            raise KeyError(missing)
+        ordered = [by_id[fid] for fid in feature_ids]
+
+        all_docs = self.get_all_feature_docs()
+
+        def _brief(idx: int) -> dict:
+            r = ordered[idx]
+            src = r["name"].split(".")[0] if "." in r["name"] else ""
+            return {
+                "id": r["id"],
+                "name": r["name"],
+                "dtype": r["dtype"] or "",
+                "source": src,
+                "has_doc": r["id"] in all_docs,
+            }
+
+        features = [_brief(i) for i in range(len(ordered))]
+
+        # Two features and below: no off-diagonal pair possible besides (0,1).
+        if len(ordered) < 2:
+            return features, []
+
+        _, matrix, _ = self._build_corpus(ordered)
+        sim_matrix = cosine_similarity(matrix)
+
+        cells: list[dict] = []
+        n = len(ordered)
+        for i in range(n):
+            for j in range(i + 1, n):
+                score = float(sim_matrix[i, j])
+                if score >= threshold:
+                    cells.append({"a": i, "b": j, "score": round(score, 4)})
+        return features, cells
+
+    def compute_pair_reasons(self, a_id: str, b_id: str) -> tuple[dict, dict, float, list[dict]]:
+        """Score a single pair and return its reason-code breakdown.
+
+        Used by the matrix view's cell-click panel: keeps the matrix payload
+        small (scores only) while still allowing on-demand reason inspection
+        per pair. The reason-code structure matches what
+        :meth:`find_duplicate_pairs` returns so the UI can render both
+        identically.
+
+        Returns ``(brief_a, brief_b, score, reasons)``.
+
+        Raises:
+            ValueError: when ``a_id == b_id``.
+            KeyError: when either id is not in the catalog.
+        """
+        from sklearn.metrics.pairwise import cosine_similarity
+
+        if a_id == b_id:
+            raise ValueError("a_id and b_id must differ")
+
+        with self.session() as s:
+            rows = (
+                s.execute(
+                    text("SELECT id, name, dtype, description, tags, stats FROM features WHERE id IN :ids").bindparams(
+                        bindparam("ids", expanding=True)
+                    ),
+                    {"ids": [a_id, b_id]},
+                )
+                .mappings()
+                .all()
+            )
+        by_id = {r["id"]: dict(r) for r in rows}
+        missing = [fid for fid in (a_id, b_id) if fid not in by_id]
+        if missing:
+            raise KeyError(missing)
+
+        row_a, row_b = by_id[a_id], by_id[b_id]
+        _, matrix, _ = self._build_corpus([row_a, row_b])
+        score = float(cosine_similarity(matrix[0:1], matrix[1:2])[0, 0])
+
+        all_docs = self.get_all_feature_docs()
+
+        def _brief(r: dict) -> dict:
+            src = r["name"].split(".")[0] if "." in r["name"] else ""
+            return {
+                "id": r["id"],
+                "name": r["name"],
+                "dtype": r["dtype"] or "",
+                "source": src,
+                "has_doc": r["id"] in all_docs,
+            }
+
+        reasons = _compute_pair_reasons(
+            row_a["name"],
+            row_a["dtype"],
+            _parse_stats(row_a.get("stats")),
+            row_b["name"],
+            row_b["dtype"],
+            _parse_stats(row_b.get("stats")),
+            score,
+        )
+        return _brief(row_a), _brief(row_b), round(score, 4), reasons
 
     # --- Recommend by use-case text (T-similarity-refactor) ---
 

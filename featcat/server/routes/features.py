@@ -716,6 +716,102 @@ def get_duplicates(
     return payload
 
 
+# ---------------------------------------------------------------------------
+# Similarity matrix (caller-selected feature subset) + per-pair reason lookup
+# ---------------------------------------------------------------------------
+
+
+class MatrixCell(BaseModel):
+    a: int
+    b: int
+    score: float
+
+
+class MatrixResponse(BaseModel):
+    features: list[FeatureBrief]
+    cells: list[MatrixCell]
+    threshold: float
+    cached_at: str | None = None
+
+
+class PairResponse(BaseModel):
+    a: FeatureBrief
+    b: FeatureBrief
+    score: float
+    reasons: list[DuplicateReason]
+
+
+def _parse_id_list(raw: str) -> list[str]:
+    parts = [p.strip() for p in raw.split(",") if p.strip()]
+    if not parts:
+        raise HTTPException(status_code=400, detail="ids must contain at least one feature id")
+    return parts
+
+
+@router.get("/similarity-matrix", response_model=MatrixResponse)
+def get_similarity_matrix(
+    ids: str = Query(..., description="Comma-separated feature ids (max 100)"),
+    threshold: float = Query(0.0, ge=0.0, le=1.0),
+    db=Depends(get_db),  # noqa: B008
+) -> MatrixResponse:
+    """Score the upper triangle of an N×N similarity matrix over a caller-
+    selected feature subset.
+
+    Differs from ``/duplicates`` (which scans the whole catalog for high-score
+    pairs): this endpoint takes a specific feature list and returns *every*
+    pair above ``threshold`` so the UI can render a heatmap. Diagonal cells
+    are not returned — clients render them locally as 1.0.
+    """
+    feature_ids = _parse_id_list(ids)
+    cache_key = f"matrix:{','.join(sorted(feature_ids))}:{threshold}"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return MatrixResponse(**cached)
+
+    try:
+        features, cells = db.compute_similarity_matrix(feature_ids=feature_ids, threshold=threshold)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=f"Unknown feature id(s): {e.args[0]}") from e
+
+    payload = MatrixResponse(
+        features=[FeatureBrief(**f) for f in features],
+        cells=[MatrixCell(**c) for c in cells],
+        threshold=threshold,
+        cached_at=None,
+    )
+    stored = payload.model_dump()
+    stored["cached_at"] = datetime.now(timezone.utc).isoformat()
+    cache_set(cache_key, stored, ttl=300)
+    return payload
+
+
+@router.get("/similarity-pair", response_model=PairResponse)
+def get_similarity_pair(
+    a: str = Query(..., description="Feature id"),
+    b: str = Query(..., description="Feature id"),
+    db=Depends(get_db),  # noqa: B008
+) -> PairResponse:
+    """Score a single pair and return the per-reason-code breakdown.
+
+    Used by the matrix UI's cell-click panel — small payload, no cache.
+    """
+    try:
+        brief_a, brief_b, score, reasons = db.compute_pair_reasons(a, b)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=f"Unknown feature id(s): {e.args[0]}") from e
+
+    return PairResponse(
+        a=FeatureBrief(**brief_a),
+        b=FeatureBrief(**brief_b),
+        score=score,
+        reasons=[DuplicateReason(**r) for r in reasons],
+    )
+
+
 class RecommendRequest(BaseModel):
     use_case: str = Field(..., min_length=3, max_length=500)
     top_k: int = Field(default=10, ge=1, le=50)

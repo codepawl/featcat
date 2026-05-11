@@ -30,5 +30,45 @@
     "drift": "Drift",
     "connected_to_one": "── Connected to {{count}} feature",
     "connected_to_other": "── Connected to {{count}} features"
+  },
+  "tabs": {
+    "graph": "Graph",
+    "matrix": "Matrix"
+  },
+  "matrix": {
+    "feature_picker_label": "Features on axes",
+    "feature_picker_hint": "Pick up to {{cap}} features to compare. The matrix re-renders as you toggle.",
+    "threshold_label": "Threshold",
+    "selected_count": "{{count}} feature(s) on axes",
+    "cap_warning": "Showing the first {{showing}} of {{total}} selected features (cap reached)",
+    "cached_label": "cached",
+    "empty": {
+      "too_few": {
+        "title": "Pick at least 2 features",
+        "subtitle": "The matrix needs two or more features to compute pairwise scores."
+      },
+      "no_pairs": {
+        "title": "No pairs above threshold",
+        "subtitle": "Try lowering the threshold below {{threshold}}."
+      },
+      "error": {
+        "title": "Could not load the matrix"
+      }
+    },
+    "panel": {
+      "title": "Pair details",
+      "aria_label": "Similarity pair details",
+      "close": "Close",
+      "score_label": "Similarity score",
+      "feature_a": "Feature A",
+      "feature_b": "Feature B",
+      "reasons_label": "Why these scored together"
+    },
+    "reasons": {
+      "semantic_match": "Semantic match",
+      "name_similarity": "Name similarity",
+      "schema_match": "Schema match",
+      "distribution_match": "Distribution match"
+    }
   }
 }
