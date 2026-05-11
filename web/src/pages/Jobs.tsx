@@ -16,12 +16,16 @@ type JobLogRow = {
   triggered_by: string
 }
 
+type SortKey = 'started_desc' | 'started_asc' | 'duration_desc' | 'duration_asc'
+const SORT_OPTIONS: readonly SortKey[] = ['started_desc', 'started_asc', 'duration_desc', 'duration_asc']
+
 export function Jobs() {
   const { t } = useTranslation('jobs')
   const [logs, setLogs] = useState<JobLogRow[]>([])
   const [loading, setLoading] = useState(true)
   const [filterJob, setFilterJob] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
+  const [sort, setSort] = useState<SortKey>('started_desc')
   const [expanded, setExpanded] = useState<number | null>(null)
   const [page, setPage] = useState(0)
 
@@ -33,11 +37,32 @@ export function Jobs() {
       .finally(() => setLoading(false))
   }, [])
 
-  const filtered = logs.filter((l) => {
-    if (filterJob && l.job_name !== filterJob) return false
-    if (filterStatus && l.status !== filterStatus) return false
-    return true
-  })
+  const filtered = logs
+    .filter((l) => {
+      if (filterJob && l.job_name !== filterJob) return false
+      if (filterStatus && l.status !== filterStatus) return false
+      return true
+    })
+    .slice()
+    .sort((a, b) => {
+      // null sorts last regardless of direction so blank rows don't anchor the
+      // top of the list.
+      if (sort === 'started_desc' || sort === 'started_asc') {
+        const av = a.started_at ? new Date(a.started_at).getTime() : null
+        const bv = b.started_at ? new Date(b.started_at).getTime() : null
+        if (av === null && bv === null) return 0
+        if (av === null) return 1
+        if (bv === null) return -1
+        return sort === 'started_desc' ? bv - av : av - bv
+      }
+      // duration
+      const av = a.duration_seconds
+      const bv = b.duration_seconds
+      if (av == null && bv == null) return 0
+      if (av == null) return 1
+      if (bv == null) return -1
+      return sort === 'duration_desc' ? bv - av : av - bv
+    })
   const PAGE_SIZE = 50
   const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
@@ -86,6 +111,19 @@ export function Jobs() {
               <option value="">{t('history.filters.all_statuses')}</option>
               {['success', 'failed', 'warning', 'running'].map((s) => (
                 <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+            <select
+              value={sort}
+              onChange={(e) => {
+                setSort(e.target.value as SortKey)
+                setPage(0)
+              }}
+              className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-2.5 py-1.5 text-xs"
+              aria-label={t('history.table.started')}
+            >
+              {SORT_OPTIONS.map((s) => (
+                <option key={s} value={s}>{t(`history.filters.sort.${s}`)}</option>
               ))}
             </select>
           </div>
