@@ -8,6 +8,42 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 # ---------------------------------------------------------------------------
+# URI helpers
+# ---------------------------------------------------------------------------
+
+
+def is_s3_uri(path: str) -> bool:
+    """True if ``path`` looks like an S3 URI (``s3://`` scheme).
+
+    Single source of truth for the local-vs-S3 routing decision; callers
+    elsewhere in the codebase should use this helper instead of inlining
+    ``path.startswith("s3://")`` so the rule stays consistent.
+    """
+    return path.startswith("s3://")
+
+
+def parse_s3_uri(uri: str) -> tuple[str, str]:
+    """Split ``s3://bucket/key/...`` into ``(bucket, key_prefix)``.
+
+    Returns the bucket and the (possibly empty) key prefix. Raises ``ValueError``
+    on malformed input — used by callers that need bucket / prefix separately
+    for the PyArrow ``S3FileSystem`` (which speaks ``bucket/key`` paths, not
+    ``s3://`` URIs).
+    """
+    if not is_s3_uri(uri):
+        raise ValueError(f"not an S3 URI: {uri!r}")
+    rest = uri[len("s3://") :]
+    if not rest:
+        raise ValueError(f"malformed S3 URI (empty bucket): {uri!r}")
+    if "/" not in rest:
+        return rest, ""
+    bucket, prefix = rest.split("/", 1)
+    if not bucket:
+        raise ValueError(f"malformed S3 URI (empty bucket): {uri!r}")
+    return bucket, prefix
+
+
+# ---------------------------------------------------------------------------
 # Local storage
 # ---------------------------------------------------------------------------
 
@@ -17,7 +53,7 @@ def resolve_parquet_path(path: str) -> str:
 
     For local paths, checks existence. For S3 URIs, returns as-is.
     """
-    if path.startswith("s3://"):
+    if is_s3_uri(path):
         return path
     p = Path(path).resolve()
     if not p.exists():
@@ -27,7 +63,7 @@ def resolve_parquet_path(path: str) -> str:
 
 def read_parquet_schema(path: str) -> pa.Schema:
     """Read only the schema from a Parquet file (no data loaded)."""
-    if path.startswith("s3://"):
+    if is_s3_uri(path):
         return _s3_read_schema(path)
     pf = pq.ParquetFile(path)
     return pf.schema_arrow
@@ -35,7 +71,7 @@ def read_parquet_schema(path: str) -> pa.Schema:
 
 def read_parquet_sample(path: str, n_rows: int = 10_000) -> pa.Table:
     """Read the first n_rows from a Parquet file for stats computation."""
-    if path.startswith("s3://"):
+    if is_s3_uri(path):
         return _s3_read_sample(path, n_rows)
     pf = pq.ParquetFile(path)
     batches = []

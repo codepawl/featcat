@@ -17,6 +17,7 @@ from .catalog.factory import get_backend
 from .catalog.local import DEFAULT_DB, LocalBackend
 from .catalog.models import DataSource, Feature, FeatureGroup
 from .catalog.scanner import discover_parquet_files, scan_source
+from .catalog.storage import is_s3_uri
 from .catalog.usage import log_feature_usage
 from .config import load_settings
 
@@ -110,7 +111,7 @@ def add(
         name = Path(path).stem
 
     # 2. Resolve path and storage type
-    storage_type = "s3" if path.startswith("s3://") else "local"
+    storage_type = "s3" if is_s3_uri(path) else "local"
     if storage_type == "local":
         resolved = Path(path).resolve()
         if not resolved.exists():
@@ -1767,17 +1768,23 @@ def serve(
 
 @app.command(name="scan-bulk")
 def scan_bulk(
-    path: str = typer.Argument(help="Directory to scan for .parquet files"),
+    path: str = typer.Argument(help="Directory or S3 prefix (s3://bucket/prefix) to scan for .parquet files"),
     recursive: bool = typer.Option(False, "--recursive", "-r", help="Search subdirectories"),
     owner: str = typer.Option("", "--owner", "-o", help="Owner for all discovered features"),
     tag: list[str] = typer.Option([], "--tag", "-t", help="Tags to apply to all features"),  # noqa: B008
     dry_run: bool = typer.Option(False, "--dry-run", help="Show what would happen without writing to DB"),
 ) -> None:
-    """Scan a directory for Parquet files and register them as sources + features."""
+    """Scan a directory or S3 prefix for Parquet files and register them as sources + features."""
     try:
         files = discover_parquet_files(path, recursive=recursive)
     except NotADirectoryError:
         console.print(f"[red]Not a directory:[/red] {path}")
+        raise typer.Exit(1) from None
+    except FileNotFoundError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1) from None
+    except ValueError as e:
+        console.print(f"[red]Invalid path:[/red] {e}")
         raise typer.Exit(1) from None
 
     if not files:
@@ -1790,8 +1797,9 @@ def scan_bulk(
     skipped = 0
 
     for f in files:
-        abs_path = str(f.resolve())
-        source_name = f.stem
+        # ``f`` is a string in both branches: absolute local path or s3:// URI.
+        abs_path = f
+        source_name = Path(f).stem
 
         # Check if already registered by path
         existing = db.get_source_by_path(abs_path)

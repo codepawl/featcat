@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
@@ -38,7 +40,7 @@ class BulkScanResponse(BaseModel):
 
 @router.post("", response_model=BulkScanResponse)
 async def bulk_scan(body: BulkScanRequest, db=Depends(get_db)):  # noqa: B008
-    """Scan a directory for Parquet files and register them as sources + features."""
+    """Scan a directory or S3 prefix for Parquet files and register them as sources + features."""
 
     def _scan():
         files = discover_parquet_files(body.path, recursive=body.recursive)
@@ -48,21 +50,22 @@ async def bulk_scan(body: BulkScanRequest, db=Depends(get_db)):  # noqa: B008
         details: list[dict] = []
 
         for f in files:
-            abs_path = str(f.resolve())
-            source_name = f.stem
+            # ``f`` is a string in both branches: absolute local path or s3:// URI.
+            abs_path = f
+            source_name = Path(f).stem
 
             existing = db.get_source_by_path(abs_path)
             if existing:
                 skipped += 1
-                details.append({"file": str(f), "status": "skipped", "feature_count": 0})
+                details.append({"file": f, "status": "skipped", "feature_count": 0})
                 continue
 
             if body.dry_run:
                 try:
                     columns = scan_source(abs_path)
-                    details.append({"file": str(f), "status": "would_register", "feature_count": len(columns)})
+                    details.append({"file": f, "status": "would_register", "feature_count": len(columns)})
                 except Exception as e:  # noqa: BLE001
-                    details.append({"file": str(f), "status": "error", "feature_count": 0, "error": str(e)})
+                    details.append({"file": f, "status": "error", "feature_count": 0, "error": str(e)})
                 continue
 
             # Handle name collision
@@ -91,9 +94,9 @@ async def bulk_scan(body: BulkScanRequest, db=Depends(get_db)):  # noqa: B008
                     db.upsert_feature(feature)
                     registered_features += 1
 
-                details.append({"file": str(f), "status": "registered", "feature_count": len(columns)})
+                details.append({"file": f, "status": "registered", "feature_count": len(columns)})
             except Exception as e:  # noqa: BLE001
-                details.append({"file": str(f), "status": "error", "feature_count": 0, "error": str(e)})
+                details.append({"file": f, "status": "error", "feature_count": 0, "error": str(e)})
 
         return {
             "found": len(files),

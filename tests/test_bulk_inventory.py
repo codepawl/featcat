@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 import pytest
-
-if TYPE_CHECKING:
-    from pathlib import Path
 from typer.testing import CliRunner
 
 from featcat.catalog.db import CatalogDB
@@ -20,7 +17,7 @@ runner = CliRunner()
 class TestDiscoverParquetFiles:
     def test_flat(self, sample_parquet_dir: Path) -> None:
         files = discover_parquet_files(str(sample_parquet_dir), recursive=False)
-        names = [f.name for f in files]
+        names = [Path(f).name for f in files]
         assert "items.parquet" in names
         assert "users.parquet" in names
         # Nested file should NOT appear in flat mode
@@ -28,7 +25,7 @@ class TestDiscoverParquetFiles:
 
     def test_recursive(self, sample_parquet_dir: Path) -> None:
         files = discover_parquet_files(str(sample_parquet_dir), recursive=True)
-        names = [f.name for f in files]
+        names = [Path(f).name for f in files]
         assert "items.parquet" in names
         assert "users.parquet" in names
         assert "events.parquet" in names
