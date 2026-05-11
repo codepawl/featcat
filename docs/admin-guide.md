@@ -5,6 +5,9 @@
 ## Configuring S3 / MinIO
 
 featcat supports reading Parquet directly from S3 or MinIO (S3-compatible).
+Bulk discovery (`featcat scan-bulk s3://bucket/prefix`) and single-file
+registration (`featcat add s3://bucket/file.parquet`) both work end-to-end
+against any S3-compatible endpoint.
 
 ### AWS S3
 
@@ -12,9 +15,11 @@ featcat supports reading Parquet directly from S3 or MinIO (S3-compatible).
 export FEATCAT_S3_ACCESS_KEY=AKIA...
 export FEATCAT_S3_SECRET_KEY=...
 export FEATCAT_S3_REGION=ap-southeast-1
+# Optional for STS / role-assume:
+export FEATCAT_S3_SESSION_TOKEN=...
 
-featcat source add s3_data s3://my-bucket/features/data.parquet
-featcat source scan s3_data
+featcat add s3://my-bucket/features/data.parquet
+featcat scan-bulk s3://my-bucket/features/ --recursive
 ```
 
 ### MinIO (Self-Hosted)
@@ -24,9 +29,30 @@ export FEATCAT_S3_ENDPOINT_URL=http://minio.internal:9000
 export FEATCAT_S3_ACCESS_KEY=minioadmin
 export FEATCAT_S3_SECRET_KEY=minioadmin
 
-featcat source add minio_data s3://data-lake/features/data.parquet
-featcat source scan minio_data
+featcat add s3://data-lake/features/data.parquet
+featcat scan-bulk s3://data-lake/features/ --recursive
 ```
+
+### Configuration reference
+
+| Env var | Default | Purpose |
+|---|---|---|
+| `FEATCAT_S3_ENDPOINT_URL` | (unset = AWS) | Override for MinIO or other S3-compatible endpoints. `http://` triggers plain HTTP. |
+| `FEATCAT_S3_ACCESS_KEY` | (unset) | Access key. **Must be set together with `FEATCAT_S3_SECRET_KEY` or both unset.** Partial config raises at startup. |
+| `FEATCAT_S3_SECRET_KEY` | (unset) | Secret key. See pairing rule above. |
+| `FEATCAT_S3_SESSION_TOKEN` | (unset) | STS session token (only meaningful with the two keys above set). |
+| `FEATCAT_S3_REGION` | `us-east-1` | AWS region; MinIO usually ignores it but PyArrow requires a value. |
+| `FEATCAT_S3_CONNECT_TIMEOUT_MS` | `10000` | TCP / TLS handshake timeout in milliseconds. |
+| `FEATCAT_S3_REQUEST_TIMEOUT_MS` | `60000` | Per-request timeout in milliseconds. |
+
+### Credential resolution order
+
+When opening an S3 connection, credentials are looked up in this order:
+
+1. **`FEATCAT_S3_ACCESS_KEY` + `FEATCAT_S3_SECRET_KEY`** (+ optional `FEATCAT_S3_SESSION_TOKEN`). These take precedence over anything else when set. The Settings validator requires both keys together — if only one is set the application refuses to start with a clear error message.
+2. **Standard AWS environment variables** when our explicit keys are unset: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`. PyArrow's default credential chain handles these natively.
+3. **`~/.aws/credentials` profiles** — also via PyArrow's default chain.
+4. **IAM role / instance profile** when running on EC2 / ECS / EKS — also via the default chain.
 
 > **Note**: featcat only reads metadata and a sample (first 10k rows). It never copies the full dataset.
 
@@ -134,13 +160,14 @@ featcat feature search cpu
 ### S3 Permission Denied
 
 ```
-botocore.exceptions.ClientError: Access Denied
+OSError: When opening / reading from S3: Access Denied
 ```
 
 **Fix**:
 ```bash
-# Check credentials
+# Check credentials (both must be set together; partial config raises at startup)
 echo $FEATCAT_S3_ACCESS_KEY
+echo $FEATCAT_S3_SECRET_KEY
 
 # Test directly with aws cli
 aws s3 ls s3://bucket/path/ --endpoint-url $FEATCAT_S3_ENDPOINT_URL
@@ -148,6 +175,18 @@ aws s3 ls s3://bucket/path/ --endpoint-url $FEATCAT_S3_ENDPOINT_URL
 # For MinIO, make sure the endpoint URL is correct
 export FEATCAT_S3_ENDPOINT_URL=http://minio.internal:9000
 ```
+
+### S3 prefix not found
+
+```
+S3 prefix not found: s3://bucket/typo
+```
+
+**Fix**: Verify the prefix exists with `aws s3 ls s3://bucket/typo/`. The error fires from `featcat scan-bulk` when the bucket exists but no key matches.
+
+### "FEATCAT_S3_ACCESS_KEY and FEATCAT_S3_SECRET_KEY must be set together"
+
+The app refuses to start when one of the keys is set without the other — historically this silently fell back to the default credential chain, which made debugging painful. Fix by either setting both keys, or unsetting both so the standard AWS credential chain (env vars / `~/.aws/credentials` / IAM role) takes over.
 
 ### Database Corrupted
 
@@ -169,3 +208,63 @@ python scripts/import_initial.py
 # Run quality check every 6 hours
 echo "0 */6 * * * cd /path/to/project && .venv/bin/featcat monitor check --refresh-baseline >> /var/log/featcat-monitor.log 2>&1" | crontab -
 ```
+
+## Running tests against a real S3 backend
+
+`make test` runs a MinIO-testcontainer suite (`@pytest.mark.s3` tests) by
+default when Docker is available. For end-to-end confidence against your
+*actual* deployment target (AWS S3 or your internal MinIO), opt into the
+`s3_real` suite — excluded from the default run via the
+`-m "not s3_real"` addopt.
+
+### Setup
+
+1. Pick a bucket dedicated to integration tests. The suite never writes;
+   it only reads fixtures you upload yourself.
+2. Upload a small fixture set at `${BUCKET}/featcat-fixtures/`:
+
+```bash
+# Anywhere with boto3 + pyarrow installed:
+python <<PY
+import io, boto3, pyarrow as pa, pyarrow.parquet as pq
+
+ENDPOINT = "https://s3.amazonaws.com"   # or your MinIO URL
+BUCKET   = "featcat-it"                  # your test bucket
+
+s3 = boto3.client(
+    "s3",
+    endpoint_url=ENDPOINT,
+    aws_access_key_id="...",
+    aws_secret_access_key="...",
+)
+for key, data in [
+    ("featcat-fixtures/sample.parquet", {"x": [1, 2, 3], "y": [0.1, 0.2, 0.3]}),
+    ("featcat-fixtures/nested/leaf.parquet", {"k": ["a", "b"]}),
+]:
+    buf = io.BytesIO()
+    pq.write_table(pa.table(data), buf); buf.seek(0)
+    s3.put_object(Bucket=BUCKET, Key=key, Body=buf.read())
+PY
+```
+
+3. Run the suite:
+
+```bash
+FEATCAT_S3_TEST_ENDPOINT=https://s3.amazonaws.com \
+FEATCAT_S3_TEST_ACCESS_KEY=AKIA... \
+FEATCAT_S3_TEST_SECRET_KEY=... \
+FEATCAT_S3_TEST_BUCKET=featcat-it \
+    pytest -m s3_real -v
+```
+
+Without those env vars, `pytest -m s3_real` skips cleanly with a message
+naming the missing variables.
+
+### What's covered
+
+| Test | Purpose |
+|---|---|
+| `test_real_s3_schema_read` | PyArrow schema read against `${BUCKET}/featcat-fixtures/sample.parquet` |
+| `test_real_s3_discovery_recursive` | `discover_parquet_files` walks `${BUCKET}/featcat-fixtures/` and finds the parquets |
+| `test_real_s3_bad_credentials_raises` | Wrong creds surface as `OSError` (not a silent hang) |
+| `test_real_s3_unreachable_endpoint_times_out` | Bogus endpoint respects the configured `connect_timeout` (no indefinite hang) |

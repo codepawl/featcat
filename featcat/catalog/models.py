@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 def _utcnow() -> datetime:
@@ -23,11 +23,40 @@ class DataSource(BaseModel):
     id: str = Field(default_factory=_new_id)
     name: str
     path: str
-    storage_type: str = "local"  # "local" | "s3"
+    storage_type: str = "local"  # "local" | "s3"; auto-derived from path scheme when caller omits it
     format: str = "parquet"  # "parquet" | "csv"
     description: str = ""
     created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _sync_storage_type(cls, data: Any) -> Any:
+        """Auto-derive ``storage_type`` from the URI prefix when the caller
+        didn't provide it; reject mismatches when they did.
+
+        This closes audit gap #4: previously the field was decorative —
+        runtime logic re-derived from the path prefix, so a caller could
+        set ``storage_type="local"`` on an ``s3://`` path and the catalog
+        silently accepted it. Lab catalog check (per the implementation
+        plan) confirmed 0 existing mismatches, so this enforcement ships
+        without a backfill migration.
+        """
+        if not isinstance(data, dict):
+            return data
+        path = data.get("path")
+        if not isinstance(path, str) or not path:
+            return data  # Let normal validation surface the missing/empty path error.
+        derived = "s3" if path.startswith("s3://") else "local"
+        if "storage_type" not in data or data["storage_type"] is None:
+            data["storage_type"] = derived
+            return data
+        if data["storage_type"] != derived:
+            raise ValueError(
+                f"storage_type={data['storage_type']!r} does not match path scheme "
+                f"(derived: {derived!r}, path: {path!r})"
+            )
+        return data
 
 
 class Feature(BaseModel):

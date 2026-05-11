@@ -41,7 +41,12 @@ dependencies = [
 
 [project.optional-dependencies]
 tui = ["textual>=0.50"]
-s3 = ["s3fs>=2024.0"]
+# S3 / MinIO support is built into the default install via PyArrow's bundled
+# S3FileSystem (no extra dependencies needed). This extra is kept as an empty
+# placeholder so existing ``uv pip install -e ".[s3,...]"`` commands don't
+# break; ``s3fs`` was previously declared here but never imported anywhere
+# in the codebase (vestigial). Set ``FEATCAT_S3_*`` env vars to use S3.
+s3 = []
 server = ["fastapi>=0.110", "uvicorn[standard]>=0.27", "sse-starlette>=1.6", "apscheduler>=3.10"]
 # T1.2 — sentence-transformers is heavy (pulls torch ~1GB). Keeping it in an
 # optional extra so default installs stay lean. Feature embedding + similarity
@@ -76,6 +81,7 @@ dev = [
     "pytest-tmp-files>=0.0.2",
     "moto[s3]>=5.0",
     "boto3>=1.28",
+    "testcontainers[minio]>=4.0",
     "ruff>=0.4",
     "mypy>=1.8",
     "pre-commit>=3.0",
@@ -108,10 +114,15 @@ select = ["E", "F", "W", "I", "N", "UP", "B", "A", "SIM", "TCH"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--cov=featcat --cov-report=term-missing --cov-report=xml"
+# ``-m "not s3_real"`` excludes the opt-in real-endpoint suite from the
+# default run; opt in with ``pytest -m s3_real`` (CLI ``-m`` replaces the
+# expression from addopts, so this works).
+addopts = "--cov=featcat --cov-report=term-missing --cov-report=xml -m 'not s3_real'"
 timeout = 10
 markers = [
     "perf: opt-in performance bench (tests/perf/); requires --bench flag and live Postgres",
+    "s3: requires a running Docker daemon; uses a MinIO testcontainer for end-to-end S3 reads",
+    "s3_real: opt-in; requires FEATCAT_S3_TEST_* env vars pointing at a real S3 / MinIO endpoint",
 ]
 
 [tool.mypy]
