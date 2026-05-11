@@ -56,6 +56,10 @@
     "empty": "No members to score yet",
     "average": "Average score",
     "distribution": "Grade distribution",
+    "doc_coverage": "Doc coverage",
+    "doc_coverage_hint": "{{documented}} of {{total}} documented",
+    "currently_critical_one": "Currently critical ({{count}})",
+    "currently_critical_other": "Currently critical ({{count}})",
     "lowest": "Lowest scoring members",
     "all_healthy": "All members healthy",
     "refresh": "Refresh"
@@ -63,7 +67,10 @@
   "monitoring": {
     "empty": "No members",
     "severity": "Severity distribution",
+    "severity_count": "Members",
+    "no_severity_data": "No severity data yet",
     "psi_avg": "Avg PSI",
+    "psi_thresholds": "0.10 warning · 0.20 critical",
     "last_check": "Last check",
     "with_drift": "Members with drift",
     "no_drift": "No drifting members"
