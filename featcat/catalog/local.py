@@ -132,11 +132,25 @@ class LocalBackend(CatalogBackend):
             "ALTER TABLE features ADD COLUMN definition_type TEXT",
             "ALTER TABLE features ADD COLUMN definition_updated_at TIMESTAMP",
             "ALTER TABLE features ADD COLUMN generation_hints TEXT",
+            # T3.1 lifecycle status — fields land on existing rows with
+            # 'draft' so /api/features/stats/status-counts doesn't 500 on
+            # legacy catalogs.
+            "ALTER TABLE features ADD COLUMN status TEXT NOT NULL DEFAULT 'draft'",
+            "ALTER TABLE features ADD COLUMN status_changed_at TIMESTAMP",
+            "ALTER TABLE features ADD COLUMN status_notes TEXT",
             "ALTER TABLE feature_docs ADD COLUMN hints_used TEXT",
             "ALTER TABLE feature_docs ADD COLUMN context_features TEXT",
             "ALTER TABLE feature_versions ADD COLUMN change_type TEXT DEFAULT 'metadata'",
             "ALTER TABLE feature_versions ADD COLUMN previous_value TEXT",
             "ALTER TABLE feature_versions ADD COLUMN new_value TEXT",
+            # T1.1 lineage widening — parent can be a raw source column instead
+            # of (or in addition to) another feature. detected_method tracks how
+            # the row was recorded. Without these, /api/lineage/full 500s.
+            "ALTER TABLE feature_lineage ADD COLUMN parent_type TEXT NOT NULL DEFAULT 'feature'",
+            "ALTER TABLE feature_lineage ADD COLUMN parent_source_id TEXT",
+            "ALTER TABLE feature_lineage ADD COLUMN parent_column TEXT",
+            "ALTER TABLE feature_lineage ADD COLUMN transform TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE feature_lineage ADD COLUMN detected_method TEXT NOT NULL DEFAULT 'manual'",
             "ALTER TABLE monitoring_checks ADD COLUMN llm_analysis_json TEXT",
         )
         with self.engine.begin() as conn:

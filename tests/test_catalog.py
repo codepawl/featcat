@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import sqlite3
 from typing import TYPE_CHECKING
 
 import pytest
+from sqlalchemy import text
 from typer.testing import CliRunner
 
+from featcat.catalog.local import LocalBackend
 from featcat.catalog.models import ColumnInfo, DataSource, Feature
 from featcat.catalog.scanner import scan_source
 from featcat.cli import app
@@ -160,6 +163,67 @@ class TestScanner:
     def test_scan_nonexistent(self):
         with pytest.raises(FileNotFoundError):
             scan_source("/nonexistent/path")
+
+
+class TestLegacyDbMigration:
+    """init_db() must idempotently add columns to catalogs created before
+    they existed, so legacy on-disk SQLite databases keep working after upgrade.
+    """
+
+    def test_adds_features_status_and_lineage_columns_to_legacy_db(self, tmp_path: Path):
+        db_path = tmp_path / "legacy.db"
+        # Hand-craft a pre-T1.1 / pre-T3.1 schema: features + feature_lineage
+        # without status/status_changed_at/status_notes/parent_type/transform/
+        # detected_method/parent_source_id/parent_column.
+        conn = sqlite3.connect(str(db_path))
+        conn.executescript(
+            """
+            CREATE TABLE data_sources (
+                id TEXT PRIMARY KEY, name TEXT UNIQUE, path TEXT, storage_type TEXT,
+                format TEXT, description TEXT, created_at TIMESTAMP, updated_at TIMESTAMP
+            );
+            CREATE TABLE features (
+                id TEXT PRIMARY KEY, name TEXT UNIQUE, data_source_id TEXT,
+                column_name TEXT, dtype TEXT, description TEXT, tags TEXT,
+                owner TEXT, stats TEXT, created_at TIMESTAMP, updated_at TIMESTAMP
+            );
+            CREATE TABLE feature_lineage (
+                id TEXT PRIMARY KEY, child_feature_id TEXT,
+                parent_feature_id TEXT, created_at TIMESTAMP
+            );
+            """
+        )
+        conn.commit()
+        conn.close()
+
+        backend = LocalBackend(str(db_path))
+        backend.init_db()
+
+        with backend.session() as s:
+            features_cols = {row["name"] for row in s.execute(text("PRAGMA table_info(features)")).mappings()}
+            lineage_cols = {row["name"] for row in s.execute(text("PRAGMA table_info(feature_lineage)")).mappings()}
+
+        assert {"status", "status_changed_at", "status_notes"} <= features_cols
+        assert {"parent_type", "parent_source_id", "parent_column", "transform", "detected_method"} <= lineage_cols
+
+        # status defaults to 'draft' on the new column for any pre-existing rows.
+        with backend.session() as s:
+            s.execute(
+                text(
+                    "INSERT INTO features (id, name, data_source_id, column_name, dtype, created_at, updated_at) "
+                    "VALUES ('f1', 'src.col', 'ds1', 'col', 'int64', '2026-01-01', '2026-01-01')"
+                )
+            )
+            s.commit()
+            row = s.execute(text("SELECT status FROM features WHERE id='f1'")).mappings().first()
+            assert row is not None
+            assert row["status"] == "draft"
+
+        # Running init_db again must be idempotent — the suppressed
+        # OperationalError covers "duplicate column" on re-add.
+        backend.init_db()
+
+        backend.close()
 
 
 # --- CLI tests ---
