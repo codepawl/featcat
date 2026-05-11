@@ -30,5 +30,15 @@
     "drift": "Drift",
     "connected_to_one": "── Nối với {{count}} Feature",
     "connected_to_other": "── Nối với {{count}} Feature"
+  },
+  "tabs": {
+    "graph": "Đồ thị",
+    "matrix": "Ma trận"
+  },
+  "matrix": {
+    "placeholder": {
+      "title": "Ma trận tương đồng",
+      "subtitle": "Sắp ra mắt: chọn các Feature để so sánh và xem điểm tương đồng từng cặp."
+    }
   }
 }

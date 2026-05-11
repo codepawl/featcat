@@ -30,5 +30,15 @@
     "drift": "Drift",
     "connected_to_one": "── Connected to {{count}} feature",
     "connected_to_other": "── Connected to {{count}} features"
+  },
+  "tabs": {
+    "graph": "Graph",
+    "matrix": "Matrix"
+  },
+  "matrix": {
+    "placeholder": {
+      "title": "Similarity matrix",
+      "subtitle": "Coming next: pick features to compare and see their pairwise similarity scores."
+    }
   }
 }
