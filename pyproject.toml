@@ -76,6 +76,7 @@ dev = [
     "pytest-tmp-files>=0.0.2",
     "moto[s3]>=5.0",
     "boto3>=1.28",
+    "testcontainers[minio]>=4.0",
     "ruff>=0.4",
     "mypy>=1.8",
     "pre-commit>=3.0",
@@ -112,6 +113,7 @@ addopts = "--cov=featcat --cov-report=term-missing --cov-report=xml"
 timeout = 10
 markers = [
     "perf: opt-in performance bench (tests/perf/); requires --bench flag and live Postgres",
+    "s3: requires a running Docker daemon; uses a MinIO testcontainer for end-to-end S3 reads",
 ]
 
 [tool.mypy]
