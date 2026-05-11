@@ -105,6 +105,11 @@ featcat/
 └── cli.py          # Typer CLI entry point
 ```
 
+## Testing
+
+- Backend: `make test` (pytest, ~275 tests)
+- Web UI E2E: `cd web && bun run test:e2e` — Playwright suite covering 12 user journeys against an isolated backend with all AI endpoints mocked. See [web/tests/e2e/README.md](web/tests/e2e/README.md).
+
 ## License
 
 MIT

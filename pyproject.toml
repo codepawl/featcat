@@ -137,3 +137,10 @@ ignore_errors = true
 [[tool.mypy.overrides]]
 module = ["featcat.cli", "featcat.plugins.*"]
 disable_error_code = ["arg-type", "union-attr", "assignment", "return-value"]
+
+# pyarrow.compute attributes (count_distinct, min, max, mean, stddev, ...) are
+# registered dynamically and may not be visible to the bundled stubs depending
+# on the pyarrow version installed. Runtime is unaffected.
+[[tool.mypy.overrides]]
+module = "featcat.catalog.scanner"
+disable_error_code = ["attr-defined"]
