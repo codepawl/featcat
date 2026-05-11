@@ -30,14 +30,16 @@ source .venv/bin/activate
 uv pip install -e .
 
 # Cài đặt đầy đủ với tất cả extras
-uv pip install -e ".[dev,tui,search,s3]"
+uv pip install -e ".[dev,tui,server]"
 ```
 
 Các extras:
-- `dev` — pytest, test tools
+- `dev` — pytest, test tools, MinIO testcontainer cho S3 tests
 - `tui` — Textual terminal UI
-- `search` — rapidfuzz cho fuzzy search (fallback khi không có LLM)
-- `s3` — s3fs để đọc Parquet từ S3/MinIO
+- `server` — FastAPI + uvicorn cho REST API và Web UI
+
+> Hỗ trợ S3 / MinIO đã có sẵn trong install mặc định (dùng PyArrow S3FileSystem
+> tích hợp sẵn) — không cần extra riêng. Chỉ cần đặt biến môi trường `FEATCAT_S3_*`.
 
 ## Bước 3: Cài đặt Ollama (tuỳ chọn nhưng khuyến nghị)
 
@@ -123,10 +125,18 @@ featcat đọc cấu hình từ environment variables (prefix `FEATCAT_`):
 | `FEATCAT_CATALOG_DB_PATH` | `catalog.db` | Đường dẫn database |
 | `FEATCAT_MAX_CONTEXT_FEATURES` | `100` | Số features tối đa gửi cho LLM |
 | `FEATCAT_LLM_TIMEOUT` | `120` | Timeout (giây) cho LLM request |
-| `FEATCAT_S3_ENDPOINT_URL` | *(none)* | S3/MinIO endpoint |
-| `FEATCAT_S3_ACCESS_KEY` | *(none)* | S3 access key |
-| `FEATCAT_S3_SECRET_KEY` | *(none)* | S3 secret key |
+| `FEATCAT_S3_ENDPOINT_URL` | *(none)* | S3/MinIO endpoint override (tiền tố `http://` cho plain HTTP) |
+| `FEATCAT_S3_ACCESS_KEY` | *(none)* | S3 access key (phải đặt cùng `FEATCAT_S3_SECRET_KEY`) |
+| `FEATCAT_S3_SECRET_KEY` | *(none)* | S3 secret key (phải đặt cùng `FEATCAT_S3_ACCESS_KEY`) |
+| `FEATCAT_S3_SESSION_TOKEN` | *(none)* | STS session token (dùng kèm 2 key trên) |
 | `FEATCAT_S3_REGION` | `us-east-1` | S3 region |
+| `FEATCAT_S3_CONNECT_TIMEOUT_MS` | `10000` | S3 connection timeout (mili giây) |
+| `FEATCAT_S3_REQUEST_TIMEOUT_MS` | `60000` | S3 request timeout (mili giây) |
+
+Khi `FEATCAT_S3_ACCESS_KEY` / `_SECRET_KEY` chưa đặt, PyArrow default credential
+chain sẽ dùng các biến chuẩn `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`,
+`AWS_SESSION_TOKEN`, profile `~/.aws/credentials`, hoặc IAM role
+EC2/ECS/EKS. Xem admin guide cho thứ tự ưu tiên đầy đủ.
 
 Ví dụ file `.env`:
 ```bash

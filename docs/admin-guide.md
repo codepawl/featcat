@@ -5,6 +5,9 @@
 ## Configuring S3 / MinIO
 
 featcat supports reading Parquet directly from S3 or MinIO (S3-compatible).
+Bulk discovery (`featcat scan-bulk s3://bucket/prefix`) and single-file
+registration (`featcat add s3://bucket/file.parquet`) both work end-to-end
+against any S3-compatible endpoint.
 
 ### AWS S3
 
@@ -12,9 +15,11 @@ featcat supports reading Parquet directly from S3 or MinIO (S3-compatible).
 export FEATCAT_S3_ACCESS_KEY=AKIA...
 export FEATCAT_S3_SECRET_KEY=...
 export FEATCAT_S3_REGION=ap-southeast-1
+# Optional for STS / role-assume:
+export FEATCAT_S3_SESSION_TOKEN=...
 
-featcat source add s3_data s3://my-bucket/features/data.parquet
-featcat source scan s3_data
+featcat add s3://my-bucket/features/data.parquet
+featcat scan-bulk s3://my-bucket/features/ --recursive
 ```
 
 ### MinIO (Self-Hosted)
@@ -24,9 +29,30 @@ export FEATCAT_S3_ENDPOINT_URL=http://minio.internal:9000
 export FEATCAT_S3_ACCESS_KEY=minioadmin
 export FEATCAT_S3_SECRET_KEY=minioadmin
 
-featcat source add minio_data s3://data-lake/features/data.parquet
-featcat source scan minio_data
+featcat add s3://data-lake/features/data.parquet
+featcat scan-bulk s3://data-lake/features/ --recursive
 ```
+
+### Configuration reference
+
+| Env var | Default | Purpose |
+|---|---|---|
+| `FEATCAT_S3_ENDPOINT_URL` | (unset = AWS) | Override for MinIO or other S3-compatible endpoints. `http://` triggers plain HTTP. |
+| `FEATCAT_S3_ACCESS_KEY` | (unset) | Access key. **Must be set together with `FEATCAT_S3_SECRET_KEY` or both unset.** Partial config raises at startup. |
+| `FEATCAT_S3_SECRET_KEY` | (unset) | Secret key. See pairing rule above. |
+| `FEATCAT_S3_SESSION_TOKEN` | (unset) | STS session token (only meaningful with the two keys above set). |
+| `FEATCAT_S3_REGION` | `us-east-1` | AWS region; MinIO usually ignores it but PyArrow requires a value. |
+| `FEATCAT_S3_CONNECT_TIMEOUT_MS` | `10000` | TCP / TLS handshake timeout in milliseconds. |
+| `FEATCAT_S3_REQUEST_TIMEOUT_MS` | `60000` | Per-request timeout in milliseconds. |
+
+### Credential resolution order
+
+When opening an S3 connection, credentials are looked up in this order:
+
+1. **`FEATCAT_S3_ACCESS_KEY` + `FEATCAT_S3_SECRET_KEY`** (+ optional `FEATCAT_S3_SESSION_TOKEN`). These take precedence over anything else when set. The Settings validator requires both keys together — if only one is set the application refuses to start with a clear error message.
+2. **Standard AWS environment variables** when our explicit keys are unset: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`. PyArrow's default credential chain handles these natively.
+3. **`~/.aws/credentials` profiles** — also via PyArrow's default chain.
+4. **IAM role / instance profile** when running on EC2 / ECS / EKS — also via the default chain.
 
 > **Note**: featcat only reads metadata and a sample (first 10k rows). It never copies the full dataset.
 
@@ -134,13 +160,14 @@ featcat feature search cpu
 ### S3 Permission Denied
 
 ```
-botocore.exceptions.ClientError: Access Denied
+OSError: When opening / reading from S3: Access Denied
 ```
 
 **Fix**:
 ```bash
-# Check credentials
+# Check credentials (both must be set together; partial config raises at startup)
 echo $FEATCAT_S3_ACCESS_KEY
+echo $FEATCAT_S3_SECRET_KEY
 
 # Test directly with aws cli
 aws s3 ls s3://bucket/path/ --endpoint-url $FEATCAT_S3_ENDPOINT_URL
@@ -148,6 +175,18 @@ aws s3 ls s3://bucket/path/ --endpoint-url $FEATCAT_S3_ENDPOINT_URL
 # For MinIO, make sure the endpoint URL is correct
 export FEATCAT_S3_ENDPOINT_URL=http://minio.internal:9000
 ```
+
+### S3 prefix not found
+
+```
+S3 prefix not found: s3://bucket/typo
+```
+
+**Fix**: Verify the prefix exists with `aws s3 ls s3://bucket/typo/`. The error fires from `featcat scan-bulk` when the bucket exists but no key matches.
+
+### "FEATCAT_S3_ACCESS_KEY and FEATCAT_S3_SECRET_KEY must be set together"
+
+The app refuses to start when one of the keys is set without the other — historically this silently fell back to the default credential chain, which made debugging painful. Fix by either setting both keys, or unsetting both so the standard AWS credential chain (env vars / `~/.aws/credentials` / IAM role) takes over.
 
 ### Database Corrupted
 

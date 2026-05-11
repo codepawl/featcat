@@ -95,25 +95,45 @@ def read_parquet_sample(path: str, n_rows: int = 10_000) -> pa.Table:
 
 
 def _get_s3_filesystem() -> pa.fs.S3FileSystem:
-    """Create a PyArrow S3FileSystem from featcat settings."""
+    """Create a PyArrow S3FileSystem from featcat settings.
+
+    Credential resolution order:
+      1. ``FEATCAT_S3_ACCESS_KEY`` + ``FEATCAT_S3_SECRET_KEY``
+         (+ optional ``FEATCAT_S3_SESSION_TOKEN`` for STS / role-assume).
+         Both keys must be set together — the Settings model_validator
+         enforces this; partial config raises at load time.
+      2. PyArrow's default chain (when our keys are unset): standard
+         ``AWS_ACCESS_KEY_ID`` / ``AWS_SECRET_ACCESS_KEY`` env vars,
+         ``~/.aws/credentials`` profiles, IAM role on EC2/ECS/EKS.
+
+    Always passes timeouts and region so behavior is deterministic
+    regardless of the underlying default.
+    """
     from ..config import load_settings
 
     settings = load_settings()
 
-    kwargs: dict = {}
-    if settings.s3_endpoint_url:
-        kwargs["endpoint_override"] = settings.s3_endpoint_url
+    kwargs: dict = {
+        "region": settings.s3_region,
+        "connect_timeout": settings.s3_connect_timeout_ms / 1000.0,
+        "request_timeout": settings.s3_request_timeout_ms / 1000.0,
+    }
+
+    # Explicit FEATCAT_S3_* creds take precedence; partial config is caught
+    # by the Settings validator, so reaching here with both set or both
+    # unset is the only possibility.
     if settings.s3_access_key and settings.s3_secret_key:
         kwargs["access_key"] = settings.s3_access_key
         kwargs["secret_key"] = settings.s3_secret_key
-    if settings.s3_region:
-        kwargs["region"] = settings.s3_region
+        if settings.s3_session_token:
+            kwargs["session_token"] = settings.s3_session_token
 
-    # For MinIO/self-hosted: disable SSL if http://
-    if settings.s3_endpoint_url and settings.s3_endpoint_url.startswith("http://"):
-        kwargs["scheme"] = "http"
-        # Strip scheme from endpoint_override for pyarrow
-        kwargs["endpoint_override"] = settings.s3_endpoint_url.replace("http://", "")
+    if settings.s3_endpoint_url:
+        kwargs["endpoint_override"] = settings.s3_endpoint_url
+        # MinIO / self-hosted: PyArrow expects the scheme split out.
+        if settings.s3_endpoint_url.startswith("http://"):
+            kwargs["scheme"] = "http"
+            kwargs["endpoint_override"] = settings.s3_endpoint_url.replace("http://", "")
 
     from pyarrow.fs import S3FileSystem
 
