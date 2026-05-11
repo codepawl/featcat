@@ -53,6 +53,18 @@ export interface SimilarityFeatureBrief {
 
 export type SimilarityReasonCode = 'name_similarity' | 'schema_match' | 'distribution_match' | 'semantic_match'
 
+export interface DriftRatePoint {
+  date: string
+  critical_pct: number
+  warning_pct: number
+  total_features: number
+}
+
+export interface DriftRateResponse {
+  date_range: string[]
+  series: DriftRatePoint[]
+}
+
 export const api = {
   health: () => cachedRequest<{ status: string; llm: boolean; model?: string }>('/health'),
   stats: () => cachedRequest<Record<string, number>>('/stats'),
@@ -133,6 +145,8 @@ export const api = {
       cachedRequest<{ feature_spec: string; baseline_stats: Record<string, number>; computed_at: string | null }>(
         `/monitor/baseline/${encodeURIComponent(featureSpec)}`
       ),
+    driftRate: (days = 90) =>
+      cachedRequest<DriftRateResponse>(`/monitor/drift-rate?days=${days}`),
   },
   search: {
     /**

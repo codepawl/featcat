@@ -8,6 +8,7 @@ import { Badge } from '../components/Badge'
 import { Skeleton } from '../components/Skeleton'
 import { DocDebtHeatmap } from '../components/charts/DocDebtHeatmap'
 import { DataSourceNodes } from '../components/charts/DataSourceNodes'
+import { DriftRateTrend } from '../components/charts/DriftRateTrend'
 
 type FeatureStatus = 'draft' | 'reviewed' | 'certified' | 'deprecated'
 type StatusCounts = Record<FeatureStatus, number>
@@ -265,6 +266,10 @@ export function Dashboard() {
             </table>
           )}
         </div>
+      </div>
+
+      <div className="mb-6">
+        <DriftRateTrend />
       </div>
 
       {/* Section 4: Activity & Usage */}
