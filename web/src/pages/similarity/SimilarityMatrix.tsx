@@ -5,6 +5,7 @@ import { FeatureSelector, toFeatureItems } from '../../components/FeatureSelecto
 import { Skeleton } from '../../components/Skeleton'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import { MatrixGrid } from './MatrixGrid'
+import { PairPanel } from './PairPanel'
 
 const DEFAULT_THRESHOLD = 0.3
 const DEFAULT_FEATURE_COUNT = 30
@@ -47,6 +48,7 @@ export function SimilarityMatrix() {
   const [matrixData, setMatrixData] = useState<MatrixPayload | null>(null)
   const [matrixLoading, setMatrixLoading] = useState(false)
   const [matrixError, setMatrixError] = useState<string | null>(null)
+  const [activePair, setActivePair] = useState<{ a: string; b: string } | null>(null)
 
   // Load full feature list once.
   useEffect(() => {
@@ -128,8 +130,8 @@ export function SimilarityMatrix() {
     }
   }, [cappedIds, debouncedThreshold])
 
-  const handleCellClick = (_aId: string, _bId: string) => {
-    // Wired in Phase 4 (right-side reason-codes panel).
+  const handleCellClick = (aId: string, bId: string) => {
+    setActivePair({ a: aId, b: bId })
   }
 
   return (
@@ -214,6 +216,8 @@ export function SimilarityMatrix() {
           ) : null}
         </div>
       </section>
+
+      <PairPanel pair={activePair} onClose={() => setActivePair(null)} />
     </div>
   )
 }

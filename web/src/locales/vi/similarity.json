@@ -54,6 +54,21 @@
       "error": {
         "title": "Không tải được ma trận"
       }
+    },
+    "panel": {
+      "title": "Chi tiết cặp",
+      "aria_label": "Chi tiết cặp tương đồng",
+      "close": "Đóng",
+      "score_label": "Điểm tương đồng",
+      "feature_a": "Feature A",
+      "feature_b": "Feature B",
+      "reasons_label": "Vì sao điểm này"
+    },
+    "reasons": {
+      "semantic_match": "semantic_match",
+      "name_similarity": "name_similarity",
+      "schema_match": "schema_match",
+      "distribution_match": "distribution_match"
     }
   }
 }
