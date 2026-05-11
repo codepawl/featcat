@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from ...catalog.models import DataSource
 from ...catalog.scanner import scan_source
+from ...catalog.storage import validate_path_input
 from ..cache import cache_get, cache_set, invalidate
 from ..deps import get_db
 
@@ -16,7 +17,7 @@ router = APIRouter()
 class SourceCreate(BaseModel):
     name: str
     path: str
-    storage_type: str = "local"
+    storage_type: str | None = None  # auto-derived from path if unset
     format: str = "parquet"
     description: str = ""
 
@@ -24,7 +25,17 @@ class SourceCreate(BaseModel):
 @router.post("")
 def add_source(body: SourceCreate, db=Depends(get_db)):
     """Register a new data source."""
-    source = DataSource(**body.model_dump())
+    try:
+        validated_path = validate_path_input(body.path)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    payload = body.model_dump()
+    payload["path"] = validated_path
+    try:
+        source = DataSource(**payload)
+    except ValueError as e:
+        # DataSource's storage_type validator (Phase 5.3) raises on mismatch.
+        raise HTTPException(status_code=422, detail=str(e)) from e
     try:
         db.add_source(source)
     except Exception as e:

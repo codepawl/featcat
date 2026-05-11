@@ -43,6 +43,41 @@ def parse_s3_uri(uri: str) -> tuple[str, str]:
     return bucket, prefix
 
 
+def validate_path_input(raw: str) -> str:
+    """Normalize and validate a user-supplied path string at the API boundary.
+
+    Accepts:
+    - ``s3://bucket/...`` URIs (delegates shape check to :func:`parse_s3_uri`)
+    - Absolute local paths
+
+    Rejects:
+    - Empty / whitespace-only strings
+    - Control characters (defense against header / log injection)
+    - Non-``s3://`` URI schemes (``http://``, ``file://``, etc.)
+    - Relative local paths (server context can't safely interpret cwd)
+
+    Returns the normalized path (whitespace stripped, local paths un-resolved
+    so the caller can decide whether existence-check failure is fatal).
+    """
+    if not isinstance(raw, str):
+        raise ValueError("path must be a string")
+    s = raw.strip()
+    if not s:
+        raise ValueError("path must not be empty")
+    if any(ord(c) < 32 for c in s):
+        raise ValueError("path contains control characters")
+    if is_s3_uri(s):
+        parse_s3_uri(s)  # raises on malformed
+        return s
+    if "://" in s:
+        scheme = s.split("://", 1)[0]
+        raise ValueError(f"unsupported URI scheme: {scheme!r}; only s3:// or absolute local paths are accepted")
+    p = Path(s)
+    if not p.is_absolute():
+        raise ValueError(f"local path must be absolute: {raw!r}")
+    return str(p)
+
+
 # ---------------------------------------------------------------------------
 # Local storage
 # ---------------------------------------------------------------------------

@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
 from ...catalog.models import DataSource, Feature
 from ...catalog.scanner import discover_parquet_files, scan_source
+from ...catalog.storage import validate_path_input
 from ..deps import get_db
 
 router = APIRouter()
@@ -41,9 +42,13 @@ class BulkScanResponse(BaseModel):
 @router.post("", response_model=BulkScanResponse)
 async def bulk_scan(body: BulkScanRequest, db=Depends(get_db)):  # noqa: B008
     """Scan a directory or S3 prefix for Parquet files and register them as sources + features."""
+    try:
+        validated_path = validate_path_input(body.path)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
     def _scan():
-        files = discover_parquet_files(body.path, recursive=body.recursive)
+        files = discover_parquet_files(validated_path, recursive=body.recursive)
         registered_sources = 0
         registered_features = 0
         skipped = 0
