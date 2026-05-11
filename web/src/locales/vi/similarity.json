@@ -36,9 +36,24 @@
     "matrix": "Ma trận"
   },
   "matrix": {
-    "placeholder": {
-      "title": "Ma trận tương đồng",
-      "subtitle": "Sắp ra mắt: chọn các Feature để so sánh và xem điểm tương đồng từng cặp."
+    "feature_picker_label": "Feature trên trục",
+    "feature_picker_hint": "Chọn tối đa {{cap}} Feature để so sánh. Ma trận sẽ cập nhật khi bạn thay đổi lựa chọn.",
+    "threshold_label": "Ngưỡng",
+    "selected_count": "{{count}} Feature trên trục",
+    "cap_warning": "Đang hiển thị {{showing}} trong số {{total}} Feature đã chọn (đạt giới hạn)",
+    "cached_label": "đã cache",
+    "empty": {
+      "too_few": {
+        "title": "Chọn ít nhất 2 Feature",
+        "subtitle": "Ma trận cần ít nhất hai Feature để tính điểm tương đồng từng cặp."
+      },
+      "no_pairs": {
+        "title": "Không có cặp nào trên ngưỡng",
+        "subtitle": "Thử hạ ngưỡng xuống dưới {{threshold}}."
+      },
+      "error": {
+        "title": "Không tải được ma trận"
+      }
     }
   }
 }

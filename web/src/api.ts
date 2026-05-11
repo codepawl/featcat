@@ -43,6 +43,16 @@ export function invalidateCache(prefix?: string) {
   }
 }
 
+export interface SimilarityFeatureBrief {
+  id: string
+  name: string
+  dtype: string
+  source: string
+  has_doc: boolean
+}
+
+export type SimilarityReasonCode = 'name_similarity' | 'schema_match' | 'distribution_match' | 'semantic_match'
+
 export const api = {
   health: () => cachedRequest<{ status: string; llm: boolean; model?: string }>('/health'),
   stats: () => cachedRequest<Record<string, number>>('/stats'),
@@ -260,6 +270,18 @@ export const api = {
       nodes: { id: string; spec: string; source: string; dtype: string; has_doc: boolean; drift_status: string; tags: string[] }[];
       edges: { source: string; target: string; similarity: number }[];
     }>(`/features/similarity-graph?threshold=${threshold}${source ? `&source=${encodeURIComponent(source)}` : ''}`),
+    matrix: (ids: string[], threshold: number) => cachedRequest<{
+      features: SimilarityFeatureBrief[];
+      cells: { a: number; b: number; score: number }[];
+      threshold: number;
+      cached_at: string | null;
+    }>(`/features/similarity-matrix?ids=${encodeURIComponent(ids.join(','))}&threshold=${threshold}`),
+    pair: (a: string, b: string) => cachedRequest<{
+      a: SimilarityFeatureBrief;
+      b: SimilarityFeatureBrief;
+      score: number;
+      reasons: { code: SimilarityReasonCode; detail: string }[];
+    }>(`/features/similarity-pair?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`),
   },
   lineage: {
     full: () => cachedRequest<{
