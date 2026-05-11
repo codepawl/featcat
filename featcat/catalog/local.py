@@ -1598,6 +1598,39 @@ class LocalBackend(CatalogBackend):
             for r in rows
         ]
 
+    def _build_corpus(self, rows: list[dict]) -> tuple[Any, Any, list[str]]:
+        """Build a TF-IDF corpus over the given feature rows.
+
+        Shared between ``_find_similar_tfidf``, ``find_duplicate_pairs``, and
+        ``recommend_by_text`` so the corpus construction stays in one place.
+        Each row must carry at least ``id``, ``name``, ``description`` (str
+        or None), and ``tags`` (JSON string or list).
+
+        Returns ``(vectorizer, matrix, ids)``. The ``vectorizer`` is fitted and
+        reusable for ``transform()`` on follow-up queries (e.g. a use-case
+        string in ``recommend_by_text``).
+        """
+        from sklearn.feature_extraction.text import TfidfVectorizer
+
+        ids: list[str] = []
+        corpus: list[str] = []
+        for r in rows:
+            ids.append(r["id"])
+            text_blob = r["name"].replace("_", " ").replace(".", " ")
+            tags = r["tags"]
+            if isinstance(tags, str) and tags:
+                with contextlib.suppress(json.JSONDecodeError):
+                    text_blob += " " + " ".join(json.loads(tags))
+            elif isinstance(tags, list):
+                text_blob += " " + " ".join(str(t) for t in tags)
+            if r.get("description"):
+                text_blob += " " + r["description"]
+            corpus.append(text_blob)
+
+        vectorizer = TfidfVectorizer(ngram_range=(1, 2), min_df=1)
+        matrix = vectorizer.fit_transform(corpus)
+        return vectorizer, matrix, ids
+
     def _find_similar_tfidf(self, feature_id: str, top_k: int) -> list[dict]:
         """Fallback: TF-IDF cosine over the catalog when embeddings aren't usable.
 
@@ -1611,35 +1644,17 @@ class LocalBackend(CatalogBackend):
             return []
 
         import numpy as np
-        from sklearn.feature_extraction.text import TfidfVectorizer
         from sklearn.metrics.pairwise import cosine_similarity
 
-        ids: list[str] = []
-        corpus: list[str] = []
-        ref_idx: int | None = None
-        for i, r in enumerate(rows):
-            ids.append(r["id"])
-            text_blob = r["name"].replace("_", " ").replace(".", " ")
-            tags = r["tags"]
-            if isinstance(tags, str) and tags:
-                with contextlib.suppress(json.JSONDecodeError):
-                    text_blob += " " + " ".join(json.loads(tags))
-            if r["description"]:
-                text_blob += " " + r["description"]
-            corpus.append(text_blob)
-            if r["id"] == feature_id:
-                ref_idx = i
-        if ref_idx is None:
+        row_list = [dict(r) for r in rows]
+        _, matrix, ids = self._build_corpus(row_list)
+        try:
+            ref_idx = ids.index(feature_id)
+        except ValueError:
             return []
 
-        vectorizer = TfidfVectorizer(ngram_range=(1, 2), min_df=1)
-        matrix = vectorizer.fit_transform(corpus)
-        # cosine_similarity accepts sparse matrices; cast keeps the type-checker
-        # happy on the slice (sklearn returns scipy.sparse.spmatrix which lacks
-        # __getitem__ in mypy stubs).
         ref_row = matrix[ref_idx : ref_idx + 1]
         sims = cosine_similarity(ref_row, matrix)[0]
-        # Argsort descending excluding self.
         order = np.argsort(-sims)
         result: list[dict] = []
         for idx in order:
@@ -1648,11 +1663,208 @@ class LocalBackend(CatalogBackend):
             sim = float(sims[idx])
             if sim <= 0:
                 break  # cosine of zero-vector pair → unrelated; stop early
-            row = rows[idx]
+            row = row_list[idx]
             result.append({"id": row["id"], "name": row["name"], "dtype": row["dtype"], "similarity": sim})
             if len(result) >= top_k:
                 break
         return result
+
+    # --- Duplicate pairs (T-similarity-refactor) ---
+
+    DUPLICATES_MAX_FEATURES = 2000  # in-memory cosine matrix scale cap
+
+    def find_duplicate_pairs(
+        self,
+        threshold: float,
+        limit: int,
+        sources: list[str] | None = None,
+    ) -> tuple[list[dict], int, str | None]:
+        """Return ``(pairs, total_before_limit, summary_message)``.
+
+        ``pairs`` is a list of dicts ``{a, b, score, reasons}`` where ``a`` and
+        ``b`` are :class:`FeatureBrief`-shaped dicts and ``reasons`` is a list
+        of ``{code, detail}`` entries.
+
+        ``sources`` filters BOTH sides of every pair to the given source-name
+        set. ``None`` or ``[]`` → no source filter (cross-source pairs are
+        included, which is the primary dedup workflow).
+
+        Sort: score desc, secondary by number-of-reasons desc.
+
+        Scale cap: when ``len(features) > DUPLICATES_MAX_FEATURES`` the method
+        returns an empty list with a non-empty ``summary_message`` explaining
+        why — callers should surface this to the user.
+        """
+        import logging
+
+        from sklearn.metrics.pairwise import cosine_similarity
+
+        # Pull only the columns we actually use; keep this query lean since the
+        # scale cap is the real bottleneck above ~2k features anyway.
+        with self.session() as s:
+            rows = s.execute(text("SELECT id, name, dtype, description, tags, stats FROM features")).mappings().all()
+
+        # Optional source filter (applied before corpus build so the matrix
+        # never carries excluded features).
+        source_set = set(sources) if sources else None
+        if source_set:
+            rows = [r for r in rows if r["name"].split(".")[0] in source_set]
+
+        n = len(rows)
+        if n > self.DUPLICATES_MAX_FEATURES:
+            logging.getLogger(__name__).warning(
+                "find_duplicate_pairs skipped: catalog has %d features (cap=%d)",
+                n,
+                self.DUPLICATES_MAX_FEATURES,
+            )
+            return (
+                [],
+                0,
+                f"Catalog too large for in-memory duplicate detection ({n} features). "
+                f"Future work: batched cosine or FAISS index.",
+            )
+        if n < 2:
+            return [], 0, None
+
+        # has_doc lookup (a feature has a doc if its id is in feature_docs).
+        all_docs = self.get_all_feature_docs()
+
+        row_dicts = [dict(r) for r in rows]
+        _, matrix, ids = self._build_corpus(row_dicts)
+        sim_matrix = cosine_similarity(matrix)
+
+        # Pre-parse stats once per feature for distribution_match.
+        parsed_stats: list[dict] = []
+        for r in row_dicts:
+            raw = r.get("stats")
+            if isinstance(raw, str):
+                with contextlib.suppress(json.JSONDecodeError):
+                    parsed_stats.append(json.loads(raw))
+                    continue
+            elif isinstance(raw, dict):
+                parsed_stats.append(raw)
+                continue
+            parsed_stats.append({})
+
+        # Upper-triangle scan.
+        candidates: list[tuple[float, int, int]] = []
+        for i in range(n):
+            for j in range(i + 1, n):
+                score = float(sim_matrix[i, j])
+                if score >= threshold:
+                    candidates.append((score, i, j))
+        total_before_limit = len(candidates)
+
+        def _name_tokens(name: str) -> set[str]:
+            return {t for t in name.replace(".", "_").split("_") if t}
+
+        def _jaccard(a: set[str], b: set[str]) -> float:
+            if not a or not b:
+                return 0.0
+            return len(a & b) / len(a | b)
+
+        def _build_reasons(idx_a: int, idx_b: int, score: float) -> list[dict]:
+            row_a = row_dicts[idx_a]
+            row_b = row_dicts[idx_b]
+            reasons: list[dict] = [{"code": "semantic_match", "detail": f"TF-IDF cosine {round(score, 3)}"}]
+            tokens_a = _name_tokens(row_a["name"])
+            tokens_b = _name_tokens(row_b["name"])
+            jaccard = _jaccard(tokens_a, tokens_b)
+            if jaccard >= 0.5:
+                shared = sorted(tokens_a & tokens_b)
+                reasons.append({"code": "name_similarity", "detail": "shared tokens: " + ", ".join(shared)})
+            if row_a["dtype"] and row_a["dtype"] == row_b["dtype"]:
+                reasons.append({"code": "schema_match", "detail": f"both {row_a['dtype']}"})
+            # distribution_match: numeric-only. Needs both mean and std.
+            sa, sb = parsed_stats[idx_a], parsed_stats[idx_b]
+            mean_a, mean_b = sa.get("mean"), sb.get("mean")
+            std_a, std_b = sa.get("std"), sb.get("std")
+            if (
+                isinstance(mean_a, (int, float))
+                and isinstance(mean_b, (int, float))
+                and isinstance(std_a, (int, float))
+                and isinstance(std_b, (int, float))
+            ):
+                # Relative tolerance against the larger absolute value, guarding
+                # against 0/0 with a small epsilon.
+                def _rel_delta(x: float, y: float) -> float:
+                    denom = max(abs(x), abs(y), 1e-9)
+                    return abs(x - y) / denom
+
+                m_delta = _rel_delta(float(mean_a), float(mean_b))
+                s_delta = _rel_delta(float(std_a), float(std_b))
+                if m_delta <= 0.10 and s_delta <= 0.10:
+                    reasons.append(
+                        {
+                            "code": "distribution_match",
+                            "detail": f"mean Δ={m_delta:.0%}, std Δ={s_delta:.0%}",
+                        }
+                    )
+            return reasons
+
+        def _brief(idx: int) -> dict:
+            r = row_dicts[idx]
+            src = r["name"].split(".")[0] if "." in r["name"] else ""
+            return {
+                "id": r["id"],
+                "name": r["name"],
+                "dtype": r["dtype"] or "",
+                "source": src,
+                "has_doc": r["id"] in all_docs,
+            }
+
+        pairs: list[dict] = []
+        for score, i, j in candidates:
+            pairs.append(
+                {
+                    "a": _brief(i),
+                    "b": _brief(j),
+                    "score": round(score, 4),
+                    "reasons": _build_reasons(i, j, score),
+                }
+            )
+
+        # Sort: score desc, then number-of-reasons desc. Stable.
+        pairs.sort(key=lambda p: (-p["score"], -len(p["reasons"])))
+
+        return pairs[:limit], total_before_limit, None
+
+    # --- Recommend by use-case text (T-similarity-refactor) ---
+
+    def recommend_by_text(self, use_case: str, top_k: int = 10) -> list[tuple[Feature, float]]:
+        """Rank features by TF-IDF cosine against ``use_case`` text.
+
+        Deterministic fallback for the recommend endpoint when the LLM path
+        is unavailable or times out. Returns ``[(Feature, score), …]`` sorted
+        by score desc, capped at ``top_k`` and filtered to ``score > 0.05``.
+        """
+        import numpy as np
+        from sklearn.metrics.pairwise import cosine_similarity
+
+        with self.session() as s:
+            rows = s.execute(text("SELECT id, name, dtype, description, tags FROM features")).mappings().all()
+        if not rows:
+            return []
+
+        row_dicts = [dict(r) for r in rows]
+        vectorizer, matrix, ids = self._build_corpus(row_dicts)
+        query_vec = vectorizer.transform([use_case])
+        sims = cosine_similarity(query_vec, matrix)[0]
+
+        order = np.argsort(-sims)
+        results: list[tuple[Feature, float]] = []
+        for idx in order:
+            score = float(sims[idx])
+            if score <= 0.05:
+                break
+            fid = ids[idx]
+            feat = self.get_feature_by_name_or_id(fid)
+            if feat is None:
+                continue
+            results.append((feat, score))
+            if len(results) >= top_k:
+                break
+        return results
 
     # --- Feature lifecycle status (T3.1) ---
 
