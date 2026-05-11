@@ -232,6 +232,35 @@ class RemoteBackend(CatalogBackend):
         result = self._request("GET", f"/api/groups/{group_id}")
         return result.get("member_count", 0)
 
+    # --- Feature Group Versions (freeze + export) ---
+
+    def freeze_group(self, group_id: str, note: str = "", frozen_by: str = "") -> Any:
+        from .models import FeatureGroupVersion
+
+        result = self._request(
+            "POST",
+            f"/api/groups/{group_id}/freeze",
+            json={"note": note, "frozen_by": frozen_by},
+        )
+        return FeatureGroupVersion.model_validate(result)
+
+    def list_group_versions(self, group_id: str) -> list:
+        from .models import FeatureGroupVersion
+
+        rows = self._request("GET", f"/api/groups/{group_id}/versions")
+        return [FeatureGroupVersion.model_validate(r) for r in rows]
+
+    def get_group_version(self, group_id: str, version_number: int) -> Any | None:
+        from .models import FeatureGroupVersion
+
+        try:
+            result = self._request("GET", f"/api/groups/{group_id}/versions/{version_number}")
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                return None
+            raise
+        return FeatureGroupVersion.model_validate(result)
+
     # --- Feature Definitions ---
 
     def set_feature_definition(self, feature_id: str, definition: str, definition_type: str) -> None:

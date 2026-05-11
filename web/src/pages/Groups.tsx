@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Trash2, UserPlus, X, Download, Activity, HeartPulse, FileText, RefreshCw, Sparkles } from 'lucide-react'
+import { Plus, Trash2, UserPlus, X, Download, Activity, HeartPulse, FileText, RefreshCw, Sparkles, History, Snowflake, AlertTriangle } from 'lucide-react'
 import { api, invalidateCache } from '../api'
 import { Badge } from '../components/Badge'
 import { DataTable } from '../components/DataTable'
@@ -9,7 +9,7 @@ import { FeatureSelector, toFeatureItems } from '../components/FeatureSelector'
 import { Modal } from '../components/Modal'
 import { Skeleton } from '../components/Skeleton'
 
-type GroupTab = 'members' | 'health' | 'monitoring' | 'docs'
+type GroupTab = 'members' | 'health' | 'monitoring' | 'docs' | 'versions'
 
 const GRADE_COLORS: Record<string, string> = {
   A: 'bg-green-500',
@@ -164,6 +164,7 @@ export function Groups() {
                   { id: 'members', labelKey: 'tabs.members', icon: UserPlus, withCount: true },
                   { id: 'health', labelKey: 'tabs.health', icon: HeartPulse, withCount: false },
                   { id: 'monitoring', labelKey: 'tabs.monitoring', icon: Activity, withCount: false },
+                  { id: 'versions', labelKey: 'tabs.versions', icon: History, withCount: false },
                   { id: 'docs', labelKey: 'tabs.docs', icon: FileText, withCount: false },
                 ] as { id: GroupTab; labelKey: string; icon: typeof UserPlus; withCount: boolean }[]).map((entry) => {
                   const Icon = entry.icon
@@ -197,6 +198,7 @@ export function Groups() {
 
               {tab === 'health' && <GroupHealthTab groupName={detail.name} />}
               {tab === 'monitoring' && <GroupMonitoringTab groupName={detail.name} />}
+              {tab === 'versions' && <GroupVersionsTab groupName={detail.name} memberCount={detail.members?.length || 0} />}
               {tab === 'docs' && <GroupDocsTab groupName={detail.name} memberCount={detail.members?.length || 0} />}
             </div>
           ) : null}
@@ -447,6 +449,147 @@ function GroupMonitoringTab({ groupName }: { groupName: string }) {
           ))}
         </div>
       </div>
+    </div>
+  )
+}
+
+
+type VersionRow = Awaited<ReturnType<typeof api.groups.versions>>[number]
+
+function GroupVersionsTab({ groupName, memberCount }: { groupName: string; memberCount: number }) {
+  const { t } = useTranslation('groups')
+  const [versions, setVersions] = useState<VersionRow[] | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [freezeOpen, setFreezeOpen] = useState(false)
+  const [freezeNote, setFreezeNote] = useState('')
+  const [freezing, setFreezing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [openExportFor, setOpenExportFor] = useState<number | null>(null)
+
+  const load = () => {
+    setLoading(true)
+    invalidateCache(`/groups/${encodeURIComponent(groupName)}/versions`)
+    api.groups.versions(groupName).then(setVersions).catch(() => setVersions([])).finally(() => setLoading(false))
+  }
+  useEffect(() => { load() }, [groupName]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const submitFreeze = async () => {
+    setError(null)
+    setFreezing(true)
+    try {
+      await api.groups.freeze(groupName, { note: freezeNote })
+      setFreezeNote('')
+      setFreezeOpen(false)
+      load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Freeze failed')
+    } finally {
+      setFreezing(false)
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-[13px] text-[var(--text-secondary)] max-w-xl">
+          {t('versions.help', { defaultValue: 'A frozen version snapshots every member with its dtype, definition, and source path. Re-running the pipeline against the same sources reproduces the exact feature manifest.' })}
+        </p>
+        <button
+          onClick={() => setFreezeOpen(true)}
+          disabled={memberCount === 0}
+          className="flex items-center gap-1.5 px-4 py-2 bg-brand text-white rounded-lg text-[13px] font-medium hover:bg-brand-emphasis disabled:opacity-50"
+        >
+          <Snowflake size={14} /> {t('versions.freeze_button', { defaultValue: 'Freeze current state' })}
+        </button>
+      </div>
+
+      {memberCount === 0 ? (
+        <p className="text-sm text-[var(--text-tertiary)] py-4 text-center">
+          {t('versions.empty_group', { defaultValue: 'Add members before freezing a version' })}
+        </p>
+      ) : loading ? (
+        <Skeleton className="h-32" />
+      ) : !versions || versions.length === 0 ? (
+        <p className="text-sm text-[var(--text-tertiary)] py-4 text-center">
+          {t('versions.empty_state', { defaultValue: 'No versions yet — click “Freeze current state” to capture v1' })}
+        </p>
+      ) : (
+        <div className="border border-[var(--border-subtle)] rounded-xl divide-y divide-[var(--border-subtle)]">
+          {versions.map(v => (
+            <div key={v.version_number} className="px-3 py-2.5 flex items-center gap-3 text-[13px]">
+              <span className="font-mono font-semibold text-brand min-w-[40px]">v{v.version_number}</span>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 text-[var(--text-secondary)]">
+                  <span>{new Date(v.frozen_at).toLocaleString()}</span>
+                  {v.frozen_by && <span className="text-[var(--text-tertiary)]">· {v.frozen_by}</span>}
+                  <span className="text-[var(--text-tertiary)]">· {t('versions.member_count', { count: v.member_count, defaultValue: '{{count}} member(s)' })}</span>
+                </div>
+                {v.note && <p className="text-[12px] text-[var(--text-tertiary)] truncate mt-0.5">{v.note}</p>}
+              </div>
+              <div className="relative">
+                <button
+                  onClick={() => setOpenExportFor(openExportFor === v.version_number ? null : v.version_number)}
+                  className="flex items-center gap-1 px-2.5 py-1 text-[12px] border border-[var(--border-default)] rounded hover:bg-[var(--bg-secondary)]"
+                >
+                  <Download size={12} /> {t('versions.export', { defaultValue: 'Export' })}
+                </button>
+                {openExportFor === v.version_number && (
+                  <div className="absolute right-0 mt-1 z-10 bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg shadow-lg py-1 min-w-[140px]">
+                    {(['json', 'csv', 'parquet'] as const).map(fmt => (
+                      <a
+                        key={fmt}
+                        href={api.groups.exportUrl(groupName, v.version_number, fmt)}
+                        download
+                        onClick={() => setOpenExportFor(null)}
+                        className="block px-3 py-1.5 text-[12px] hover:bg-[var(--bg-secondary)]"
+                      >
+                        {t(`versions.export_${fmt}`, { defaultValue: fmt.toUpperCase() })}
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <Modal
+        open={freezeOpen}
+        onClose={() => { setFreezeOpen(false); setError(null) }}
+        title={t('versions.freeze_modal_title', { group: groupName, defaultValue: 'Freeze “{{group}}”' })}
+        actions={
+          <>
+            <button onClick={() => setFreezeOpen(false)} className="px-4 py-2 text-sm border border-[var(--border-default)] rounded-lg">
+              {t('actions.cancel', { ns: 'common' })}
+            </button>
+            <button onClick={submitFreeze} disabled={freezing} className="flex items-center gap-1.5 px-4 py-2 text-sm bg-brand text-white rounded-lg disabled:opacity-50">
+              <Snowflake size={14} /> {freezing ? t('versions.freezing', { defaultValue: 'Freezing…' }) : t('versions.freeze_confirm', { defaultValue: 'Freeze' })}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <p className="text-[13px] text-[var(--text-secondary)]">
+            {t('versions.freeze_modal_help', { count: memberCount, defaultValue: 'Snapshot {{count}} member(s) into a new version. Subsequent edits to the group do not affect this snapshot.' })}
+          </p>
+          <div>
+            <label className="block text-[12px] font-medium mb-1">{t('versions.note_label', { defaultValue: 'Note (optional)' })}</label>
+            <textarea
+              rows={2}
+              value={freezeNote}
+              onChange={e => setFreezeNote(e.target.value)}
+              placeholder={t('versions.note_placeholder', { defaultValue: 'e.g. baseline before holiday traffic' })}
+              className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px]"
+            />
+          </div>
+          {error && (
+            <p className="flex items-start gap-1.5 text-[12px] text-[var(--danger)]">
+              <AlertTriangle size={13} className="mt-0.5 shrink-0" /> {error}
+            </p>
+          )}
+        </div>
+      </Modal>
     </div>
   )
 }

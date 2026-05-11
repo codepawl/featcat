@@ -50,7 +50,27 @@
     "members": "Members",
     "health": "Health",
     "monitoring": "Monitoring",
+    "versions": "Versions",
     "docs": "Docs"
+  },
+  "versions": {
+    "help": "A frozen version snapshots every member with its dtype, definition, and source path. Re-running the pipeline against the same sources reproduces the exact feature manifest.",
+    "freeze_button": "Freeze current state",
+    "empty_group": "Add members before freezing a version",
+    "empty_state": "No versions yet — click \"Freeze current state\" to capture v1",
+    "member_count_one": "{{count}} member",
+    "member_count_other": "{{count}} members",
+    "export": "Export",
+    "export_json": "JSON",
+    "export_csv": "CSV",
+    "export_parquet": "Parquet",
+    "freeze_modal_title": "Freeze \"{{group}}\"",
+    "freeze_modal_help_one": "Snapshot {{count}} member into a new version. Subsequent edits to the group do not affect this snapshot.",
+    "freeze_modal_help_other": "Snapshot {{count}} members into a new version. Subsequent edits to the group do not affect this snapshot.",
+    "note_label": "Note (optional)",
+    "note_placeholder": "e.g. baseline before holiday traffic",
+    "freeze_confirm": "Freeze",
+    "freezing": "Freezing…"
   },
   "health": {
     "empty": "No members to score yet",

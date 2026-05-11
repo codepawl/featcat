@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 import contextlib
+import csv
+import io
+import json
+from datetime import datetime  # noqa: TC003 — Pydantic resolves this annotation at runtime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import text
 
@@ -314,3 +319,192 @@ def group_regenerate_docs(
         llm=llm,
     )
     return {"job_id": job_id, "total": len(specs), "group": name}
+
+
+# ---------------------------------------------------------------------------
+# Group versioning: freeze, list, get, export
+# ---------------------------------------------------------------------------
+
+
+class FreezeRequest(BaseModel):
+    note: str = ""
+    frozen_by: str = ""
+
+
+class FreezeResponse(BaseModel):
+    group: str
+    version_number: int
+    frozen_at: datetime
+    frozen_by: str
+    note: str
+    member_count: int
+
+
+class VersionSummary(BaseModel):
+    version_number: int
+    frozen_at: datetime
+    frozen_by: str
+    note: str
+    member_count: int
+
+
+class VersionDetail(BaseModel):
+    version_number: int
+    frozen_at: datetime
+    frozen_by: str
+    note: str
+    snapshot: dict
+    warnings: list[str]
+
+
+def _snapshot_member_count(snapshot_json: str) -> int:
+    try:
+        return len(json.loads(snapshot_json).get("features", []))
+    except (ValueError, TypeError):
+        return 0
+
+
+def _annotate_snapshot_with_stale(db, snapshot_json: str) -> tuple[dict, list[str]]:
+    """Decode snapshot JSON, mark features deleted-after-freeze, and return warnings.
+
+    Stale check is by feature *name*, not id, because ids may collide if a
+    user deletes-and-recreates with the same spec. Name+source-path is the
+    reproducibility contract.
+    """
+    snapshot = json.loads(snapshot_json)
+    warnings: list[str] = []
+    for feature in snapshot.get("features", []):
+        current = db.get_feature_by_name(feature.get("name", ""))
+        if current is None:
+            feature["deleted_after_freeze"] = True
+            warnings.append(f"Feature '{feature.get('name')}' was deleted after this version was frozen.")
+        else:
+            feature["deleted_after_freeze"] = False
+    return snapshot, warnings
+
+
+@router.post("/{name}/freeze", response_model=FreezeResponse)
+def freeze_group(name: str, body: FreezeRequest, db=Depends(get_db)):  # noqa: B008
+    """Snapshot the group's current members as a new immutable version."""
+    group = _group_or_404(db, name)
+    if db.count_group_members(group.id) == 0:
+        raise HTTPException(status_code=400, detail=f"Group is empty: {name}")
+    version = db.freeze_group(group.id, note=body.note, frozen_by=body.frozen_by)
+    member_count = _snapshot_member_count(version.snapshot_json)
+    return FreezeResponse(
+        group=name,
+        version_number=version.version_number,
+        frozen_at=version.frozen_at,
+        frozen_by=version.frozen_by,
+        note=version.note,
+        member_count=member_count,
+    )
+
+
+@router.get("/{name}/versions", response_model=list[VersionSummary])
+def list_group_versions(name: str, db=Depends(get_db)):  # noqa: B008
+    """List frozen versions for the group, newest first."""
+    group = _group_or_404(db, name)
+    versions = db.list_group_versions(group.id)
+    return [
+        VersionSummary(
+            version_number=v.version_number,
+            frozen_at=v.frozen_at,
+            frozen_by=v.frozen_by,
+            note=v.note,
+            member_count=_snapshot_member_count(v.snapshot_json),
+        )
+        for v in versions
+    ]
+
+
+@router.get("/{name}/versions/{version_number}", response_model=VersionDetail)
+def get_group_version(name: str, version_number: int, db=Depends(get_db)):  # noqa: B008
+    """Fetch one frozen version with the full snapshot and stale-feature warnings."""
+    group = _group_or_404(db, name)
+    version = db.get_group_version(group.id, version_number)
+    if version is None:
+        raise HTTPException(status_code=404, detail=f"Version not found: {name} v{version_number}")
+    snapshot, warnings = _annotate_snapshot_with_stale(db, version.snapshot_json)
+    return VersionDetail(
+        version_number=version.version_number,
+        frozen_at=version.frozen_at,
+        frozen_by=version.frozen_by,
+        note=version.note,
+        snapshot=snapshot,
+        warnings=warnings,
+    )
+
+
+@router.get("/{name}/versions/{version_number}/export")
+def export_group_version(  # noqa: PLR0911
+    name: str,
+    version_number: int,
+    format: str = Query("json", pattern="^(json|csv|parquet)$"),  # noqa: A002 — preserves ?format=... URL contract
+    db=Depends(get_db),  # noqa: B008
+):
+    """Export a frozen version as a feature *manifest* (not the underlying data values).
+
+    Reproducibility contract: the manifest captures every feature's name,
+    dtype, definition, and source path/format at freeze time. Re-running
+    the pipeline against the same sources should yield matching columns.
+    Features deleted from the catalog after freeze are flagged but still
+    exported (per the plan: export-with-warning).
+    """
+    group = _group_or_404(db, name)
+    version = db.get_group_version(group.id, version_number)
+    if version is None:
+        raise HTTPException(status_code=404, detail=f"Version not found: {name} v{version_number}")
+    snapshot, warnings = _annotate_snapshot_with_stale(db, version.snapshot_json)
+    snapshot["warnings"] = warnings
+    filename_stem = f"{name}-v{version_number}"
+
+    if format == "json":
+        body = json.dumps(snapshot, ensure_ascii=False, indent=2)
+        return StreamingResponse(
+            io.BytesIO(body.encode("utf-8")),
+            media_type="application/json",
+            headers={"Content-Disposition": f'attachment; filename="{filename_stem}.json"'},
+        )
+
+    columns = [
+        "name",
+        "dtype",
+        "definition",
+        "definition_type",
+        "column_name",
+        "source_name",
+        "source_path",
+        "source_format",
+        "owner",
+        "deleted_after_freeze",
+    ]
+    rows = [{c: f.get(c, "") for c in columns} for f in snapshot.get("features", [])]
+
+    if format == "csv":
+        buf = io.StringIO()
+        writer = csv.DictWriter(buf, fieldnames=columns)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(row)
+        return StreamingResponse(
+            io.BytesIO(buf.getvalue().encode("utf-8")),
+            media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="{filename_stem}.csv"'},
+        )
+
+    # parquet
+    try:
+        import pyarrow as pa  # type: ignore[import-untyped]
+        import pyarrow.parquet as pq  # type: ignore[import-untyped]
+    except ImportError as e:  # pragma: no cover — pyarrow ships via parquet scanning deps
+        raise HTTPException(status_code=503, detail="pyarrow is not installed") from e
+    table = pa.Table.from_pylist([{c: str(r[c]) if r[c] is not None else "" for c in columns} for r in rows])
+    buf_bytes = io.BytesIO()
+    pq.write_table(table, buf_bytes)
+    buf_bytes.seek(0)
+    return StreamingResponse(
+        buf_bytes,
+        media_type="application/vnd.apache.parquet",
+        headers={"Content-Disposition": f'attachment; filename="{filename_stem}.parquet"'},
+    )

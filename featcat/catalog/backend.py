@@ -336,6 +336,24 @@ class CatalogBackend(ABC):
     def count_group_members(self, group_id: str) -> int:
         """Count members in a group."""
 
+    # --- Feature Group Versions (freeze + export) ---
+
+    @abstractmethod
+    def freeze_group(self, group_id: str, note: str = "", frozen_by: str = "") -> Any:
+        """Snapshot a group's current members and return the new version.
+
+        The snapshot is immutable: subsequent feature edits or deletions
+        do not mutate prior versions.
+        """
+
+    @abstractmethod
+    def list_group_versions(self, group_id: str) -> list:
+        """List all frozen versions for a group, newest first."""
+
+    @abstractmethod
+    def get_group_version(self, group_id: str, version_number: int) -> Any | None:
+        """Fetch one frozen version by group_id + version_number."""
+
     # --- Feature Definitions ---
 
     @abstractmethod
