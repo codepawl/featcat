@@ -30,7 +30,7 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 from sqlalchemy.exc import OperationalError
 
 from ..db.connection import make_engine, make_session_factory, resolve_backend
@@ -1859,6 +1859,152 @@ class LocalBackend(CatalogBackend):
         pairs.sort(key=lambda p: (-p["score"], -len(p["reasons"])))
 
         return pairs[:limit], total_before_limit, None
+
+    # --- Similarity matrix (caller-selected feature subset) ---
+
+    SIMILARITY_MATRIX_MAX_FEATURES = 100  # caller-side filter cap; matches the UI cap
+
+    def compute_similarity_matrix(
+        self,
+        feature_ids: list[str],
+        threshold: float,
+    ) -> tuple[list[dict], list[dict]]:
+        """Score the upper triangle of an N×N similarity matrix over a caller-
+        selected feature subset.
+
+        Returns ``(features, cells)`` where ``features`` is a list of
+        :class:`FeatureBrief`-shaped dicts in the same order the caller passed
+        them in (so the UI can index ``cells.a`` / ``cells.b`` directly), and
+        ``cells`` is ``[{a: int, b: int, score: float}, …]`` — upper triangle
+        only (``a < b``), filtered to ``score >= threshold``. Diagonal cells
+        are not returned (always 1.0; UI renders them locally).
+
+        Raises:
+            ValueError: when ``feature_ids`` is empty, contains duplicates, or
+                exceeds :attr:`SIMILARITY_MATRIX_MAX_FEATURES`.
+            KeyError: when one or more ids are not present in the catalog.
+        """
+        from sklearn.metrics.pairwise import cosine_similarity
+
+        if not feature_ids:
+            raise ValueError("feature_ids must not be empty")
+        if len(set(feature_ids)) != len(feature_ids):
+            raise ValueError("feature_ids must be unique")
+        if len(feature_ids) > self.SIMILARITY_MATRIX_MAX_FEATURES:
+            raise ValueError(f"feature_ids length {len(feature_ids)} exceeds cap {self.SIMILARITY_MATRIX_MAX_FEATURES}")
+
+        # Single round-trip; preserve the caller's order via a manual lookup
+        # since SQL ``IN`` returns whatever order the engine prefers.
+        with self.session() as s:
+            rows = (
+                s.execute(
+                    text("SELECT id, name, dtype, description, tags, stats FROM features WHERE id IN :ids").bindparams(
+                        bindparam("ids", expanding=True)
+                    ),
+                    {"ids": feature_ids},
+                )
+                .mappings()
+                .all()
+            )
+        by_id = {r["id"]: dict(r) for r in rows}
+        missing = [fid for fid in feature_ids if fid not in by_id]
+        if missing:
+            raise KeyError(missing)
+        ordered = [by_id[fid] for fid in feature_ids]
+
+        all_docs = self.get_all_feature_docs()
+
+        def _brief(idx: int) -> dict:
+            r = ordered[idx]
+            src = r["name"].split(".")[0] if "." in r["name"] else ""
+            return {
+                "id": r["id"],
+                "name": r["name"],
+                "dtype": r["dtype"] or "",
+                "source": src,
+                "has_doc": r["id"] in all_docs,
+            }
+
+        features = [_brief(i) for i in range(len(ordered))]
+
+        # Two features and below: no off-diagonal pair possible besides (0,1).
+        if len(ordered) < 2:
+            return features, []
+
+        _, matrix, _ = self._build_corpus(ordered)
+        sim_matrix = cosine_similarity(matrix)
+
+        cells: list[dict] = []
+        n = len(ordered)
+        for i in range(n):
+            for j in range(i + 1, n):
+                score = float(sim_matrix[i, j])
+                if score >= threshold:
+                    cells.append({"a": i, "b": j, "score": round(score, 4)})
+        return features, cells
+
+    def compute_pair_reasons(self, a_id: str, b_id: str) -> tuple[dict, dict, float, list[dict]]:
+        """Score a single pair and return its reason-code breakdown.
+
+        Used by the matrix view's cell-click panel: keeps the matrix payload
+        small (scores only) while still allowing on-demand reason inspection
+        per pair. The reason-code structure matches what
+        :meth:`find_duplicate_pairs` returns so the UI can render both
+        identically.
+
+        Returns ``(brief_a, brief_b, score, reasons)``.
+
+        Raises:
+            ValueError: when ``a_id == b_id``.
+            KeyError: when either id is not in the catalog.
+        """
+        from sklearn.metrics.pairwise import cosine_similarity
+
+        if a_id == b_id:
+            raise ValueError("a_id and b_id must differ")
+
+        with self.session() as s:
+            rows = (
+                s.execute(
+                    text("SELECT id, name, dtype, description, tags, stats FROM features WHERE id IN :ids").bindparams(
+                        bindparam("ids", expanding=True)
+                    ),
+                    {"ids": [a_id, b_id]},
+                )
+                .mappings()
+                .all()
+            )
+        by_id = {r["id"]: dict(r) for r in rows}
+        missing = [fid for fid in (a_id, b_id) if fid not in by_id]
+        if missing:
+            raise KeyError(missing)
+
+        row_a, row_b = by_id[a_id], by_id[b_id]
+        _, matrix, _ = self._build_corpus([row_a, row_b])
+        score = float(cosine_similarity(matrix[0:1], matrix[1:2])[0, 0])
+
+        all_docs = self.get_all_feature_docs()
+
+        def _brief(r: dict) -> dict:
+            src = r["name"].split(".")[0] if "." in r["name"] else ""
+            return {
+                "id": r["id"],
+                "name": r["name"],
+                "dtype": r["dtype"] or "",
+                "source": src,
+                "has_doc": r["id"] in all_docs,
+            }
+
+        reasons = _compute_pair_reasons(
+            row_a["name"],
+            row_a["dtype"],
+            _parse_stats(row_a.get("stats")),
+            row_b["name"],
+            row_b["dtype"],
+            _parse_stats(row_b.get("stats")),
+            score,
+        )
+        return _brief(row_a), _brief(row_b), round(score, 4), reasons
 
     # --- Recommend by use-case text (T-similarity-refactor) ---
 
