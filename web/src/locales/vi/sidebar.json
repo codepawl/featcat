@@ -12,7 +12,13 @@
     "jobs": "Tác vụ",
     "chat": "AI Chat",
     "settings": "Cài đặt",
-    "help": "Trợ giúp"
+    "help": "Trợ giúp",
+    "sections": {
+      "catalog": "Danh mục",
+      "quality": "Chất lượng & Giám sát",
+      "system": "Hệ thống",
+      "app": "Ứng dụng"
+    }
   },
   "status": {
     "server": "Server",

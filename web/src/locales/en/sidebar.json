@@ -12,7 +12,13 @@
     "jobs": "Jobs",
     "chat": "AI Chat",
     "settings": "Settings",
-    "help": "Help"
+    "help": "Help",
+    "sections": {
+      "catalog": "Catalog",
+      "quality": "Quality & Monitoring",
+      "system": "System",
+      "app": "App"
+    }
   },
   "status": {
     "server": "Server",
