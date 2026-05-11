@@ -187,6 +187,7 @@ class TestRecommendEndpoint:
         assert resp.status_code == 200
         body = resp.json()
         assert body["method"] == "tfidf"
+        assert "no matches" in (body["summary"] or "").lower()
 
     def test_llm_exception_falls_back_to_tfidf(
         self, db_with_features: LocalBackend, monkeypatch: pytest.MonkeyPatch
@@ -199,6 +200,7 @@ class TestRecommendEndpoint:
         assert resp.status_code == 200
         body = resp.json()
         assert body["method"] == "tfidf"
+        assert "LLM error" in (body["summary"] or "")
 
     @pytest.mark.timeout(20)
     def test_llm_timeout_falls_back_to_tfidf(
@@ -216,3 +218,4 @@ class TestRecommendEndpoint:
         assert resp.status_code == 200
         body = resp.json()
         assert body["method"] == "tfidf"
+        assert "timed out" in (body["summary"] or "").lower()

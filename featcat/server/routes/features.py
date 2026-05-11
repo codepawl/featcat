@@ -765,15 +765,17 @@ def _run_tfidf_recommend(db: Any, use_case: str, top_k: int) -> list[FeatureMatc
 
 async def _maybe_llm_recommend(
     db: Any, llm: Any, use_case: str, top_k: int
-) -> tuple[list[FeatureMatch], str | None] | None:
+) -> tuple[list[FeatureMatch] | None, str | None]:
     """Run the LLM discovery path with an 8s timeout.
 
-    Returns ``(matches, summary)`` on success, or ``None`` when the caller
-    should fall back to TF-IDF (LLM unavailable / error / timeout / no
-    matches).
+    Returns ``(matches, summary)`` on success, or ``(None, reason)`` when the
+    caller should fall back to TF-IDF. The ``reason`` string describes which
+    fallback condition fired so the response's ``summary`` can be specific
+    (timeout vs empty result vs error) rather than collapsing into a single
+    generic message.
     """
     if llm is None:
-        return None
+        return None, "LLM unavailable, ranked by keyword similarity"
     from ...plugins.discovery import DiscoveryPlugin
 
     plugin = DiscoveryPlugin()
@@ -783,15 +785,15 @@ async def _maybe_llm_recommend(
             timeout=_RECOMMEND_LLM_TIMEOUT_S,
         )
     except asyncio.TimeoutError:
-        return None
-    except Exception:  # noqa: BLE001 — caller decides what to do
-        return None
+        return None, f"LLM timed out after {int(_RECOMMEND_LLM_TIMEOUT_S)}s, ranked by keyword similarity"
+    except Exception as exc:  # noqa: BLE001 — caller decides what to do
+        return None, f"LLM error ({type(exc).__name__}), ranked by keyword similarity"
 
     if result.status != "success":
-        return None
+        return None, "LLM returned an error, ranked by keyword similarity"
     existing = result.data.get("existing_features") or []
     if not existing:
-        return None
+        return None, "LLM returned no matches, ranked by keyword similarity"
 
     doc_ids = set(db.get_all_feature_docs().keys())
     matches: list[FeatureMatch] = []
@@ -812,7 +814,7 @@ async def _maybe_llm_recommend(
             )
         )
     if not matches:
-        return None
+        return None, "LLM returned no usable matches, ranked by keyword similarity"
     summary = result.data.get("summary")
     return matches, summary
 
@@ -834,25 +836,21 @@ async def recommend_features(
     if cached is not None:
         return RecommendResponse(**cached)
 
-    fallback_summary: str | None = None
-    if body.use_llm and llm is not None:
-        outcome = await _maybe_llm_recommend(db, llm, use_case, body.top_k)
-        if outcome is not None:
-            matches, summary = outcome
+    fallback_summary: str
+    if body.use_llm:
+        matches_opt, reason = await _maybe_llm_recommend(db, llm, use_case, body.top_k)
+        if matches_opt is not None:
             response = RecommendResponse(
                 use_case=use_case,
                 method="llm",
-                matches=matches,
-                summary=summary,
+                matches=matches_opt,
+                summary=reason,
             )
             cache_set(cache_key, response.model_dump(), ttl=600)
             return response
-        # outcome is None → LLM was available but timed out / failed / empty.
-        # Distinguish "no matches" from "timeout/error" only loosely; the
-        # generic message below covers both.
-        fallback_summary = "LLM returned no usable matches, ranked by keyword similarity"
-    elif body.use_llm and llm is None:
-        fallback_summary = "LLM unavailable, ranked by keyword similarity"
+        # Helper has already classified the fallback reason (unavailable /
+        # timeout / error / no-matches) — propagate it verbatim.
+        fallback_summary = reason or "LLM unavailable, ranked by keyword similarity"
     else:
         fallback_summary = "Ranked by keyword similarity (LLM bypassed)"
 
