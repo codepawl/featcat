@@ -46,6 +46,84 @@ if TYPE_CHECKING:
 DEFAULT_DB = "catalog.db"
 
 
+def _name_tokens(name: str) -> set[str]:
+    return {t for t in name.replace(".", "_").split("_") if t}
+
+
+def _jaccard(a: set[str], b: set[str]) -> float:
+    if not a or not b:
+        return 0.0
+    return len(a & b) / len(a | b)
+
+
+def _parse_stats(raw: Any) -> dict:
+    """Normalize a feature's ``stats`` column into a dict.
+
+    The column may be a JSON string, an already-parsed dict, or absent. Returns
+    ``{}`` for any unparseable / missing input so downstream callers can do
+    ``.get("mean")`` without guarding.
+    """
+    if isinstance(raw, str) and raw:
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    if isinstance(raw, dict):
+        return raw
+    return {}
+
+
+def _compute_pair_reasons(
+    name_a: str,
+    dtype_a: str | None,
+    stats_a: dict,
+    name_b: str,
+    dtype_b: str | None,
+    stats_b: dict,
+    score: float,
+) -> list[dict]:
+    """Build the reason-code breakdown for a pair of features.
+
+    Always emits ``semantic_match`` (the TF-IDF cosine score). Adds
+    ``name_similarity`` when name-token Jaccard ≥ 0.5, ``schema_match`` when
+    dtypes match, and ``distribution_match`` when both features carry numeric
+    mean+std within 10% relative tolerance. Pre-parsed ``stats_a`` / ``stats_b``
+    avoid re-parsing the JSON column on every pair.
+    """
+    reasons: list[dict] = [{"code": "semantic_match", "detail": f"TF-IDF cosine {round(score, 3)}"}]
+    tokens_a = _name_tokens(name_a)
+    tokens_b = _name_tokens(name_b)
+    if _jaccard(tokens_a, tokens_b) >= 0.5:
+        shared = sorted(tokens_a & tokens_b)
+        reasons.append({"code": "name_similarity", "detail": "shared tokens: " + ", ".join(shared)})
+    if dtype_a and dtype_a == dtype_b:
+        reasons.append({"code": "schema_match", "detail": f"both {dtype_a}"})
+    mean_a, mean_b = stats_a.get("mean"), stats_b.get("mean")
+    std_a, std_b = stats_a.get("std"), stats_b.get("std")
+    if (
+        isinstance(mean_a, (int, float))
+        and isinstance(mean_b, (int, float))
+        and isinstance(std_a, (int, float))
+        and isinstance(std_b, (int, float))
+    ):
+
+        def _rel_delta(x: float, y: float) -> float:
+            denom = max(abs(x), abs(y), 1e-9)
+            return abs(x - y) / denom
+
+        m_delta = _rel_delta(float(mean_a), float(mean_b))
+        s_delta = _rel_delta(float(std_a), float(std_b))
+        if m_delta <= 0.10 and s_delta <= 0.10:
+            reasons.append(
+                {
+                    "code": "distribution_match",
+                    "detail": f"mean Δ={m_delta:.0%}, std Δ={s_delta:.0%}",
+                }
+            )
+    return reasons
+
+
 # Override sqlite3's built-in datetime adapter (deprecated in Python 3.12+).
 # SA's sqlite dialect bind-converts datetime → str via this adapter when
 # inserting; without an explicit registration each datetime bind emits a
@@ -1733,18 +1811,9 @@ class LocalBackend(CatalogBackend):
         _, matrix, ids = self._build_corpus(row_dicts)
         sim_matrix = cosine_similarity(matrix)
 
-        # Pre-parse stats once per feature for distribution_match.
-        parsed_stats: list[dict] = []
-        for r in row_dicts:
-            raw = r.get("stats")
-            if isinstance(raw, str):
-                with contextlib.suppress(json.JSONDecodeError):
-                    parsed_stats.append(json.loads(raw))
-                    continue
-            elif isinstance(raw, dict):
-                parsed_stats.append(raw)
-                continue
-            parsed_stats.append({})
+        # Pre-parse stats once per feature so the per-pair reason builder
+        # doesn't re-parse JSON for every candidate.
+        parsed_stats = [_parse_stats(r.get("stats")) for r in row_dicts]
 
         # Upper-triangle scan.
         candidates: list[tuple[float, int, int]] = []
@@ -1754,53 +1823,6 @@ class LocalBackend(CatalogBackend):
                 if score >= threshold:
                     candidates.append((score, i, j))
         total_before_limit = len(candidates)
-
-        def _name_tokens(name: str) -> set[str]:
-            return {t for t in name.replace(".", "_").split("_") if t}
-
-        def _jaccard(a: set[str], b: set[str]) -> float:
-            if not a or not b:
-                return 0.0
-            return len(a & b) / len(a | b)
-
-        def _build_reasons(idx_a: int, idx_b: int, score: float) -> list[dict]:
-            row_a = row_dicts[idx_a]
-            row_b = row_dicts[idx_b]
-            reasons: list[dict] = [{"code": "semantic_match", "detail": f"TF-IDF cosine {round(score, 3)}"}]
-            tokens_a = _name_tokens(row_a["name"])
-            tokens_b = _name_tokens(row_b["name"])
-            jaccard = _jaccard(tokens_a, tokens_b)
-            if jaccard >= 0.5:
-                shared = sorted(tokens_a & tokens_b)
-                reasons.append({"code": "name_similarity", "detail": "shared tokens: " + ", ".join(shared)})
-            if row_a["dtype"] and row_a["dtype"] == row_b["dtype"]:
-                reasons.append({"code": "schema_match", "detail": f"both {row_a['dtype']}"})
-            # distribution_match: numeric-only. Needs both mean and std.
-            sa, sb = parsed_stats[idx_a], parsed_stats[idx_b]
-            mean_a, mean_b = sa.get("mean"), sb.get("mean")
-            std_a, std_b = sa.get("std"), sb.get("std")
-            if (
-                isinstance(mean_a, (int, float))
-                and isinstance(mean_b, (int, float))
-                and isinstance(std_a, (int, float))
-                and isinstance(std_b, (int, float))
-            ):
-                # Relative tolerance against the larger absolute value, guarding
-                # against 0/0 with a small epsilon.
-                def _rel_delta(x: float, y: float) -> float:
-                    denom = max(abs(x), abs(y), 1e-9)
-                    return abs(x - y) / denom
-
-                m_delta = _rel_delta(float(mean_a), float(mean_b))
-                s_delta = _rel_delta(float(std_a), float(std_b))
-                if m_delta <= 0.10 and s_delta <= 0.10:
-                    reasons.append(
-                        {
-                            "code": "distribution_match",
-                            "detail": f"mean Δ={m_delta:.0%}, std Δ={s_delta:.0%}",
-                        }
-                    )
-            return reasons
 
         def _brief(idx: int) -> dict:
             r = row_dicts[idx]
@@ -1815,12 +1837,21 @@ class LocalBackend(CatalogBackend):
 
         pairs: list[dict] = []
         for score, i, j in candidates:
+            row_a, row_b = row_dicts[i], row_dicts[j]
             pairs.append(
                 {
                     "a": _brief(i),
                     "b": _brief(j),
                     "score": round(score, 4),
-                    "reasons": _build_reasons(i, j, score),
+                    "reasons": _compute_pair_reasons(
+                        row_a["name"],
+                        row_a["dtype"],
+                        parsed_stats[i],
+                        row_b["name"],
+                        row_b["dtype"],
+                        parsed_stats[j],
+                        score,
+                    ),
                 }
             )
 
