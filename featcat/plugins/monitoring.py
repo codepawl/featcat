@@ -115,9 +115,36 @@ class MonitoringPlugin(BasePlugin):
                 else:
                     critical += 1
 
-                # Save result for history tracking
+                # Save result for history tracking — including the auxiliary
+                # metrics the multi-metric chart needs. Each is best-effort:
+                # current_stats may not carry them on legacy rows or non-numeric
+                # features (e.g. mean_z_score requires baseline.std > 0).
+                current = result.get("current_stats") or {}
+                baseline_stats = result.get("baseline_stats") or {}
+                null_ratio = current.get("null_ratio")
+                sample_size = current.get("total_count")
+                mean_z_score: float | None = None
+                b_mean = baseline_stats.get("mean")
+                b_std = baseline_stats.get("std")
+                c_mean = current.get("mean")
+                if (
+                    isinstance(b_mean, (int, float))
+                    and isinstance(b_std, (int, float))
+                    and isinstance(c_mean, (int, float))
+                    and b_std
+                ):
+                    mean_z_score = round((c_mean - b_mean) / b_std, 4)
+
                 with contextlib.suppress(Exception):
-                    db.save_monitoring_result(f.id, f.name, result.get("psi"), severity)
+                    db.save_monitoring_result(
+                        f.id,
+                        f.name,
+                        result.get("psi"),
+                        severity,
+                        null_ratio=null_ratio if isinstance(null_ratio, (int, float)) else None,
+                        mean_z_score=mean_z_score,
+                        sample_size=int(sample_size) if isinstance(sample_size, (int, float)) else None,
+                    )
 
                 # T2.1 — emit an in-app notification on warning/critical drift.
                 # Best-effort: a notification-table outage shouldn't fail

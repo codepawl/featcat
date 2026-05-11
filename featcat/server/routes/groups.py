@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+from datetime import date  # noqa: TC003 — Pydantic resolves at runtime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -10,6 +11,7 @@ from sqlalchemy import text
 
 from ...catalog.health import compute_health_score
 from ...catalog.models import FeatureGroup
+from ..cache import cache_get, cache_set
 from ..deps import get_db, get_llm
 
 router = APIRouter()
@@ -314,3 +316,53 @@ def group_regenerate_docs(
         llm=llm,
     )
     return {"job_id": job_id, "total": len(specs), "group": name}
+
+
+# ---------------------------------------------------------------------------
+# Group drift heatmap (Chart 2)
+# ---------------------------------------------------------------------------
+
+
+class DriftMatrixCell(BaseModel):
+    date: date
+    severity: str
+    psi: float | None
+
+
+class DriftMatrixFeature(BaseModel):
+    id: str
+    name: str
+    source: str
+    daily: list[DriftMatrixCell]
+
+
+class DriftMatrixResponse(BaseModel):
+    """30-day severity matrix for a group's features.
+
+    ``truncated=true`` and ``total_count > len(features)`` indicate the
+    server capped the response at 200 features, sorted by latest severity
+    priority then alphabetically.
+    """
+
+    date_range: list[date]
+    features: list[DriftMatrixFeature]
+    truncated: bool
+    total_count: int
+
+
+@router.get("/{name}/drift-matrix", response_model=DriftMatrixResponse)
+def group_drift_matrix(
+    name: str,
+    days: int = Query(30, ge=7, le=90),
+    db=Depends(get_db),  # noqa: B008
+) -> DriftMatrixResponse:
+    """Per-feature per-day severity matrix for the heatmap chart."""
+    cache_key = f"groups:drift_matrix:{name}:{days}"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return DriftMatrixResponse.model_validate(cached)
+    group = _group_or_404(db, name)
+    matrix = db.get_group_drift_matrix(group.id, days=days)
+    response = DriftMatrixResponse.model_validate(matrix)
+    cache_set(cache_key, response.model_dump(mode="json"))
+    return response
