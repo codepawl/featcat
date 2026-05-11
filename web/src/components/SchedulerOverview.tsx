@@ -4,8 +4,9 @@
  * Renders a row of cards (one per scheduled job) backed by the unified
  * /api/scheduler/* job-status API and a detail modal with the last 20 runs.
  *
- * Lives inside the Jobs page (we extend the existing Jobs.tsx in-place rather
- * than spinning up a /scheduler route — see PR body for rationale).
+ * Owns per-card actions end-to-end: run-now, enable/disable toggle, and
+ * cron-schedule edit (modal lives inside this component so the Jobs page
+ * stays focused on the execution-history table).
  *
  * "Run now" UX:
  *  - POST /scheduler/jobs/{name}/run returns immediately with a tracking
@@ -20,7 +21,19 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Activity, AlertTriangle, CheckCircle2, ChevronRight, Clock, Loader2, Play, X } from 'lucide-react'
+import type { TFunction } from 'i18next'
+import {
+  Activity,
+  AlertTriangle,
+  CheckCircle2,
+  ChevronRight,
+  Clock,
+  Loader2,
+  Pencil,
+  Play,
+  Timer,
+  X,
+} from 'lucide-react'
 import {
   api,
   humanizeDuration,
@@ -68,15 +81,39 @@ function BackendPill({ backend }: { backend: string }) {
   )
 }
 
+function cronToHuman(cron: string, t: TFunction<'jobs'>): string {
+  const parts = cron.trim().split(/\s+/)
+  if (parts.length < 5) return cron
+  const [min, hr, dom, , dow] = parts
+  if (min.startsWith('*/')) return t('cron_human.every_n_minutes', { n: min.slice(2) })
+  if (hr.startsWith('*/')) return t('cron_human.every_n_hours', { n: hr.slice(2) })
+  if (dow !== '*' && dom === '*') {
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+    const dayKey = days[+dow] || dow
+    return t('cron_human.weekly_on', {
+      day: t(`cron_human.days.${dayKey}`, { defaultValue: dayKey }),
+      time: `${hr.padStart(2, '0')}:${min.padStart(2, '0')}`,
+    })
+  }
+  if (dom === '*' && hr !== '*') return t('cron_human.daily_at', { time: `${hr.padStart(2, '0')}:${min.padStart(2, '0')}` })
+  return cron
+}
+
+const CRON_PRESETS = ['0 * * * *', '0 */6 * * *', '0 2 * * *', '0 3 * * 0'] as const
+
 export function SchedulerOverview({ jobLabel }: { jobLabel: (name: string) => string }) {
   const { t } = useTranslation('jobs')
   const [jobs, setJobs] = useState<JobSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [activeRuns, setActiveRuns] = useState<Set<string>>(new Set())
+  const [togglingJobs, setTogglingJobs] = useState<Set<string>>(new Set())
   const [outcome, setOutcome] = useState<RunOutcome | null>(null)
   const [detail, setDetail] = useState<JobDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [expandedRun, setExpandedRun] = useState<string | null>(null)
+  const [editing, setEditing] = useState<JobSummary | null>(null)
+  const [cronInput, setCronInput] = useState('')
+  const [savingCron, setSavingCron] = useState(false)
 
   // Hidden-tab guard for polling.
   const visibleRef = useRef(typeof document !== 'undefined' ? !document.hidden : true)
@@ -89,6 +126,7 @@ export function SchedulerOverview({ jobLabel }: { jobLabel: (name: string) => st
   const refresh = useCallback(async () => {
     try {
       invalidateCache('/scheduler/jobs')
+      invalidateCache('/jobs')
       const list = await api.scheduler.listJobs()
       setJobs(list)
     } catch {
@@ -159,8 +197,8 @@ export function SchedulerOverview({ jobLabel }: { jobLabel: (name: string) => st
           })
         }
       }
-      // Invalidate the legacy /jobs cache too so the existing history table
-      // picks up the new row when its parent reloads.
+      // Invalidate the legacy /jobs cache too so the history table picks up
+      // the new row when its parent reloads.
       invalidateCache('/jobs')
     } catch (e) {
       setOutcome({
@@ -177,6 +215,50 @@ export function SchedulerOverview({ jobLabel }: { jobLabel: (name: string) => st
       })
     }
   }, [activeRuns, pollForCompletion, refresh])
+
+  const handleToggle = useCallback(async (job: JobSummary) => {
+    if (togglingJobs.has(job.name)) return
+    setTogglingJobs((s) => new Set(s).add(job.name))
+    // Optimistic flip.
+    setJobs((prev) => prev.map((j) => (j.name === job.name ? { ...j, enabled: !j.enabled } : j)))
+    try {
+      await api.jobs.update(job.name, { enabled: !job.enabled })
+      await refresh()
+    } catch {
+      // Roll back on failure.
+      setJobs((prev) => prev.map((j) => (j.name === job.name ? { ...j, enabled: job.enabled } : j)))
+    } finally {
+      setTogglingJobs((s) => {
+        const n = new Set(s)
+        n.delete(job.name)
+        return n
+      })
+    }
+  }, [togglingJobs, refresh])
+
+  const openEdit = useCallback((job: JobSummary) => {
+    setEditing(job)
+    setCronInput(job.cron)
+  }, [])
+
+  const closeEdit = useCallback(() => {
+    setEditing(null)
+    setCronInput('')
+  }, [])
+
+  const saveSchedule = useCallback(async () => {
+    if (!editing || !cronInput.trim()) return
+    setSavingCron(true)
+    try {
+      await api.jobs.update(editing.name, { cron_expression: cronInput.trim() })
+      await refresh()
+      closeEdit()
+    } catch {
+      /* keep modal open so the user can retry */
+    } finally {
+      setSavingCron(false)
+    }
+  }, [editing, cronInput, refresh, closeEdit])
 
   const openDetail = useCallback(async (name: string) => {
     setDetailLoading(true)
@@ -213,8 +295,11 @@ export function SchedulerOverview({ jobLabel }: { jobLabel: (name: string) => st
                 job={j}
                 jobLabel={jobLabel}
                 running={activeRuns.has(j.name)}
+                toggling={togglingJobs.has(j.name)}
                 onRun={() => handleRun(j)}
                 onDetails={() => openDetail(j.name)}
+                onToggle={() => handleToggle(j)}
+                onEditSchedule={() => openEdit(j)}
               />
             ))}
         {!loading && jobs.length === 0 && (
@@ -241,6 +326,55 @@ export function SchedulerOverview({ jobLabel }: { jobLabel: (name: string) => st
           />
         ) : null}
       </Modal>
+
+      <Modal
+        open={!!editing}
+        onClose={closeEdit}
+        title={t('schedule_modal.title')}
+        actions={
+          <>
+            <button
+              onClick={closeEdit}
+              className="px-4 py-2 text-sm border border-[var(--border-default)] rounded-lg"
+            >
+              {t('actions.cancel', { ns: 'common' })}
+            </button>
+            <button
+              onClick={saveSchedule}
+              disabled={savingCron || !cronInput.trim()}
+              className="flex items-center gap-1.5 px-4 py-2 text-sm bg-brand text-white rounded-lg disabled:opacity-50"
+            >
+              {savingCron && <Loader2 size={14} className="animate-spin" />}
+              {savingCron ? t('schedule_modal.saving') : t('actions.save', { ns: 'common' })}
+            </button>
+          </>
+        }
+      >
+        <p className="text-xs text-[var(--text-secondary)] mb-3">
+          {editing ? jobLabel(editing.name) : ''}
+        </p>
+        <label className="block text-xs font-medium mb-1">
+          {t('schedule_modal.cron_expression')}
+        </label>
+        <input
+          value={cronInput}
+          onChange={(e) => setCronInput(e.target.value)}
+          placeholder="0 * * * *"
+          className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px] font-mono focus:border-brand outline-none mb-2"
+        />
+        <p className="text-xs text-[var(--text-secondary)]">{cronToHuman(cronInput, t)}</p>
+        <div className="flex gap-2 mt-3 flex-wrap">
+          {CRON_PRESETS.map((p) => (
+            <button
+              key={p}
+              onClick={() => setCronInput(p)}
+              className="px-2 py-1 text-[11px] border border-[var(--border-default)] rounded-md hover:bg-[var(--bg-secondary)]"
+            >
+              {cronToHuman(p, t)}
+            </button>
+          ))}
+        </div>
+      </Modal>
     </section>
   )
 }
@@ -249,14 +383,20 @@ function SchedulerCard({
   job,
   jobLabel,
   running,
+  toggling,
   onRun,
   onDetails,
+  onToggle,
+  onEditSchedule,
 }: {
   job: JobSummary
   jobLabel: (name: string) => string
   running: boolean
+  toggling: boolean
   onRun: () => void
   onDetails: () => void
+  onToggle: () => void
+  onEditSchedule: () => void
 }) {
   const { t } = useTranslation('jobs')
   const status = running ? 'running' : job.last_status
@@ -268,11 +408,18 @@ function SchedulerCard({
           <div className="mt-1 flex items-center gap-1.5 flex-wrap">
             <StatusBadge status={status} />
             <BackendPill backend={job.backend} />
+            <Badge variant={job.enabled ? 'success' : 'warning'}>
+              {job.enabled ? t('job_card.actions.enable') : t('job_card.actions.disable')}
+            </Badge>
           </div>
         </div>
       </div>
 
-      <dl className="grid grid-cols-2 gap-x-2 gap-y-1.5 text-[11px] mt-1">
+      <p className="flex items-center gap-1 text-[11px] text-[var(--text-tertiary)] font-mono">
+        <Timer size={11} strokeWidth={1.8} /> {cronToHuman(job.cron, t)}
+      </p>
+
+      <dl className="grid grid-cols-2 gap-x-2 gap-y-1.5 text-[11px]">
         <dt className="text-[var(--text-tertiary)]">{t('scheduler.card.last_run')}</dt>
         <dd className="text-right text-[var(--text-secondary)] truncate">
           {timeAgo(job.last_run_at)}
@@ -287,17 +434,32 @@ function SchedulerCard({
         </dd>
       </dl>
 
-      <div className="flex gap-2 mt-1">
+      <div className="flex gap-2 mt-1 flex-wrap">
         <button
           onClick={onRun}
           disabled={running}
-          className="flex-1 flex items-center justify-center gap-1 px-2.5 py-1.5 text-xs bg-brand text-white rounded-md disabled:opacity-50"
+          className="flex-1 min-w-[6rem] flex items-center justify-center gap-1 px-2.5 py-1.5 text-xs bg-brand text-white rounded-md disabled:opacity-50"
         >
           {running ? (
             <><Loader2 size={12} className="animate-spin" /> {t('scheduler.trigger.running')}</>
           ) : (
             <><Play size={12} /> {t('job_card.actions.run_now')}</>
           )}
+        </button>
+        <button
+          onClick={onToggle}
+          disabled={toggling}
+          className="flex items-center gap-1 px-2.5 py-1.5 text-xs border border-[var(--border-default)] rounded-md hover:bg-[var(--bg-secondary)] disabled:opacity-50"
+        >
+          {job.enabled ? t('job_card.actions.disable') : t('job_card.actions.enable')}
+        </button>
+        <button
+          onClick={onEditSchedule}
+          className="flex items-center gap-1 px-2.5 py-1.5 text-xs border border-[var(--border-default)] rounded-md hover:bg-[var(--bg-secondary)]"
+          aria-label={t('job_card.actions.edit_schedule')}
+          title={t('job_card.actions.edit_schedule')}
+        >
+          <Pencil size={12} />
         </button>
         <button
           onClick={onDetails}
