@@ -53,6 +53,26 @@ export interface SimilarityFeatureBrief {
 
 export type SimilarityReasonCode = 'name_similarity' | 'schema_match' | 'distribution_match' | 'semantic_match'
 
+export interface DriftMatrixCell {
+  date: string
+  severity: string
+  psi: number | null
+}
+
+export interface DriftMatrixFeature {
+  id: string
+  name: string
+  source: string
+  daily: DriftMatrixCell[]
+}
+
+export interface DriftMatrixResponse {
+  date_range: string[]
+  features: DriftMatrixFeature[]
+  truncated: boolean
+  total_count: number
+}
+
 export const api = {
   health: () => cachedRequest<{ status: string; llm: boolean; model?: string }>('/health'),
   stats: () => cachedRequest<Record<string, number>>('/stats'),
@@ -225,6 +245,14 @@ export const api = {
       members: { spec: string; severity: string; psi: number | null; checked_at: string | null }[]
       last_check_at: string | null
     }>(`/groups/${encodeURIComponent(name)}/monitoring`),
+    /**
+     * Per-feature × per-day severity matrix for the heatmap chart.
+     * Backend caps the response at 200 features (truncated=true when above).
+     */
+    driftMatrix: (name: string, days = 30) =>
+      cachedRequest<DriftMatrixResponse>(
+        `/groups/${encodeURIComponent(name)}/drift-matrix?days=${days}`,
+      ),
     regenerateDocs: (name: string, opts: { regenerate_existing?: boolean; global_hint?: string | null } = {}) =>
       request<{ job_id: string; total: number; group: string }>(
         `/groups/${encodeURIComponent(name)}/regenerate-docs`,

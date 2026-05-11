@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Trash2, UserPlus, X, Download, Activity, HeartPulse, FileText, RefreshCw, Sparkles, AlertTriangle, Clock } from 'lucide-react'
+import { GroupDriftHeatmap } from '../components/charts/GroupDriftHeatmap'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import { api, invalidateCache } from '../api'
 import { Badge } from '../components/Badge'
@@ -510,6 +511,8 @@ function GroupMonitoringTab({ groupName }: { groupName: string }) {
           </div>
         </div>
       </div>
+
+      <GroupDriftHeatmap groupName={groupName} />
 
       <div>
         <div className="flex items-center justify-between mb-2">

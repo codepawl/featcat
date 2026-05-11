@@ -75,6 +75,12 @@
     "with_drift": "Thành viên đang drift",
     "no_drift": "Không có thành viên drift"
   },
+  "drift_heatmap": {
+    "title": "Heatmap drift ({{days}} ngày qua)",
+    "feature_col": "Feature",
+    "empty": "Nhóm này chưa có Feature nào được giám sát",
+    "truncated": "Hiển thị {{shown}} trên {{total}} Feature theo mức độ severity gần nhất. Hãy lọc hoặc tách nhóm để xem hết."
+  },
   "docs": {
     "empty": "Hãy thêm thành viên trước khi tạo lại tài liệu",
     "help": "Sinh tài liệu AI cho mọi thành viên trong nhóm. Bỏ qua các tài liệu đã có trừ khi bật regenerate.",
