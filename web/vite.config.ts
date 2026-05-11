@@ -16,7 +16,11 @@ export default defineConfig({
       output: {
         manualChunks: {
           'react-vendor': ['react', 'react-dom', 'react-router-dom'],
-          'charts': ['recharts', 'd3'],
+          // d3 split out of `charts` so the lazy-loaded Graph tab on the
+          // Similarity page actually defers its weight — pages that only
+          // use recharts (e.g. Monitoring) no longer drag d3 in too.
+          'charts': ['recharts'],
+          'd3': ['d3'],
           'motion': ['motion'],
         },
       },
