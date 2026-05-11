@@ -16,7 +16,13 @@
     "title": "Execution History",
     "filters": {
       "all_jobs": "All Jobs",
-      "all_statuses": "All Statuses"
+      "all_statuses": "All Statuses",
+      "sort": {
+        "started_desc": "Newest first",
+        "started_asc": "Oldest first",
+        "duration_desc": "Longest duration",
+        "duration_asc": "Shortest duration"
+      }
     },
     "table": {
       "job": "Job",

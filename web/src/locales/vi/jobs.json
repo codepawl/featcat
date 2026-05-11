@@ -16,7 +16,13 @@
     "title": "Lịch sử chạy",
     "filters": {
       "all_jobs": "Tất cả Job",
-      "all_statuses": "Tất cả trạng thái"
+      "all_statuses": "Tất cả trạng thái",
+      "sort": {
+        "started_desc": "Mới nhất trước",
+        "started_asc": "Cũ nhất trước",
+        "duration_desc": "Thời lượng dài nhất",
+        "duration_asc": "Thời lượng ngắn nhất"
+      }
     },
     "table": {
       "job": "Job",

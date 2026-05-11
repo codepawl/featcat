@@ -1,105 +1,78 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { TFunction } from 'i18next'
-import { Play, Timer, Loader2 } from 'lucide-react'
-import { api, invalidateCache, timeAgo } from '../api'
+import { api } from '../api'
 import { Badge } from '../components/Badge'
-import { Modal } from '../components/Modal'
 import { Skeleton } from '../components/Skeleton'
 import { SchedulerOverview } from '../components/SchedulerOverview'
 
-function cronToHuman(cron: string, t: TFunction<'jobs'>): string {
-  const parts = cron.trim().split(/\s+/)
-  if (parts.length < 5) return cron
-  const [min, hr, dom, , dow] = parts
-  if (min.startsWith('*/')) return t('cron_human.every_n_minutes', { n: min.slice(2) })
-  if (hr.startsWith('*/')) return t('cron_human.every_n_hours', { n: hr.slice(2) })
-  if (dow !== '*' && dom === '*') {
-    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-    const dayKey = days[+dow] || dow
-    return t('cron_human.weekly_on', { day: t(`cron_human.days.${dayKey}`, { defaultValue: dayKey }), time: `${hr.padStart(2, '0')}:${min.padStart(2, '0')}` })
-  }
-  if (dom === '*' && hr !== '*') return t('cron_human.daily_at', { time: `${hr.padStart(2, '0')}:${min.padStart(2, '0')}` })
-  return cron
+type JobLogRow = {
+  job_name: string
+  status: string
+  started_at: string | null
+  finished_at: string | null
+  duration_seconds: number | null
+  result_summary: unknown
+  error_message: string | null
+  triggered_by: string
 }
+
+type SortKey = 'started_desc' | 'started_asc' | 'duration_desc' | 'duration_asc'
+const SORT_OPTIONS: readonly SortKey[] = ['started_desc', 'started_asc', 'duration_desc', 'duration_asc']
 
 export function Jobs() {
   const { t } = useTranslation('jobs')
-  const [jobs, setJobs] = useState<any[]>([])
-  const [logs, setLogs] = useState<any[]>([])
+  const [logs, setLogs] = useState<JobLogRow[]>([])
   const [loading, setLoading] = useState(true)
   const [filterJob, setFilterJob] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
+  const [sort, setSort] = useState<SortKey>('started_desc')
   const [expanded, setExpanded] = useState<number | null>(null)
-  const [scheduleModal, setScheduleModal] = useState<any>(null)
-  const [cronInput, setCronInput] = useState('')
-  const [saving, setSaving] = useState(false)
   const [page, setPage] = useState(0)
-  const [runningJob, setRunningJob] = useState<string | null>(null)
 
-  const load = () => {
+  useEffect(() => {
     setLoading(true)
-    Promise.all([api.jobs.list(), api.jobs.logs({ limit: '500' })])
-      .then(([j, l]) => {
-        setJobs(Array.isArray(j) ? j : [])
-        setLogs(Array.isArray(l) ? l : [])
-      })
+    api.jobs
+      .logs({ limit: '500' })
+      .then((l) => setLogs(Array.isArray(l) ? (l as JobLogRow[]) : []))
       .finally(() => setLoading(false))
-  }
+  }, [])
 
-  useEffect(() => { load() }, [])
-
-  const runJob = async (name: string) => {
-    if (runningJob) return
-    if (!window.confirm(t('confirm_run', { name }))) return
-    setRunningJob(name)
-    try {
-      await api.jobs.run(name)
-      invalidateCache('/jobs')
-      setTimeout(load, 2000)
-    } catch { /* ignore */ } finally {
-      setTimeout(() => setRunningJob(null), 2000)
-    }
-  }
-
-  const toggleJob = async (name: string, enabled: boolean) => {
-    try {
-      await api.jobs.update(name, { enabled })
-      invalidateCache('/jobs')
-      load()
-    } catch { /* ignore */ }
-  }
-
-  const saveSchedule = async () => {
-    if (!scheduleModal || !cronInput) return
-    setSaving(true)
-    try {
-      await api.jobs.update(scheduleModal.job_name, { cron_expression: cronInput })
-      invalidateCache('/jobs')
-      setScheduleModal(null)
-      load()
-    } catch { /* ignore */ }
-    setSaving(false)
-  }
-
-  const filtered = logs.filter((l) => {
-    if (filterJob && l.job_name !== filterJob) return false
-    if (filterStatus && l.status !== filterStatus) return false
-    return true
-  })
+  const filtered = logs
+    .filter((l) => {
+      if (filterJob && l.job_name !== filterJob) return false
+      if (filterStatus && l.status !== filterStatus) return false
+      return true
+    })
+    .slice()
+    .sort((a, b) => {
+      // null sorts last regardless of direction so blank rows don't anchor the
+      // top of the list.
+      if (sort === 'started_desc' || sort === 'started_asc') {
+        const av = a.started_at ? new Date(a.started_at).getTime() : null
+        const bv = b.started_at ? new Date(b.started_at).getTime() : null
+        if (av === null && bv === null) return 0
+        if (av === null) return 1
+        if (bv === null) return -1
+        return sort === 'started_desc' ? bv - av : av - bv
+      }
+      // duration
+      const av = a.duration_seconds
+      const bv = b.duration_seconds
+      if (av == null && bv == null) return 0
+      if (av == null) return 1
+      if (bv == null) return -1
+      return sort === 'duration_desc' ? bv - av : av - bv
+    })
   const PAGE_SIZE = 50
   const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
 
-  const getJobLabel = (jobName: string) => {
-    return t(`job_names.${jobName}`, { defaultValue: jobName })
-  }
+  // Job-name options for the history filter come from the log rows themselves —
+  // avoids a second round-trip to /api/jobs now that SchedulerOverview owns
+  // the canonical job list.
+  const jobOptions = [...new Set(logs.map((l) => l.job_name).filter(Boolean))].sort()
 
-  const getJobDescription = (jobName: string, fallbackDescription?: string) => {
-    return t(`job_descriptions.${jobName}`, {
-      defaultValue: fallbackDescription || t('job_card.no_description'),
-    })
-  }
+  const getJobLabel = (jobName: string) => t(`job_names.${jobName}`, { defaultValue: jobName })
 
   return (
     <div>
@@ -107,61 +80,51 @@ export function Jobs() {
         <h1 className="text-xl font-semibold">{t('page.title')}</h1>
       </div>
 
-      {/* T1.5d: unified job-status overview (cards + run-now + detail modal) */}
       <SchedulerOverview jobLabel={getJobLabel} />
-
-      {/* Job Cards */}
-      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-        {loading ? Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-32" />) :
-          jobs.map((j) => (
-            <div key={j.job_name} className="bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-xl p-4 hover:shadow-md transition-all">
-              <div className="flex justify-between items-start mb-2">
-                <span className="font-medium text-sm">{getJobLabel(j.job_name)}</span>
-                <Badge variant={j.enabled ? 'success' : 'warning'}>{j.enabled ? t('job_card.actions.enable') : t('job_card.actions.disable')}</Badge>
-              </div>
-              <p className="text-xs text-[var(--text-secondary)] mb-2">{getJobDescription(j.job_name, j.description)}</p>
-              <p className="flex items-center gap-1 text-xs text-[var(--text-tertiary)] font-mono mb-3">
-                <Timer size={12} /> {cronToHuman(j.cron_expression, t)}
-              </p>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => toggleJob(j.job_name, !j.enabled)}
-                  className="px-2.5 py-1 text-xs border border-[var(--border-default)] rounded-md hover:bg-[var(--bg-secondary)]"
-                >
-                  {j.enabled ? t('job_card.actions.disable') : t('job_card.actions.enable')}
-                </button>
-                <button
-                  onClick={() => runJob(j.job_name)}
-                  disabled={runningJob === j.job_name}
-                  className="flex items-center gap-1 px-2.5 py-1 text-xs bg-brand text-white rounded-md disabled:opacity-50"
-                >
-                  {runningJob === j.job_name ? <><Loader2 size={12} className="animate-spin" /> {t('job_card.actions.running')}</> : <><Play size={12} /> {t('job_card.actions.run_now')}</>}
-                </button>
-                <button
-                  onClick={() => { setScheduleModal(j); setCronInput(j.cron_expression); }}
-                  className="px-2.5 py-1 text-xs border border-[var(--border-default)] rounded-md hover:bg-[var(--bg-secondary)]"
-                >
-                  {t('job_card.actions.edit_schedule')}
-                </button>
-              </div>
-            </div>
-          ))}
-      </div>
 
       {/* Execution History */}
       <div className="bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-xl p-5">
         <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
           <h3 className="text-sm font-semibold">{t('history.title')}</h3>
           <div className="flex gap-2">
-            <select value={filterJob} onChange={(e) => { setFilterJob(e.target.value); setPage(0); }}
-              className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-2.5 py-1.5 text-xs">
+            <select
+              value={filterJob}
+              onChange={(e) => {
+                setFilterJob(e.target.value)
+                setPage(0)
+              }}
+              className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-2.5 py-1.5 text-xs"
+            >
               <option value="">{t('history.filters.all_jobs')}</option>
-              {jobs.map((j) => <option key={j.job_name} value={j.job_name}>{getJobLabel(j.job_name)}</option>)}
+              {jobOptions.map((j) => (
+                <option key={j} value={j}>{getJobLabel(j)}</option>
+              ))}
             </select>
-            <select value={filterStatus} onChange={(e) => { setFilterStatus(e.target.value); setPage(0); }}
-              className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-2.5 py-1.5 text-xs">
+            <select
+              value={filterStatus}
+              onChange={(e) => {
+                setFilterStatus(e.target.value)
+                setPage(0)
+              }}
+              className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-2.5 py-1.5 text-xs"
+            >
               <option value="">{t('history.filters.all_statuses')}</option>
-              {['success', 'failed', 'warning', 'running'].map((s) => <option key={s} value={s}>{s}</option>)}
+              {['success', 'failed', 'warning', 'running'].map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+            <select
+              value={sort}
+              onChange={(e) => {
+                setSort(e.target.value as SortKey)
+                setPage(0)
+              }}
+              className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-2.5 py-1.5 text-xs"
+              aria-label={t('history.table.started')}
+            >
+              {SORT_OPTIONS.map((s) => (
+                <option key={s} value={s}>{t(`history.filters.sort.${s}`)}</option>
+              ))}
             </select>
           </div>
         </div>
@@ -169,25 +132,36 @@ export function Jobs() {
         {loading ? <Skeleton className="h-40" /> : (
           <>
             <table className="w-full text-[13px]">
-              <thead><tr className="text-xs text-[var(--text-tertiary)] border-b border-[var(--border-default)]">
-                <th className="text-left py-2 font-medium">{t('history.table.job')}</th>
-                <th className="text-left py-2 font-medium">{t('history.table.status')}</th>
-                <th className="text-left py-2 font-medium">{t('history.table.started')}</th>
-                <th className="text-left py-2 font-medium">{t('history.table.duration')}</th>
-                <th className="text-left py-2 font-medium">{t('history.table.result')}</th>
-                <th className="text-left py-2 font-medium">{t('history.table.triggered_by')}</th>
-              </tr></thead>
+              <thead>
+                <tr className="text-xs text-[var(--text-tertiary)] border-b border-[var(--border-default)]">
+                  <th className="text-left py-2 font-medium">{t('history.table.job')}</th>
+                  <th className="text-left py-2 font-medium">{t('history.table.status')}</th>
+                  <th className="text-left py-2 font-medium">{t('history.table.started')}</th>
+                  <th className="text-left py-2 font-medium">{t('history.table.duration')}</th>
+                  <th className="text-left py-2 font-medium">{t('history.table.result')}</th>
+                  <th className="text-left py-2 font-medium">{t('history.table.triggered_by')}</th>
+                </tr>
+              </thead>
               <tbody>
                 {paged.map((l, i) => (
-                  <tr key={i}
+                  <tr
+                    key={i}
                     className="border-b border-[var(--border-subtle)] cursor-pointer hover:bg-[var(--bg-secondary)] transition-colors"
                     onClick={() => setExpanded(expanded === i ? null : i)}
                   >
                     <td className="py-2 font-medium">{getJobLabel(l.job_name)}</td>
                     <td className="py-2"><Badge variant={l.status}>{l.status}</Badge></td>
-                    <td className="py-2 text-[var(--text-secondary)]">{l.started_at ? new Date(l.started_at).toLocaleString() : '-'}</td>
-                    <td className="py-2 font-mono text-xs">{l.duration_seconds != null ? `${l.duration_seconds.toFixed(1)}s` : '-'}</td>
-                    <td className="py-2 text-xs text-[var(--text-secondary)] max-w-[200px] truncate">{typeof l.result_summary === 'string' ? l.result_summary : JSON.stringify(l.result_summary || '')}</td>
+                    <td className="py-2 text-[var(--text-secondary)]">
+                      {l.started_at ? new Date(l.started_at).toLocaleString() : '-'}
+                    </td>
+                    <td className="py-2 font-mono text-xs">
+                      {l.duration_seconds != null ? `${l.duration_seconds.toFixed(1)}s` : '-'}
+                    </td>
+                    <td className="py-2 text-xs text-[var(--text-secondary)] max-w-[200px] truncate">
+                      {typeof l.result_summary === 'string'
+                        ? l.result_summary
+                        : JSON.stringify(l.result_summary || '')}
+                    </td>
                     <td className="py-2 text-xs text-[var(--text-tertiary)]">{l.triggered_by}</td>
                   </tr>
                 ))}
@@ -205,36 +179,28 @@ export function Jobs() {
 
             {totalPages > 1 && (
               <div className="flex gap-1 justify-center mt-4">
-                <button disabled={page === 0} onClick={() => setPage((p) => p - 1)} className="px-3 py-1.5 text-xs rounded-md border border-[var(--border-default)] bg-[var(--bg-primary)] disabled:opacity-40">{t('actions.previous', { ns: 'common' })}</button>
-                <span className="px-3 py-1.5 text-xs text-[var(--text-secondary)]">{page + 1} / {totalPages}</span>
-                <button disabled={page >= totalPages - 1} onClick={() => setPage((p) => p + 1)} className="px-3 py-1.5 text-xs rounded-md border border-[var(--border-default)] bg-[var(--bg-primary)] disabled:opacity-40">{t('actions.next', { ns: 'common' })}</button>
+                <button
+                  disabled={page === 0}
+                  onClick={() => setPage((p) => p - 1)}
+                  className="px-3 py-1.5 text-xs rounded-md border border-[var(--border-default)] bg-[var(--bg-primary)] disabled:opacity-40"
+                >
+                  {t('actions.previous', { ns: 'common' })}
+                </button>
+                <span className="px-3 py-1.5 text-xs text-[var(--text-secondary)]">
+                  {page + 1} / {totalPages}
+                </span>
+                <button
+                  disabled={page >= totalPages - 1}
+                  onClick={() => setPage((p) => p + 1)}
+                  className="px-3 py-1.5 text-xs rounded-md border border-[var(--border-default)] bg-[var(--bg-primary)] disabled:opacity-40"
+                >
+                  {t('actions.next', { ns: 'common' })}
+                </button>
               </div>
             )}
           </>
         )}
       </div>
-
-      {/* Schedule Modal */}
-      <Modal open={!!scheduleModal} onClose={() => setScheduleModal(null)} title={t('schedule_modal.title')} actions={
-        <>
-          <button onClick={() => setScheduleModal(null)} className="px-4 py-2 text-sm border border-[var(--border-default)] rounded-lg">{t('actions.cancel', { ns: 'common' })}</button>
-          <button onClick={saveSchedule} disabled={saving || !cronInput} className="flex items-center gap-1.5 px-4 py-2 text-sm bg-brand text-white rounded-lg disabled:opacity-50">
-            {saving && <Loader2 size={14} className="animate-spin" />}
-            {saving ? t('schedule_modal.saving') : t('actions.save', { ns: 'common' })}
-          </button>
-        </>
-      }>
-        <p className="text-xs text-[var(--text-secondary)] mb-3">{scheduleModal ? getJobLabel(scheduleModal.job_name) : ''}</p>
-        <label className="block text-xs font-medium mb-1">{t('schedule_modal.cron_expression')}</label>
-        <input value={cronInput} onChange={(e) => setCronInput(e.target.value)} placeholder="0 * * * *"
-          className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px] font-mono focus:border-brand outline-none mb-2" />
-        <p className="text-xs text-[var(--text-secondary)]">{cronToHuman(cronInput, t)}</p>
-        <div className="flex gap-2 mt-3">
-          {['0 * * * *', '0 */6 * * *', '0 2 * * *', '0 3 * * 0'].map((p) => (
-            <button key={p} onClick={() => setCronInput(p)} className="px-2 py-1 text-[11px] border border-[var(--border-default)] rounded-md hover:bg-[var(--bg-secondary)]">{cronToHuman(p, t)}</button>
-          ))}
-        </div>
-      </Modal>
     </div>
   )
 }
