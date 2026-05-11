@@ -2,17 +2,21 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
+import hashlib
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy import text
+from starlette.concurrency import run_in_threadpool
 
 from ...catalog.health import compute_health_score
 from ...catalog.usage import log_feature_usage
-from ..deps import get_db
+from ..cache import cache_get, cache_set
+from ..deps import get_db, get_llm
 
 router = APIRouter()
 
@@ -636,3 +640,228 @@ def similarity_graph(
             )
 
     return {"nodes": nodes, "edges": edges}
+
+
+# ---------------------------------------------------------------------------
+# Duplicate pairs + use-case recommendations (T-similarity-refactor)
+# ---------------------------------------------------------------------------
+
+
+class DuplicateReason(BaseModel):
+    code: Literal["name_similarity", "schema_match", "distribution_match", "semantic_match"]
+    detail: str
+
+
+class FeatureBrief(BaseModel):
+    id: str
+    name: str
+    dtype: str
+    source: str
+    has_doc: bool
+
+
+class DuplicatePair(BaseModel):
+    a: FeatureBrief
+    b: FeatureBrief
+    score: float
+    reasons: list[DuplicateReason]
+
+
+class DuplicatesResponse(BaseModel):
+    threshold: float
+    pairs: list[DuplicatePair]
+    total: int
+    cached_at: str | None = None
+    summary: str | None = None
+
+
+def _parse_source_filter(raw: str | None) -> list[str] | None:
+    if not raw:
+        return None
+    parts = [p.strip() for p in raw.split(",") if p.strip()]
+    return parts or None
+
+
+@router.get("/duplicates", response_model=DuplicatesResponse)
+def get_duplicates(
+    threshold: float = Query(0.7, ge=0.4, le=0.95),
+    limit: int = Query(100, ge=1, le=500),
+    source: str | None = Query(None, description="Comma-separated source names; both sides must match"),
+    db=Depends(get_db),  # noqa: B008
+) -> DuplicatesResponse:
+    """Return ranked pairs of features that look like duplicates.
+
+    Cross-source pairs included by default. Pass ``source=foo,bar`` to scope
+    both sides of every pair to that set.
+    """
+    sources = _parse_source_filter(source)
+    cache_key = f"duplicates:{threshold}:{','.join(sorted(sources)) if sources else '*'}:{limit}"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return DuplicatesResponse(**cached)
+
+    pairs, total, summary = db.find_duplicate_pairs(threshold=threshold, limit=limit, sources=sources)
+    payload = DuplicatesResponse(
+        threshold=threshold,
+        pairs=[DuplicatePair(**p) for p in pairs],
+        total=total,
+        cached_at=None,
+        summary=summary,
+    )
+    # Store with a fresh cached_at timestamp so subsequent cache hits surface
+    # the staleness to the UI.
+    stored = payload.model_dump()
+    stored["cached_at"] = datetime.now(timezone.utc).isoformat()
+    cache_set(cache_key, stored, ttl=300)
+    return payload
+
+
+class RecommendRequest(BaseModel):
+    use_case: str = Field(..., min_length=3, max_length=500)
+    top_k: int = Field(default=10, ge=1, le=50)
+    use_llm: bool = True
+
+
+class FeatureMatch(BaseModel):
+    feature: FeatureBrief
+    score: float
+    reason: str
+
+
+class RecommendResponse(BaseModel):
+    use_case: str
+    method: Literal["llm", "tfidf", "embedding"]
+    matches: list[FeatureMatch]
+    summary: str | None = None
+
+
+_RECOMMEND_LLM_TIMEOUT_S = 8.0
+
+
+def _feature_to_brief(feature: Any, doc_ids: set[str]) -> FeatureBrief:
+    name = feature.name
+    source = name.split(".")[0] if "." in name else ""
+    return FeatureBrief(
+        id=feature.id,
+        name=name,
+        dtype=feature.dtype or "",
+        source=source,
+        has_doc=feature.id in doc_ids,
+    )
+
+
+def _run_tfidf_recommend(db: Any, use_case: str, top_k: int) -> list[FeatureMatch]:
+    doc_ids = set(db.get_all_feature_docs().keys())
+    results = db.recommend_by_text(use_case, top_k=top_k)
+    return [
+        FeatureMatch(
+            feature=_feature_to_brief(feat, doc_ids),
+            score=round(score, 4),
+            reason=f"Keyword similarity {score:.2f}",
+        )
+        for feat, score in results
+    ]
+
+
+async def _maybe_llm_recommend(
+    db: Any, llm: Any, use_case: str, top_k: int
+) -> tuple[list[FeatureMatch], str | None] | None:
+    """Run the LLM discovery path with an 8s timeout.
+
+    Returns ``(matches, summary)`` on success, or ``None`` when the caller
+    should fall back to TF-IDF (LLM unavailable / error / timeout / no
+    matches).
+    """
+    if llm is None:
+        return None
+    from ...plugins.discovery import DiscoveryPlugin
+
+    plugin = DiscoveryPlugin()
+    try:
+        result = await asyncio.wait_for(
+            run_in_threadpool(plugin.execute, db, llm, use_case=use_case, max_features=100),
+            timeout=_RECOMMEND_LLM_TIMEOUT_S,
+        )
+    except asyncio.TimeoutError:
+        return None
+    except Exception:  # noqa: BLE001 — caller decides what to do
+        return None
+
+    if result.status != "success":
+        return None
+    existing = result.data.get("existing_features") or []
+    if not existing:
+        return None
+
+    doc_ids = set(db.get_all_feature_docs().keys())
+    matches: list[FeatureMatch] = []
+    for entry in existing[:top_k]:
+        name = entry.get("name") if isinstance(entry, dict) else None
+        if not name:
+            continue
+        feat = db.get_feature_by_name(name)
+        if feat is None:
+            continue
+        score = float(entry.get("relevance", entry.get("score", 0.0)) or 0.0)
+        reason = entry.get("reason") or "LLM ranked"
+        matches.append(
+            FeatureMatch(
+                feature=_feature_to_brief(feat, doc_ids),
+                score=round(score, 4),
+                reason=reason,
+            )
+        )
+    if not matches:
+        return None
+    summary = result.data.get("summary")
+    return matches, summary
+
+
+@router.post("/recommend", response_model=RecommendResponse)
+async def recommend_features(
+    body: RecommendRequest = Body(...),  # noqa: B008
+    db=Depends(get_db),  # noqa: B008
+    llm=Depends(get_llm),  # noqa: B008
+) -> RecommendResponse:
+    """Rank features for a natural-language use case.
+
+    Server owns the LLM-vs-TF-IDF decision end-to-end. Client sends one
+    request and renders whatever ``method`` we return — no retries.
+    """
+    use_case = body.use_case.strip()
+    cache_key = f"recommend:{hashlib.sha256(use_case.encode('utf-8')).hexdigest()[:16]}:{body.top_k}:{body.use_llm}"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return RecommendResponse(**cached)
+
+    fallback_summary: str | None = None
+    if body.use_llm and llm is not None:
+        outcome = await _maybe_llm_recommend(db, llm, use_case, body.top_k)
+        if outcome is not None:
+            matches, summary = outcome
+            response = RecommendResponse(
+                use_case=use_case,
+                method="llm",
+                matches=matches,
+                summary=summary,
+            )
+            cache_set(cache_key, response.model_dump(), ttl=600)
+            return response
+        # outcome is None → LLM was available but timed out / failed / empty.
+        # Distinguish "no matches" from "timeout/error" only loosely; the
+        # generic message below covers both.
+        fallback_summary = "LLM returned no usable matches, ranked by keyword similarity"
+    elif body.use_llm and llm is None:
+        fallback_summary = "LLM unavailable, ranked by keyword similarity"
+    else:
+        fallback_summary = "Ranked by keyword similarity (LLM bypassed)"
+
+    matches = await run_in_threadpool(_run_tfidf_recommend, db, use_case, body.top_k)
+    response = RecommendResponse(
+        use_case=use_case,
+        method="tfidf",
+        matches=matches,
+        summary=fallback_summary if matches else (fallback_summary or "No close matches in catalog"),
+    )
+    cache_set(cache_key, response.model_dump(), ttl=600)
+    return response
