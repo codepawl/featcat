@@ -17,6 +17,10 @@ interface FeatureSelectorProps {
   selected: Set<string>
   onChange: (selected: Set<string>) => void
   groupName?: string
+  /** Free-text use case sent to the recommend endpoint. Falls back to groupName when omitted. */
+  useCase?: string
+  /** Feature ids the recommend endpoint should drop (e.g. members already in the group). */
+  excludeIds?: string[]
   showAISuggest?: boolean
   maxHeight?: string
   placeholder?: string
@@ -34,6 +38,8 @@ export function FeatureSelector({
   selected,
   onChange,
   groupName,
+  useCase,
+  excludeIds,
   showAISuggest,
   maxHeight = '320px',
   placeholder,
@@ -47,7 +53,8 @@ export function FeatureSelector({
   const [llmAvailable, setLlmAvailable] = useState(false)
   const lastChecked = useRef<string | null>(null)
 
-  const enableAI = showAISuggest ?? !!groupName
+  const effectiveUseCase = useCase?.trim() || groupName?.trim() || ''
+  const enableAI = (showAISuggest ?? !!groupName) && effectiveUseCase.length >= 3
 
   useEffect(() => {
     if (enableAI) {
@@ -102,12 +109,16 @@ export function FeatureSelector({
   }
 
   const handleAISuggest = async () => {
-    if (!groupName) return
+    if (!effectiveUseCase) return
     setSuggesting(true)
     try {
-      const result = await api.ai.discover(groupName) as Record<string, unknown>
-      const existing = (result.existing_features || []) as { name: string }[]
-      const specs = existing.map(f => f.name).filter(Boolean)
+      const result = await api.features.recommend({
+        use_case: effectiveUseCase,
+        top_k: 10,
+        use_llm: true,
+        exclude_ids: excludeIds && excludeIds.length > 0 ? excludeIds : undefined,
+      })
+      const specs = result.matches.map(m => m.feature.name).filter(Boolean)
       onChange(new Set([...selected, ...specs]))
       setAiSuggested(new Set(specs))
     } catch {
