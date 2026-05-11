@@ -208,3 +208,63 @@ python scripts/import_initial.py
 # Run quality check every 6 hours
 echo "0 */6 * * * cd /path/to/project && .venv/bin/featcat monitor check --refresh-baseline >> /var/log/featcat-monitor.log 2>&1" | crontab -
 ```
+
+## Running tests against a real S3 backend
+
+`make test` runs a MinIO-testcontainer suite (`@pytest.mark.s3` tests) by
+default when Docker is available. For end-to-end confidence against your
+*actual* deployment target (AWS S3 or your internal MinIO), opt into the
+`s3_real` suite — excluded from the default run via the
+`-m "not s3_real"` addopt.
+
+### Setup
+
+1. Pick a bucket dedicated to integration tests. The suite never writes;
+   it only reads fixtures you upload yourself.
+2. Upload a small fixture set at `${BUCKET}/featcat-fixtures/`:
+
+```bash
+# Anywhere with boto3 + pyarrow installed:
+python <<PY
+import io, boto3, pyarrow as pa, pyarrow.parquet as pq
+
+ENDPOINT = "https://s3.amazonaws.com"   # or your MinIO URL
+BUCKET   = "featcat-it"                  # your test bucket
+
+s3 = boto3.client(
+    "s3",
+    endpoint_url=ENDPOINT,
+    aws_access_key_id="...",
+    aws_secret_access_key="...",
+)
+for key, data in [
+    ("featcat-fixtures/sample.parquet", {"x": [1, 2, 3], "y": [0.1, 0.2, 0.3]}),
+    ("featcat-fixtures/nested/leaf.parquet", {"k": ["a", "b"]}),
+]:
+    buf = io.BytesIO()
+    pq.write_table(pa.table(data), buf); buf.seek(0)
+    s3.put_object(Bucket=BUCKET, Key=key, Body=buf.read())
+PY
+```
+
+3. Run the suite:
+
+```bash
+FEATCAT_S3_TEST_ENDPOINT=https://s3.amazonaws.com \
+FEATCAT_S3_TEST_ACCESS_KEY=AKIA... \
+FEATCAT_S3_TEST_SECRET_KEY=... \
+FEATCAT_S3_TEST_BUCKET=featcat-it \
+    pytest -m s3_real -v
+```
+
+Without those env vars, `pytest -m s3_real` skips cleanly with a message
+naming the missing variables.
+
+### What's covered
+
+| Test | Purpose |
+|---|---|
+| `test_real_s3_schema_read` | PyArrow schema read against `${BUCKET}/featcat-fixtures/sample.parquet` |
+| `test_real_s3_discovery_recursive` | `discover_parquet_files` walks `${BUCKET}/featcat-fixtures/` and finds the parquets |
+| `test_real_s3_bad_credentials_raises` | Wrong creds surface as `OSError` (not a silent hang) |
+| `test_real_s3_unreachable_endpoint_times_out` | Bogus endpoint respects the configured `connect_timeout` (no indefinite hang) |

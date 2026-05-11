@@ -189,3 +189,74 @@ def minio_env(minio_backend: MinioBackend, monkeypatch: pytest.MonkeyPatch) -> I
     monkeypatch.setenv("FEATCAT_S3_SECRET_KEY", minio_backend.secret_key)
     monkeypatch.setenv("FEATCAT_S3_REGION", "us-east-1")
     yield minio_backend
+
+
+# ---------------------------------------------------------------------------
+# Real-endpoint S3 fixtures (Phase 6 — opt-in integration suite)
+#
+# Used by ``tests/test_s3_real.py`` for tests gated on ``@pytest.mark.s3_real``.
+# These fixtures point at a real S3 / MinIO backend the operator configures
+# out-of-band via env vars; if any of the four are missing, every dependent
+# test is skipped cleanly with a clear message naming what's missing.
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class RealS3Backend:
+    """Read-only view of a real S3 / MinIO endpoint for integration tests."""
+
+    endpoint_url: str
+    access_key: str
+    secret_key: str
+    bucket: str
+
+
+@pytest.fixture(scope="session")
+def real_s3_backend() -> Iterator[RealS3Backend]:
+    """Real-endpoint S3 backend, configured via ``FEATCAT_S3_TEST_*`` env vars.
+
+    Skips the entire dependent suite when any required env var is missing,
+    so operators only opt in by setting all four together.
+
+    Required env vars:
+        FEATCAT_S3_TEST_ENDPOINT     — e.g. http://minio.lab.fpt.internal:9000
+        FEATCAT_S3_TEST_ACCESS_KEY
+        FEATCAT_S3_TEST_SECRET_KEY
+        FEATCAT_S3_TEST_BUCKET       — must already exist; tests don't create it.
+                                       See admin-guide for fixture setup.
+    """
+    import os
+
+    required = {
+        "endpoint_url": "FEATCAT_S3_TEST_ENDPOINT",
+        "access_key": "FEATCAT_S3_TEST_ACCESS_KEY",
+        "secret_key": "FEATCAT_S3_TEST_SECRET_KEY",
+        "bucket": "FEATCAT_S3_TEST_BUCKET",
+    }
+    resolved = {field: os.environ.get(env_var) for field, env_var in required.items()}
+    missing = [env_var for field, env_var in required.items() if not resolved[field]]
+    if missing:
+        pytest.skip(f"Real S3 not configured; missing: {', '.join(missing)}")
+    # type: ignore[arg-type] — resolved values are guaranteed non-None after the
+    # missing check above, but the type checker can't see that.
+    yield RealS3Backend(**resolved)  # type: ignore[arg-type]
+
+
+@pytest.fixture()
+def real_s3_env(
+    real_s3_backend: RealS3Backend,
+    monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[RealS3Backend]:
+    """FEATCAT_S3_* env vars pointed at the real backend (via monkeypatch).
+
+    Strips any previously-set MinIO-testcontainer env state so the two
+    suites can coexist in one pytest session without env leakage.
+    """
+    # Clear any prior MinIO testcontainer state first.
+    monkeypatch.delenv("FEATCAT_S3_SESSION_TOKEN", raising=False)
+    # Then set the real-endpoint state.
+    monkeypatch.setenv("FEATCAT_S3_ENDPOINT_URL", real_s3_backend.endpoint_url)
+    monkeypatch.setenv("FEATCAT_S3_ACCESS_KEY", real_s3_backend.access_key)
+    monkeypatch.setenv("FEATCAT_S3_SECRET_KEY", real_s3_backend.secret_key)
+    monkeypatch.setenv("FEATCAT_S3_REGION", "us-east-1")
+    yield real_s3_backend

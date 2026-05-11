@@ -208,3 +208,62 @@ python scripts/import_initial.py
 # Chạy quality check mỗi 6 tiếng
 echo "0 */6 * * * cd /path/to/project && .venv/bin/featcat monitor check --refresh-baseline >> /var/log/featcat-monitor.log 2>&1" | crontab -
 ```
+
+## Chạy test với backend S3 thật
+
+`make test` mặc định chạy suite MinIO-testcontainer (`@pytest.mark.s3`)
+khi có Docker. Để xác nhận end-to-end với deployment target thật (AWS S3
+hoặc MinIO nội bộ), opt-in vào suite `s3_real` — mặc định bị loại trừ qua
+addopt `-m "not s3_real"`.
+
+### Setup
+
+1. Chọn bucket riêng cho integration test. Suite chỉ đọc, không bao giờ
+   ghi; fixture do bạn upload trước.
+2. Upload fixture nhỏ vào `${BUCKET}/featcat-fixtures/`:
+
+```bash
+# Trên máy bất kỳ có boto3 + pyarrow:
+python <<PY
+import io, boto3, pyarrow as pa, pyarrow.parquet as pq
+
+ENDPOINT = "https://s3.amazonaws.com"   # hoặc URL MinIO của bạn
+BUCKET   = "featcat-it"                  # bucket test của bạn
+
+s3 = boto3.client(
+    "s3",
+    endpoint_url=ENDPOINT,
+    aws_access_key_id="...",
+    aws_secret_access_key="...",
+)
+for key, data in [
+    ("featcat-fixtures/sample.parquet", {"x": [1, 2, 3], "y": [0.1, 0.2, 0.3]}),
+    ("featcat-fixtures/nested/leaf.parquet", {"k": ["a", "b"]}),
+]:
+    buf = io.BytesIO()
+    pq.write_table(pa.table(data), buf); buf.seek(0)
+    s3.put_object(Bucket=BUCKET, Key=key, Body=buf.read())
+PY
+```
+
+3. Chạy suite:
+
+```bash
+FEATCAT_S3_TEST_ENDPOINT=https://s3.amazonaws.com \
+FEATCAT_S3_TEST_ACCESS_KEY=AKIA... \
+FEATCAT_S3_TEST_SECRET_KEY=... \
+FEATCAT_S3_TEST_BUCKET=featcat-it \
+    pytest -m s3_real -v
+```
+
+Khi chưa đặt env vars, `pytest -m s3_real` sẽ skip cleanly với thông báo
+liệt kê các biến còn thiếu.
+
+### Phạm vi cover
+
+| Test | Mục đích |
+|---|---|
+| `test_real_s3_schema_read` | Đọc schema PyArrow từ `${BUCKET}/featcat-fixtures/sample.parquet` |
+| `test_real_s3_discovery_recursive` | `discover_parquet_files` walk `${BUCKET}/featcat-fixtures/` và tìm thấy parquet |
+| `test_real_s3_bad_credentials_raises` | Credentials sai surface ra `OSError` (không treo âm thầm) |
+| `test_real_s3_unreachable_endpoint_times_out` | Endpoint sai tuân thủ `connect_timeout` (không treo vô hạn) |

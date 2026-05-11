@@ -114,11 +114,15 @@ select = ["E", "F", "W", "I", "N", "UP", "B", "A", "SIM", "TCH"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--cov=featcat --cov-report=term-missing --cov-report=xml"
+# ``-m "not s3_real"`` excludes the opt-in real-endpoint suite from the
+# default run; opt in with ``pytest -m s3_real`` (CLI ``-m`` replaces the
+# expression from addopts, so this works).
+addopts = "--cov=featcat --cov-report=term-missing --cov-report=xml -m 'not s3_real'"
 timeout = 10
 markers = [
     "perf: opt-in performance bench (tests/perf/); requires --bench flag and live Postgres",
     "s3: requires a running Docker daemon; uses a MinIO testcontainer for end-to-end S3 reads",
+    "s3_real: opt-in; requires FEATCAT_S3_TEST_* env vars pointing at a real S3 / MinIO endpoint",
 ]
 
 [tool.mypy]
