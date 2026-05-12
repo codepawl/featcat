@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router-dom'
 import { Network, Grid3x3 } from 'lucide-react'
 import { Skeleton } from '../components/Skeleton'
+import { Tabs, type TabDefinition } from '../components/Tabs'
 
 const SimilarityGraph = lazy(() =>
   import('./similarity/SimilarityGraph').then((m) => ({ default: m.SimilarityGraph })),
@@ -26,13 +27,12 @@ export function Similarity() {
   const rawTab = searchParams.get('tab')
   const tab: SimilarityTab = isValidTab(rawTab) ? rawTab : 'graph'
 
-  const tabs = useMemo(
-    () =>
-      [
-        { id: 'graph' as const, labelKey: 'tabs.graph' as const, icon: Network },
-        { id: 'matrix' as const, labelKey: 'tabs.matrix' as const, icon: Grid3x3 },
-      ],
-    [],
+  const tabs = useMemo<TabDefinition<SimilarityTab>[]>(
+    () => [
+      { id: 'graph', label: t('tabs.graph'), icon: Network },
+      { id: 'matrix', label: t('tabs.matrix'), icon: Grid3x3 },
+    ],
+    [t],
   )
 
   const setTab = (next: SimilarityTab) => {
@@ -51,27 +51,17 @@ export function Similarity() {
         <h1 className="text-lg font-semibold text-[var(--text-primary)]">{t('page.title')}</h1>
       </div>
 
-      <div className="flex gap-1 px-4 mt-3 border-b border-[var(--border-subtle)]">
-        {tabs.map((entry) => {
-          const Icon = entry.icon
-          const active = tab === entry.id
-          return (
-            <button
-              key={entry.id}
-              type="button"
-              onClick={() => setTab(entry.id)}
-              className={`flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium border-b-2 transition-colors ${
-                active
-                  ? 'border-brand text-brand'
-                  : 'border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'
-              }`}
-              aria-current={active ? 'page' : undefined}
-            >
-              <Icon size={13} />
-              {t(entry.labelKey)}
-            </button>
-          )
-        })}
+      {/* URL sync is managed here (delete `?tab=` when on the default `graph`
+          tab) rather than via `syncToUrl` because we want a clean URL for
+          the default state. The Tabs component still handles WAI-ARIA roles
+          + keyboard navigation. */}
+      <div className="px-4 mt-3">
+        <Tabs<SimilarityTab>
+          tabs={tabs}
+          value={tab}
+          onChange={setTab}
+          size="compact"
+        />
       </div>
 
       <div className="flex-1 min-h-0">

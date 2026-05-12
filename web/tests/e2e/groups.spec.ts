@@ -40,12 +40,12 @@ test.describe('Groups', () => {
     await page.goto('/groups')
     await page.getByText('tabs-group', { exact: false }).first().click()
 
-    await expect(page.getByRole('main').getByRole('button', { name: /Members \(2\)/ })).toBeVisible()
+    await expect(page.getByRole('main').getByRole('tab', { name: /Members \(2\)/ })).toBeVisible()
 
-    await page.getByRole('main').getByRole('button', { name: /Health/ }).click()
-    await page.getByRole('main').getByRole('button', { name: /Monitoring/ }).click()
-    await page.getByRole('main').getByRole('button', { name: /Docs/ }).click()
-    await page.getByRole('main').getByRole('button', { name: /Members/ }).click()
+    await page.getByRole('main').getByRole('tab', { name: /Health/ }).click()
+    await page.getByRole('main').getByRole('tab', { name: /Monitoring/ }).click()
+    await page.getByRole('main').getByRole('tab', { name: /Docs/ }).click()
+    await page.getByRole('main').getByRole('tab', { name: /Members/ }).click()
     await expect(page.getByRole('main').getByText('device_performance.cpu_usage')).toBeVisible()
   })
 })

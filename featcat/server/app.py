@@ -31,19 +31,31 @@ async def lifespan(app: FastAPI):
     if STATIC_DIR.is_dir():
         logger.info("Static contents: %s", [p.name for p in STATIC_DIR.iterdir()])
 
-    # Try to create LLM (may fail if server not running)
+    # Try to create LLM (may fail if server not running).
+    # Wrapped in CachedLLM so plugin `generate_json` calls (Discovery,
+    # Auto-doc, NL Query, Monitoring LLM analysis) populate the shared
+    # `llm_cache` SQLite table — same wrapping the CLI does at
+    # `featcat/cli.py:_get_llm`. Streaming endpoints (AI Chat's
+    # `llm.chat(...)` and the SSE token stream) pass through unchanged,
+    # which is intentional: response freshness matters more than cache hits
+    # for interactive chat, and tool-call replies aren't deterministic on key.
     try:
         from ..llm import create_llm
+        from ..llm.cached import CachedLLM
+        from ..utils.cache import ResponseCache
 
-        llm = create_llm(
+        inner = create_llm(
             backend=settings.llm_backend,
             model=settings.llm_model,
             base_url=settings.llamacpp_url,
             timeout=settings.llm_timeout,
         )
-        app.state.llm = llm
+        cache = ResponseCache(settings.catalog_db_path)
+        app.state.llm = CachedLLM(inner, cache)
+        app.state.llm_cache = cache
     except Exception:
         app.state.llm = None
+        app.state.llm_cache = None
 
     # Start scheduler
     try:

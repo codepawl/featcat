@@ -54,6 +54,42 @@ class RemoteBackend(CatalogBackend):
         result = self._request("GET", "/api/sources")
         return [DataSource.model_validate(s) for s in result]
 
+    def update_source(
+        self,
+        name: str,
+        *,
+        description: str | None = None,
+        format: str | None = None,  # noqa: A002 — mirrors DataSource.format
+    ) -> Any:
+        body: dict[str, Any] = {}
+        if description is not None:
+            body["description"] = description
+        if format is not None:
+            body["format"] = format
+        result = self._request("PATCH", f"/api/sources/{name}", json=body)
+        return DataSource.model_validate(result)
+
+    def delete_source(self, name: str) -> int:
+        result = self._request("DELETE", f"/api/sources/{name}")
+        # Server returns {"deleted": name, "features_removed": int}; older
+        # builds returned just {"deleted": name}, so default to 0 for safety.
+        if isinstance(result, dict):
+            return int(result.get("features_removed", 0))
+        return 0
+
+    def get_source_impact(self, name: str) -> dict:
+        return self._request("GET", f"/api/sources/{name}/impact")
+
+    def list_scan_logs(self, source_id: str, limit: int = 10) -> list:
+        # Remote endpoint keys by source name (path-routable, human-friendly);
+        # we accept source_id here for ABC parity but resolve to name first
+        # so the HTTP shape stays clean.
+        sources = self.list_sources()
+        match = next((s for s in sources if s.id == source_id), None)
+        if match is None:
+            return []
+        return self._request("GET", f"/api/sources/{match.name}/scan-logs", params={"limit": limit})
+
     # --- Features ---
 
     def upsert_feature(self, feature: Any) -> Any:

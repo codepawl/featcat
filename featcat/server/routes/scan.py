@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -80,6 +82,9 @@ async def bulk_scan(body: BulkScanRequest, db=Depends(get_db)):  # noqa: B008
                 final_name = f"{source_name}_{suffix}"
                 suffix += 1
 
+            started = datetime.now(timezone.utc)
+            perf_start = time.perf_counter()
+            source: DataSource | None = None
             try:
                 source = DataSource(name=final_name, path=abs_path)
                 db.add_source(source)
@@ -99,8 +104,36 @@ async def bulk_scan(body: BulkScanRequest, db=Depends(get_db)):  # noqa: B008
                     db.upsert_feature(feature)
                     registered_features += 1
 
+                # One scan-log row per registered source. Newly-registered
+                # sources start empty, so every column counts as `added`.
+                finished = datetime.now(timezone.utc)
+                db.record_scan_log(
+                    source.id,
+                    started_at=started,
+                    finished_at=finished,
+                    duration_seconds=time.perf_counter() - perf_start,
+                    status="success",
+                    files_scanned=1,
+                    features_added=len(columns),
+                    triggered_by="api",
+                )
+
                 details.append({"file": f, "status": "registered", "feature_count": len(columns)})
             except Exception as e:  # noqa: BLE001
+                # Only audit when the source row was created — pre-add failures
+                # have no source_id to log against.
+                if source is not None and db.get_source_by_name(source.name) is not None:
+                    finished = datetime.now(timezone.utc)
+                    db.record_scan_log(
+                        source.id,
+                        started_at=started,
+                        finished_at=finished,
+                        duration_seconds=time.perf_counter() - perf_start,
+                        status="failed",
+                        files_scanned=0,
+                        error_message=str(e),
+                        triggered_by="api",
+                    )
                 details.append({"file": f, "status": "error", "feature_count": 0, "error": str(e)})
 
         return {

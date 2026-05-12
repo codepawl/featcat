@@ -1,10 +1,13 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { CheckCircle2, XCircle, Clock, RefreshCw, AlertTriangle, MessageSquare } from 'lucide-react'
+import { CheckCircle2, XCircle, Clock, AlertTriangle, MessageSquare } from 'lucide-react'
 import { api, invalidateCache, timeAgo, type ActionItem } from '../api'
-import { Skeleton } from '../components/Skeleton'
+import { FilterSelect } from '../components/filters'
 import { Modal } from '../components/Modal'
+import { PageHeader } from '../components/PageHeader'
+import { RefreshButton } from '../components/RefreshButton'
+import { Skeleton } from '../components/Skeleton'
 
 const STATUS_KEYS = ['pending', 'applied', 'dismissed', 'snoozed', 'all'] as const
 
@@ -82,44 +85,29 @@ export function Actions() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-xl font-semibold">{t('page.title')}</h1>
-          <p className="text-sm text-[var(--text-tertiary)] mt-0.5">{t('page.subtitle')}</p>
-        </div>
-        <button
-          onClick={load}
-          disabled={loading}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium border border-[var(--border-default)] rounded-lg bg-[var(--bg-primary)] hover:bg-[var(--bg-secondary)] disabled:opacity-50"
-        >
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> {t('actions_buttons.refresh')}
-        </button>
-      </div>
+      <PageHeader
+        title={t('page.title')}
+        subtitle={t('page.subtitle')}
+        size="compact"
+        actions={<RefreshButton onClick={load} loading={loading} label={t('actions_buttons.refresh')} />}
+      />
 
       <div className="flex gap-3 items-center mb-4 flex-wrap">
-        <select
+        <FilterSelect
+          ariaLabel={t('filters.status.all', { defaultValue: 'Status' })}
           value={status}
-          onChange={(e) => setStatus(e.target.value)}
-          className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px]"
-        >
-          {STATUS_KEYS.map((key) => (
-            <option key={key} value={key}>
-              {t(`filters.status.${key}`)}
-            </option>
-          ))}
-        </select>
-        <select
+          onChange={setStatus}
+          options={STATUS_KEYS.map((key) => ({ value: key, label: t(`filters.status.${key}`) }))}
+        />
+        <FilterSelect
+          ariaLabel={t('filters.all_sources')}
           value={source}
-          onChange={(e) => setSource(e.target.value)}
-          className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px]"
-        >
-          <option value="">{t('filters.all_sources')}</option>
-          {SOURCE_KEYS.map((s) => (
-            <option key={s} value={s}>
-              {t(`sources.${s}`)}
-            </option>
-          ))}
-        </select>
+          onChange={setSource}
+          options={[
+            { value: '', label: t('filters.all_sources') },
+            ...SOURCE_KEYS.map((s) => ({ value: s, label: t(`sources.${s}`) })),
+          ]}
+        />
         <span className="text-[12px] text-[var(--text-tertiary)] ml-auto">{itemsLabel}</span>
       </div>
 

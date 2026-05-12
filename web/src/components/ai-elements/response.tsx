@@ -70,20 +70,42 @@ export type ResponseProps = {
 export const Response = memo(({ children, className }: ResponseProps) => (
   <div
     className={cn(
-      'text-sm leading-relaxed',
-      '[&_p]:my-2 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0',
+      // Tighter prose styling tuned to match the visual rhythm of
+      // ChatGPT/Claude: subtler inline code (no chip-like bg), generous
+      // line-height, paragraph bottom-only spacing, ordered/unordered lists
+      // with plain markers (no background tint).
+      'text-[14px] leading-relaxed',
+      // Paragraph: bottom-only spacing keeps consecutive paragraphs from
+      // double-stacking, and the first/last neighbour rules avoid edge
+      // wobble inside a chat bubble.
+      '[&_p]:mb-3 [&_p]:mt-0 [&_p:last-child]:mb-0',
+      // Headings stay tight; sizes step down so they don't dominate a
+      // chat response (large h1s look like a marketing page).
       '[&_h1]:mt-4 [&_h1]:mb-2 [&_h1]:text-base [&_h1]:font-semibold',
-      '[&_h2]:mt-3 [&_h2]:mb-2 [&_h2]:text-sm [&_h2]:font-semibold',
-      '[&_h3]:mt-2 [&_h3]:mb-1 [&_h3]:text-sm [&_h3]:font-medium',
-      '[&_ul]:my-2 [&_ul]:ml-5 [&_ul]:list-disc',
-      '[&_ol]:my-2 [&_ol]:ml-5 [&_ol]:list-decimal',
-      '[&_li]:my-0.5',
-      '[&_pre]:my-2 [&_pre]:rounded-md [&_pre]:bg-muted/50 [&_pre]:p-3 [&_pre]:overflow-x-auto',
-      '[&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-xs',
-      '[&_pre_code]:bg-transparent [&_pre_code]:p-0',
+      '[&_h2]:mt-3 [&_h2]:mb-2 [&_h2]:text-[15px] [&_h2]:font-semibold',
+      '[&_h3]:mt-3 [&_h3]:mb-1.5 [&_h3]:text-sm [&_h3]:font-semibold',
+      // Lists: standard outside markers with comfortable spacing.
+      '[&_ul]:my-2 [&_ul]:pl-5 [&_ul]:list-disc [&_ul]:space-y-1',
+      '[&_ol]:my-2 [&_ol]:pl-5 [&_ol]:list-decimal [&_ol]:space-y-1',
+      '[&_li]:pl-1 [&_li]:marker:text-[var(--text-tertiary)]',
+      // Fenced code: muted box, no border, horizontal scroll when long.
+      '[&_pre]:my-3 [&_pre]:rounded-lg [&_pre]:bg-[var(--bg-tertiary)] [&_pre]:p-3 [&_pre]:overflow-x-auto',
+      // Inline code: subtle — uses the tertiary bg (not the brighter
+      // shadcn muted token) so it reads as text-with-tint rather than
+      // a chip/badge. Compact padding matches the surrounding line height.
+      '[&_code]:font-mono [&_code]:text-[13px] [&_code]:bg-[var(--bg-tertiary)] [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded',
+      // Code inside a fenced block strips its own bg/padding so the
+      // outer `<pre>` provides the chrome.
+      '[&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_pre_code]:rounded-none',
+      // Links keep brand color; underlining moved to hover so dense
+      // tables of links don't look noisy.
       '[&_a]:text-brand [&_a]:underline-offset-2 hover:[&_a]:underline',
       '[&_strong]:font-semibold',
-      '[&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:text-muted-foreground',
+      '[&_blockquote]:border-l-2 [&_blockquote]:border-[var(--border-default)] [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:text-[var(--text-secondary)] [&_blockquote]:my-3',
+      // Tables (GFM): scrollable in narrow viewports, subtle row dividers.
+      '[&_table]:my-3 [&_table]:w-full [&_table]:text-[13px] [&_table]:border-collapse',
+      '[&_th]:text-left [&_th]:py-1.5 [&_th]:px-2 [&_th]:border-b [&_th]:border-[var(--border-default)] [&_th]:font-medium [&_th]:text-[var(--text-tertiary)]',
+      '[&_td]:py-1.5 [&_td]:px-2 [&_td]:border-b [&_td]:border-[var(--border-subtle)]',
       className,
     )}
   >

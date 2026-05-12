@@ -32,6 +32,8 @@ coverage.xml
 # Project runtime
 catalog.db
 *.db-journal
+*.db-shm
+*.db-wal
 docs/features.md
 docs/monitoring_report.md
 .env

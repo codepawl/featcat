@@ -1,0 +1,103 @@
+{
+  "page": { "title": "Data Sources" },
+  "filters": {
+    "search_placeholder": "Search by name or path…",
+    "all_types": "All",
+    "type_local": "Local",
+    "type_s3": "S3"
+  },
+  "sort": {
+    "label": "Sort",
+    "name": "Name",
+    "feature_count": "Feature count",
+    "last_scanned": "Last scanned"
+  },
+  "list": {
+    "empty_title": "No sources yet",
+    "empty_cta": "Add your first source",
+    "feature_count": "{{count}} feature",
+    "feature_count_plural": "{{count}} features",
+    "no_match": "No sources match the current filters"
+  },
+  "row": {
+    "no_features": "Not scanned",
+    "scanned_never": "Never scanned"
+  },
+  "actions": {
+    "new_source": "Add source",
+    "scan_now": "Scan now",
+    "scanning": "Scanning…",
+    "delete": "Delete",
+    "edit": "Edit",
+    "scan_selected": "Scan {{count}} selected"
+  },
+  "detail": {
+    "select_hint": "Select a source to see details",
+    "loading": "Loading detail…",
+    "metadata": {
+      "path": "Path",
+      "type": "Type",
+      "format": "Format",
+      "created": "Created",
+      "updated": "Updated"
+    },
+    "stats": {
+      "features": "Features",
+      "docs_coverage": "Documented",
+      "scans": "Scans"
+    },
+    "features_section": "Extracted features",
+    "features_empty": "No features yet — click \"Scan now\" to extract.",
+    "scan_history_section": "Scan history",
+    "scan_history_empty": "No scan history yet."
+  },
+  "scan_log": {
+    "started": "Started",
+    "duration": "Duration",
+    "files": "Files",
+    "added": "Added",
+    "updated": "Updated",
+    "removed": "Removed",
+    "status": "Status",
+    "triggered_by": "Triggered by",
+    "error": "Error",
+    "status_success": "Success",
+    "status_failed": "Failed"
+  },
+  "add_modal": {
+    "title": "Add data source",
+    "fields": {
+      "name": "Name",
+      "name_placeholder": "e.g. device_performance",
+      "path": "Path",
+      "path_placeholder": "/path/to/file.parquet or s3://bucket/key.parquet",
+      "description": "Description",
+      "description_placeholder": "Optional",
+      "scan_after": "Scan immediately after adding"
+    },
+    "submit": "Add",
+    "adding": "Adding…",
+    "scanning_after_add": "Scanning after add…"
+  },
+  "delete_modal": {
+    "title": "Delete source \"{{name}}\"?",
+    "loading": "Computing impact…",
+    "body_features_one": "{{count}} feature will be removed along with its docs, baselines, and monitoring history.",
+    "body_features_other": "{{count}} features will be removed along with their docs, baselines, and monitoring history.",
+    "body_features_zero": "This source has no features yet.",
+    "body_groups": "Used by {{count}} group(s):",
+    "body_groups_none": "No groups currently use features from this source.",
+    "warning": "This action cannot be undone.",
+    "confirm": "Delete",
+    "deleting": "Deleting…"
+  },
+  "errors": {
+    "path_invalid": "Invalid path. Use an absolute local path or an s3:// URI.",
+    "name_required": "Name is required",
+    "path_required": "Path is required",
+    "add_failed": "Add source failed: {{message}}",
+    "scan_failed": "Scan failed: {{message}}",
+    "delete_failed": "Delete failed: {{message}}",
+    "load_failed": "Failed to load sources"
+  }
+}

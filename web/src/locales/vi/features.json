@@ -112,9 +112,6 @@
     },
     "edit_hint_title": "Sửa gợi ý"
   },
-  "add_source_modal": {
-    "title": "Thêm nguồn"
-  },
   "bulk_scan_modal": {
     "title": "Quét hàng loạt",
     "directory_path": "Đường dẫn thư mục",
@@ -140,7 +137,6 @@
     "generate_docs_running": "Đang tạo... ({{done}}/{{total}})",
     "bulk_scan": "Quét hàng loạt",
     "export_selected": "Xuất đã chọn ({{count}})",
-    "add_source": "Thêm nguồn",
     "history_tab": "Lịch sử ({{count}})",
     "compute_baseline": "Tính Baseline",
     "computing": "Đang tính..."

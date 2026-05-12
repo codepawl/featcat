@@ -1,9 +1,11 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { RefreshCw } from 'lucide-react'
 import { api, invalidateCache, timeAgo } from '../api'
 import { Badge } from '../components/Badge'
+import { FilterCountChip, FilterSelect } from '../components/filters'
+import { PageHeader } from '../components/PageHeader'
+import { RefreshButton } from '../components/RefreshButton'
 import { Skeleton } from '../components/Skeleton'
 
 const TYPE_COLORS: Record<string, string> = {
@@ -50,38 +52,47 @@ export function Audit() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-xl font-semibold">{t('page.title')}</h1>
-          <p className="text-sm text-[var(--text-tertiary)] mt-0.5">{t('page.subtitle')}</p>
-        </div>
-        <button onClick={load} disabled={loading} className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium border border-[var(--border-default)] rounded-lg bg-[var(--bg-primary)] hover:bg-[var(--bg-secondary)] disabled:opacity-50">
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> {t('actions.refresh', { ns: 'common' })}
-        </button>
-      </div>
+      <PageHeader
+        title={t('page.title')}
+        subtitle={t('page.subtitle')}
+        size="compact"
+        actions={<RefreshButton onClick={load} loading={loading} />}
+      />
 
       <div className="flex gap-3 items-center mb-4 flex-wrap">
-        <select value={days} onChange={e => setDays(Number(e.target.value))}
-          className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px]">
-          <option value={7}>{t('filters.last_n_days', { n: 7 })}</option>
-          <option value={30}>{t('filters.last_n_days', { n: 30 })}</option>
-          <option value={365}>{t('filters.all_time')}</option>
-        </select>
-        <select value={userFilter} onChange={e => setUserFilter(e.target.value)}
-          className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px]">
-          <option value="">{t('filters.all_users')}</option>
-          {users.map(u => <option key={u} value={u}>{u}</option>)}
-        </select>
-        <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)}
-          className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px]">
-          <option value="">{t('filters.all_types')}</option>
-          <option value="doc">{t('change_types.doc')}</option>
-          <option value="hints">{t('change_types.hints')}</option>
-          <option value="definition">{t('change_types.definition')}</option>
-          <option value="tags">{t('change_types.tags')}</option>
-          <option value="metadata">{t('change_types.metadata')}</option>
-        </select>
-        <span className="text-xs text-[var(--text-tertiary)]">{t('filters.changes_count', { count: filtered.length })}</span>
+        <FilterSelect
+          ariaLabel={t('filters.last_n_days', { n: 7 })}
+          value={String(days)}
+          onChange={(v) => setDays(Number(v))}
+          options={[
+            { value: '7', label: t('filters.last_n_days', { n: 7 }) },
+            { value: '30', label: t('filters.last_n_days', { n: 30 }) },
+            { value: '365', label: t('filters.all_time') },
+          ]}
+        />
+        <FilterSelect
+          ariaLabel={t('filters.all_users')}
+          value={userFilter}
+          onChange={setUserFilter}
+          options={[
+            { value: '', label: t('filters.all_users') },
+            ...users.map((u) => ({ value: u, label: u })),
+          ]}
+        />
+        <FilterSelect
+          ariaLabel={t('filters.all_types')}
+          value={typeFilter}
+          onChange={setTypeFilter}
+          options={[
+            { value: '', label: t('filters.all_types') },
+            { value: 'doc', label: t('change_types.doc') },
+            { value: 'hints', label: t('change_types.hints') },
+            { value: 'definition', label: t('change_types.definition') },
+            { value: 'tags', label: t('change_types.tags') },
+            { value: 'metadata', label: t('change_types.metadata') },
+          ]}
+        />
+        <FilterCountChip count={filtered.length} />
       </div>
 
       <div className="bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-xl overflow-hidden">

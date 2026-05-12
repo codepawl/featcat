@@ -8,13 +8,8 @@
     "critical": "Nghiêm trọng"
   },
   "actions": {
-    "run_check_now": "Chạy kiểm tra",
-    "checking": "Đang kiểm tra...",
     "refresh_baseline": "Làm mới Baseline",
     "export_report": "Xuất báo cáo"
-  },
-  "hints": {
-    "run_baseline_first": "Chạy 'Làm mới Baseline' trước"
   },
   "drift_table": {
     "title": "Trạng thái Drift của Feature",

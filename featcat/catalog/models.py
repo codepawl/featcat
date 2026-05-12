@@ -150,3 +150,20 @@ class ColumnInfo(BaseModel):
     column_name: str
     dtype: str
     stats: dict[str, Any] = Field(default_factory=dict)
+
+
+class ScanLog(BaseModel):
+    """Audit row for a single scan attempt against a data source."""
+
+    id: str = Field(default_factory=_new_id)
+    source_id: str
+    started_at: datetime
+    finished_at: datetime | None = None
+    duration_seconds: float | None = None
+    files_scanned: int = 0
+    features_added: int = 0
+    features_updated: int = 0
+    features_removed: int = 0
+    status: str  # "success" | "failed"
+    error_message: str | None = None
+    triggered_by: str  # "api" | "cli" | "scheduler"

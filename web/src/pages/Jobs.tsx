@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api'
 import { Badge } from '../components/Badge'
+import { PageHeader } from '../components/PageHeader'
 import { Skeleton } from '../components/Skeleton'
 import { SchedulerOverview } from '../components/SchedulerOverview'
 
@@ -76,9 +77,7 @@ export function Jobs() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-xl font-semibold">{t('page.title')}</h1>
-      </div>
+      <PageHeader title={t('page.title')} size="compact" />
 
       <SchedulerOverview jobLabel={getJobLabel} />
 

@@ -1,11 +1,15 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Layers, FileText, AlertTriangle, HardDrive, RefreshCw, HeartPulse, ShieldCheck } from 'lucide-react'
+import { Layers, FileText, AlertTriangle, HardDrive, HeartPulse, ShieldCheck } from 'lucide-react'
 import { api, invalidateCache, timeAgo } from '../api'
 import { MetricCard } from '../components/MetricCard'
 import { Badge } from '../components/Badge'
 import { Skeleton } from '../components/Skeleton'
+import { PageHeader } from '../components/PageHeader'
+import { RefreshButton } from '../components/RefreshButton'
+import { EmptyState } from '../components/EmptyState'
+import { SegmentedBar } from '../components/SegmentedBar'
 import { DocDebtHeatmap } from '../components/charts/DocDebtHeatmap'
 import { DataSourceNodes } from '../components/charts/DataSourceNodes'
 import { DriftRateTrend } from '../components/charts/DriftRateTrend'
@@ -97,10 +101,11 @@ export function Dashboard() {
 
   if (error) {
     return (
-      <div className="text-center py-20">
-        <p className="text-[var(--danger)] mb-4">{t('fetch_failed', { ns: 'errors' })}</p>
-        <button onClick={load} className="px-4 py-2 bg-brand text-white rounded-lg text-sm">{t('actions.retry', { ns: 'common' })}</button>
-      </div>
+      <EmptyState
+        variant="error"
+        title={t('fetch_failed', { ns: 'errors' })}
+        action={{ label: t('actions.retry', { ns: 'common' }), onClick: load }}
+      />
     )
   }
 
@@ -117,13 +122,7 @@ export function Dashboard() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-semibold">{t('page.title')}</h1>
-        <button onClick={load} disabled={loading} className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium border border-[var(--border-default)] rounded-lg bg-[var(--bg-primary)] hover:bg-[var(--bg-secondary)] disabled:opacity-50">
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          {t('actions.refresh', { ns: 'common' })}
-        </button>
-      </div>
+      <PageHeader title={t('page.title')} actions={<RefreshButton onClick={load} loading={loading} />} />
 
       {/* Section 1: Catalog Overview */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -163,15 +162,16 @@ export function Dashboard() {
             <h3 className="text-sm font-semibold">{t('health_card.title')}</h3>
             <span className="ml-auto text-2xl font-semibold">{healthSummary.average_score}<span className="text-sm font-normal text-[var(--text-tertiary)]">{t('health_card.of_100')}</span></span>
           </div>
-          <div className="flex items-center gap-1 h-4 rounded-full overflow-hidden mb-2">
-            {(['A', 'B', 'C', 'D'] as const).map(g => {
-              const count = healthSummary.grade_distribution[g] || 0
-              const total = Object.values(healthSummary.grade_distribution).reduce((a, b) => a + b, 0)
-              const pct = total > 0 ? (count / total) * 100 : 0
-              if (pct === 0) return null
-              const bg = { A: 'bg-green-500', B: 'bg-teal-500', C: 'bg-amber-500', D: 'bg-red-500' }[g]
-              return <div key={g} className={`h-full ${bg}`} style={{ width: `${pct}%` }} />
-            })}
+          <div className="mb-2">
+            <SegmentedBar
+              ariaLabel={t('health_card.title')}
+              height={16}
+              segments={(['A', 'B', 'C', 'D'] as const).map((g) => ({
+                value: healthSummary.grade_distribution[g] || 0,
+                color: { A: 'bg-green-500', B: 'bg-teal-500', C: 'bg-amber-500', D: 'bg-red-500' }[g],
+                label: `${g}: ${healthSummary.grade_distribution[g] || 0}`,
+              }))}
+            />
           </div>
           <div className="flex gap-4 text-xs text-[var(--text-secondary)]">
             {(['A', 'B', 'C', 'D'] as const).map(g => {
@@ -199,23 +199,17 @@ export function Dashboard() {
             const total = STATUS_ORDER.reduce((a, s) => a + statusCounts[s], 0)
             return (
               <>
-                <div className="flex items-center gap-1 h-4 rounded-full overflow-hidden mb-2 bg-[var(--bg-tertiary)]">
-                  {STATUS_ORDER.map(s => {
-                    const count = statusCounts[s]
-                    const pct = total > 0 ? (count / total) * 100 : 0
-                    if (pct === 0) return null
-                    return (
-                      <button
-                        key={s}
-                        type="button"
-                        onClick={() => navigate(`/features?status=${s}`)}
-                        title={t(`certification_card.status_tooltip.${s}`, { count })}
-                        aria-label={t(`certification_card.status_tooltip.${s}`, { count })}
-                        className={`h-full ${STATUS_BAR_BG[s]} transition-opacity hover:opacity-80 cursor-pointer`}
-                        style={{ width: `${pct}%` }}
-                      />
-                    )
-                  })}
+                <div className="mb-2">
+                  <SegmentedBar
+                    ariaLabel={t('certification_card.title')}
+                    height={16}
+                    segments={STATUS_ORDER.map((s) => ({
+                      value: statusCounts[s],
+                      color: STATUS_BAR_BG[s],
+                      label: t(`certification_card.status_tooltip.${s}`, { count: statusCounts[s] }),
+                      onClick: () => navigate(`/features?status=${s}`),
+                    }))}
+                  />
                 </div>
                 <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--text-secondary)]">
                   {STATUS_ORDER.map(s => (
