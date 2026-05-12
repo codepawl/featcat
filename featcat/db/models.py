@@ -201,6 +201,30 @@ class FeatureGroupMember(Base):
     added_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
 
 
+class FeatureGroupVersion(Base):
+    """Frozen snapshot of a group's members for reproducibility.
+
+    Stored as JSON (snapshot_json) so re-derivation is impossible after
+    freeze: a model trained on version N can always rebuild the exact
+    feature manifest, even if the underlying features have since changed
+    or been deleted.
+    """
+
+    __tablename__ = "feature_group_versions"
+    __table_args__ = (
+        UniqueConstraint("group_id", "version_number", name="uq_fgv_group_version"),
+        Index("idx_fgv_group_version", "group_id", "version_number"),
+    )
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    group_id: Mapped[str] = mapped_column(Text, ForeignKey("feature_groups.id", ondelete="CASCADE"), nullable=False)
+    version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    snapshot_json: Mapped[str] = mapped_column(Text, nullable=False)
+    note: Mapped[str] = mapped_column(Text, default="", server_default="")
+    frozen_by: Mapped[str] = mapped_column(Text, default="", server_default="")
+    frozen_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+
+
 class UsageLog(Base):
     __tablename__ = "usage_log"
     __table_args__ = (

@@ -50,7 +50,27 @@
     "members": "Thành viên",
     "health": "Sức khỏe",
     "monitoring": "Giám sát",
+    "versions": "Phiên bản",
     "docs": "Tài liệu"
+  },
+  "versions": {
+    "help": "Một phiên bản đã đóng băng (frozen) chụp lại từng thành viên với dtype, definition và source path. Chạy lại pipeline trên cùng nguồn dữ liệu sẽ tái tạo manifest feature giống hệt.",
+    "freeze_button": "Đóng băng trạng thái hiện tại",
+    "empty_group": "Hãy thêm thành viên trước khi đóng băng phiên bản",
+    "empty_state": "Chưa có phiên bản nào — bấm \"Đóng băng trạng thái hiện tại\" để tạo v1",
+    "member_count_one": "{{count}} thành viên",
+    "member_count_other": "{{count}} thành viên",
+    "export": "Xuất",
+    "export_json": "JSON",
+    "export_csv": "CSV",
+    "export_parquet": "Parquet",
+    "freeze_modal_title": "Đóng băng \"{{group}}\"",
+    "freeze_modal_help_one": "Chụp ảnh {{count}} thành viên thành phiên bản mới. Các thay đổi sau đó của nhóm không ảnh hưởng đến snapshot này.",
+    "freeze_modal_help_other": "Chụp ảnh {{count}} thành viên thành phiên bản mới. Các thay đổi sau đó của nhóm không ảnh hưởng đến snapshot này.",
+    "note_label": "Ghi chú (tùy chọn)",
+    "note_placeholder": "ví dụ: baseline trước mùa lễ",
+    "freeze_confirm": "Đóng băng",
+    "freezing": "Đang đóng băng…"
   },
   "health": {
     "empty": "Chưa có thành viên để đánh giá",
