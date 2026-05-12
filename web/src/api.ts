@@ -43,6 +43,70 @@ export function invalidateCache(prefix?: string) {
   }
 }
 
+// --- Sources ---
+
+export interface DataSourceDTO {
+  id: string
+  name: string
+  path: string
+  storage_type: 'local' | 's3'
+  format: string
+  description: string
+  created_at: string
+  updated_at: string
+}
+
+export interface SourceCreate {
+  name: string
+  path: string
+  format?: string
+  description?: string
+  // storage_type intentionally omitted — server auto-derives from path scheme.
+}
+
+export interface SourceUpdate {
+  description?: string
+  format?: string
+}
+
+export interface SourceImpactGroup {
+  name: string
+  feature_count: number
+}
+
+export interface SourceImpact {
+  features_count: number
+  groups: SourceImpactGroup[]
+}
+
+export interface ScanResult {
+  source: string
+  features_registered: number
+  features_added: number
+  features_updated: number
+  scan_log_id: string
+}
+
+export interface DeleteSourceResult {
+  deleted: string
+  features_removed: number
+}
+
+export interface ScanLog {
+  id: string
+  source_id: string
+  started_at: string
+  finished_at: string | null
+  duration_seconds: number | null
+  files_scanned: number
+  features_added: number
+  features_updated: number
+  features_removed: number
+  status: 'success' | 'failed'
+  error_message: string | null
+  triggered_by: 'api' | 'cli' | 'scheduler'
+}
+
 export interface SimilarityFeatureBrief {
   id: string
   name: string
@@ -113,10 +177,23 @@ export const api = {
   docDebt: () => cachedRequest<{ owner: string; source: string; total: number; undocumented: number; pct_undocumented: number }[]>('/stats/doc-debt'),
   statsBySource: () => cachedRequest<{ source_name: string; path: string; feature_count: number; documented_count: number; drift_alerts: number; critical_alerts: number; last_scanned: string | null; top_drifting_feature: string | null }[]>('/stats/by-source'),
   sources: {
-    list: () => cachedRequest<any[]>('/sources'),
-    get: (name: string) => cachedRequest<any>(`/sources/${encodeURIComponent(name)}`),
-    add: (data: Record<string, any>) => request<any>('/sources', { method: 'POST', body: JSON.stringify(data) }),
-    scan: (name: string) => request<any>(`/sources/${encodeURIComponent(name)}/scan`, { method: 'POST' }),
+    list: () => cachedRequest<DataSourceDTO[]>('/sources'),
+    get: (name: string) => cachedRequest<DataSourceDTO>(`/sources/${encodeURIComponent(name)}`),
+    add: (data: SourceCreate | Record<string, unknown>) =>
+      request<DataSourceDTO>('/sources', { method: 'POST', body: JSON.stringify(data) }),
+    update: (name: string, data: SourceUpdate) =>
+      request<DataSourceDTO>(`/sources/${encodeURIComponent(name)}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }),
+    delete: (name: string) =>
+      request<DeleteSourceResult>(`/sources/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+    scan: (name: string) =>
+      request<ScanResult>(`/sources/${encodeURIComponent(name)}/scan`, { method: 'POST' }),
+    impact: (name: string) =>
+      cachedRequest<SourceImpact>(`/sources/${encodeURIComponent(name)}/impact`),
+    scanLogs: (name: string, limit = 10) =>
+      cachedRequest<ScanLog[]>(`/sources/${encodeURIComponent(name)}/scan-logs?limit=${limit}`),
   },
   features: {
     list: (params?: Record<string, string>) => {

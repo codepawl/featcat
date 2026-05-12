@@ -298,6 +298,93 @@ class CatalogBackend(ABC):
     def get_source_by_path(self, path: str) -> Any | None:
         """Look up a data source by its file path."""
 
+    # --- Source mutations + scan history ---
+
+    def update_source(
+        self,
+        name: str,
+        *,
+        description: str | None = None,
+        format: str | None = None,  # noqa: A002 — mirrors DataSource.format
+    ) -> Any:
+        """Update mutable fields on a registered source. Currently
+        ``description`` and ``format`` only — ``name``, ``path`` and
+        ``storage_type`` are immutable (renaming a source would invalidate
+        every dependent feature's name prefix and is intentionally deferred).
+
+        Default no-op so backends without persistence still satisfy the
+        interface; LocalBackend overrides with a real UPDATE.
+        """
+        del description, format
+        raise NotImplementedError(f"{type(self).__name__} does not support update_source ({name!r})")
+
+    def delete_source(self, name: str) -> int:
+        """Hard-delete a source and cascade-remove its features.
+
+        Cleans up every dependent row (features and their child docs,
+        baselines, monitoring checks, usage logs, group memberships,
+        lineage edges, action items) before dropping the source. Returns
+        the number of features removed. Raises ``KeyError`` if the source
+        doesn't exist.
+
+        Default raises NotImplementedError; LocalBackend overrides.
+        """
+        raise NotImplementedError(f"{type(self).__name__} does not support delete_source ({name!r})")
+
+    def get_source_impact(self, name: str) -> dict:
+        """Pre-delete impact summary: ``{features_count, groups: [{name, feature_count}]}``.
+
+        Drives the delete-confirmation dialog. Default returns zeros so
+        backends without persistence don't block the interface; LocalBackend
+        overrides.
+        """
+        del name
+        return {"features_count": 0, "groups": []}
+
+    def record_scan_log(
+        self,
+        source_id: str,
+        *,
+        started_at: Any,
+        finished_at: Any,
+        duration_seconds: float,
+        status: str,
+        files_scanned: int = 0,
+        features_added: int = 0,
+        features_updated: int = 0,
+        features_removed: int = 0,
+        error_message: str | None = None,
+        triggered_by: str = "api",
+    ) -> str:
+        """Persist one scan-attempt audit row. Returns the new log id.
+
+        Default no-op (returns ``""``) so backends without persistence
+        cleanly satisfy the interface; LocalBackend overrides.
+        """
+        del (
+            source_id,
+            started_at,
+            finished_at,
+            duration_seconds,
+            status,
+            files_scanned,
+            features_added,
+            features_updated,
+            features_removed,
+            error_message,
+            triggered_by,
+        )
+        return ""
+
+    def list_scan_logs(self, source_id: str, limit: int = 10) -> list:
+        """Return scan-attempt rows for a source, newest first.
+
+        Default empty so backends without persistence cleanly satisfy the
+        interface; LocalBackend overrides.
+        """
+        del source_id, limit
+        return []
+
     # --- Feature Groups ---
 
     @abstractmethod

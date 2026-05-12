@@ -7,6 +7,7 @@ import viSidebar from '../locales/vi/sidebar.json'
 import viDashboard from '../locales/vi/dashboard.json'
 import viFeatures from '../locales/vi/features.json'
 import viGroups from '../locales/vi/groups.json'
+import viSources from '../locales/vi/sources.json'
 import viSimilarity from '../locales/vi/similarity.json'
 import viLineage from '../locales/vi/lineage.json'
 import viAudit from '../locales/vi/audit.json'
@@ -26,6 +27,7 @@ import enSidebar from '../locales/en/sidebar.json'
 import enDashboard from '../locales/en/dashboard.json'
 import enFeatures from '../locales/en/features.json'
 import enGroups from '../locales/en/groups.json'
+import enSources from '../locales/en/sources.json'
 import enSimilarity from '../locales/en/similarity.json'
 import enLineage from '../locales/en/lineage.json'
 import enAudit from '../locales/en/audit.json'
@@ -55,6 +57,7 @@ const resources = {
     dashboard: viDashboard,
     features: viFeatures,
     groups: viGroups,
+    sources: viSources,
     similarity: viSimilarity,
     lineage: viLineage,
     audit: viAudit,
@@ -75,6 +78,7 @@ const resources = {
     dashboard: enDashboard,
     features: enFeatures,
     groups: enGroups,
+    sources: enSources,
     similarity: enSimilarity,
     lineage: enLineage,
     audit: enAudit,

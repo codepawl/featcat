@@ -135,6 +135,33 @@ class MonitoringBaseline(Base):
     computed_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
 
 
+class ScanLog(Base):
+    """Audit row written each time a data source is scanned.
+
+    One row per scan attempt (success or failure). Cascade-deletes with the
+    parent source so the source detail UI's "scan history" section never
+    surfaces orphaned rows. Distinct from ``job_logs`` — that table tracks
+    APScheduler-driven jobs; this one tracks per-source scan operations
+    triggered ad-hoc from the UI/CLI.
+    """
+
+    __tablename__ = "scan_logs"
+    __table_args__ = (Index("idx_scan_logs_source_started", "source_id", "started_at"),)
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    source_id: Mapped[str] = mapped_column(Text, ForeignKey("data_sources.id", ondelete="CASCADE"), nullable=False)
+    started_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    duration_seconds: Mapped[float | None] = mapped_column(Float)
+    files_scanned: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    features_added: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    features_updated: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    features_removed: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    status: Mapped[str] = mapped_column(Text, nullable=False)  # "success" | "failed"
+    error_message: Mapped[str | None] = mapped_column(Text)
+    triggered_by: Mapped[str] = mapped_column(Text, nullable=False)  # "api" | "cli" | "scheduler"
+
+
 class JobSchedule(Base):
     __tablename__ = "job_schedules"
 
@@ -375,5 +402,6 @@ __all__ = [
     "MonitoringBaseline",
     "MonitoringCheck",
     "Notification",
+    "ScanLog",
     "UsageLog",
 ]

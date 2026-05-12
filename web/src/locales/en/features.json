@@ -112,9 +112,6 @@
     },
     "edit_hint_title": "Edit hint"
   },
-  "add_source_modal": {
-    "title": "Add Source"
-  },
   "bulk_scan_modal": {
     "title": "Bulk Scan",
     "directory_path": "Directory Path",
@@ -140,7 +137,6 @@
     "generate_docs_running": "Generating... ({{done}}/{{total}})",
     "bulk_scan": "Bulk Scan",
     "export_selected": "Export Selected ({{count}})",
-    "add_source": "Add Source",
     "history_tab": "History ({{count}})",
     "compute_baseline": "Compute Baseline",
     "computing": "Computing..."

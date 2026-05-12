@@ -1,0 +1,102 @@
+{
+  "page": { "title": "Nguồn dữ liệu" },
+  "filters": {
+    "search_placeholder": "Tìm theo tên hoặc đường dẫn…",
+    "all_types": "Tất cả",
+    "type_local": "Local",
+    "type_s3": "S3"
+  },
+  "sort": {
+    "label": "Sắp xếp",
+    "name": "Tên",
+    "feature_count": "Số Feature",
+    "last_scanned": "Quét gần nhất"
+  },
+  "list": {
+    "empty_title": "Chưa có nguồn nào",
+    "empty_cta": "Thêm nguồn đầu tiên",
+    "feature_count": "{{count}} feature",
+    "no_match": "Không có nguồn nào khớp với bộ lọc"
+  },
+  "row": {
+    "no_features": "Chưa quét",
+    "scanned_never": "Chưa quét"
+  },
+  "actions": {
+    "new_source": "Thêm nguồn",
+    "scan_now": "Quét ngay",
+    "scanning": "Đang quét…",
+    "delete": "Xóa",
+    "edit": "Sửa",
+    "scan_selected": "Quét {{count}} đã chọn"
+  },
+  "detail": {
+    "select_hint": "Chọn một nguồn để xem chi tiết",
+    "loading": "Đang tải chi tiết…",
+    "metadata": {
+      "path": "Đường dẫn",
+      "type": "Loại",
+      "format": "Định dạng",
+      "created": "Tạo lúc",
+      "updated": "Cập nhật"
+    },
+    "stats": {
+      "features": "Feature",
+      "docs_coverage": "Có tài liệu",
+      "scans": "Lần quét"
+    },
+    "features_section": "Feature trích xuất",
+    "features_empty": "Chưa có feature nào — bấm \"Quét ngay\" để trích xuất.",
+    "scan_history_section": "Lịch sử quét",
+    "scan_history_empty": "Chưa có lịch sử quét."
+  },
+  "scan_log": {
+    "started": "Bắt đầu",
+    "duration": "Thời lượng",
+    "files": "Tệp",
+    "added": "Thêm",
+    "updated": "Cập nhật",
+    "removed": "Xóa",
+    "status": "Trạng thái",
+    "triggered_by": "Kích hoạt bởi",
+    "error": "Lỗi",
+    "status_success": "Thành công",
+    "status_failed": "Thất bại"
+  },
+  "add_modal": {
+    "title": "Thêm nguồn dữ liệu",
+    "fields": {
+      "name": "Tên",
+      "name_placeholder": "vd: device_performance",
+      "path": "Đường dẫn",
+      "path_placeholder": "/path/to/file.parquet hoặc s3://bucket/key.parquet",
+      "description": "Mô tả",
+      "description_placeholder": "Tùy chọn",
+      "scan_after": "Quét ngay sau khi thêm"
+    },
+    "submit": "Thêm",
+    "adding": "Đang thêm…",
+    "scanning_after_add": "Đang quét sau khi thêm…"
+  },
+  "delete_modal": {
+    "title": "Xóa nguồn \"{{name}}\"?",
+    "loading": "Đang tính tác động…",
+    "body_features_one": "{{count}} feature sẽ bị xóa cùng các tài liệu, baseline và lịch sử giám sát.",
+    "body_features_other": "{{count}} feature sẽ bị xóa cùng các tài liệu, baseline và lịch sử giám sát.",
+    "body_features_zero": "Nguồn này chưa có feature nào.",
+    "body_groups": "Đang được dùng trong {{count}} nhóm:",
+    "body_groups_none": "Không có nhóm nào đang sử dụng feature từ nguồn này.",
+    "warning": "Hành động này không thể hoàn tác.",
+    "confirm": "Xóa",
+    "deleting": "Đang xóa…"
+  },
+  "errors": {
+    "path_invalid": "Đường dẫn không hợp lệ. Dùng đường dẫn tuyệt đối hoặc URI s3://…",
+    "name_required": "Cần nhập tên",
+    "path_required": "Cần nhập đường dẫn",
+    "add_failed": "Thêm nguồn thất bại: {{message}}",
+    "scan_failed": "Quét thất bại: {{message}}",
+    "delete_failed": "Xóa thất bại: {{message}}",
+    "load_failed": "Tải danh sách nguồn thất bại"
+  }
+}

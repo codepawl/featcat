@@ -36,7 +36,7 @@ from sqlalchemy.exc import OperationalError
 from ..db.connection import make_engine, make_session_factory, resolve_backend
 from ..db.models import Base
 from .backend import CatalogBackend
-from .models import DataSource, Feature, FeatureGroup, FeatureGroupVersion, _new_id
+from .models import DataSource, Feature, FeatureGroup, FeatureGroupVersion, ScanLog, _new_id
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -288,6 +288,169 @@ class LocalBackend(CatalogBackend):
         with self.session() as s:
             row = s.execute(text("SELECT * FROM data_sources WHERE path = :path"), {"path": path}).mappings().first()
             return DataSource(**dict(row)) if row else None
+
+    def update_source(
+        self,
+        name: str,
+        *,
+        description: str | None = None,
+        format: str | None = None,  # noqa: A002 — mirrors DataSource.format
+    ) -> DataSource:
+        """Update mutable metadata. Path/storage_type/name are immutable —
+        renaming would invalidate every dependent feature's name prefix.
+
+        Raises ``KeyError`` if the source doesn't exist; returns the
+        refreshed model on success.
+        """
+        source = self.get_source_by_name(name)
+        if source is None:
+            raise KeyError(f"Source not found: {name}")
+        sets: list[str] = []
+        params: dict[str, Any] = {"id": source.id, "now": _utcnow()}
+        if description is not None:
+            sets.append("description = :description")
+            params["description"] = description
+        if format is not None:
+            sets.append("format = :format")
+            params["format"] = format
+        if not sets:
+            return source  # no-op
+        sets.append("updated_at = :now")
+        with self.session() as s:
+            s.execute(text(f"UPDATE data_sources SET {', '.join(sets)} WHERE id = :id"), params)
+            s.commit()
+        # Re-read so caller sees the persisted row (and the new updated_at).
+        refreshed = self.get_source_by_name(name)
+        assert refreshed is not None  # we just verified existence above
+        return refreshed
+
+    def delete_source(self, name: str) -> int:
+        """Hard-delete a source and cascade-remove its features.
+
+        Reuses :meth:`bulk_delete_features` which already cleans every
+        non-cascade child table (feature_docs, monitoring_baselines,
+        monitoring_checks, usage_log) and lets the FK-cascade tables
+        (feature_versions, feature_group_members, feature_lineage,
+        action_items) clean themselves. Once features are gone the
+        ``data_sources`` row deletes cleanly. Returns the number of
+        features removed; raises ``KeyError`` if the source is missing.
+        """
+        source = self.get_source_by_name(name)
+        if source is None:
+            raise KeyError(f"Source not found: {name}")
+        with self.session() as s:
+            feature_ids = [
+                r[0]
+                for r in s.execute(
+                    text("SELECT id FROM features WHERE data_source_id = :sid"),
+                    {"sid": source.id},
+                ).all()
+            ]
+        # bulk_delete_features handles its own session + the non-cascade
+        # child cleanup. Calling it here keeps the cascade logic in one place.
+        removed = self.bulk_delete_features(feature_ids) if feature_ids else 0
+        with self.session() as s:
+            s.execute(text("DELETE FROM data_sources WHERE id = :id"), {"id": source.id})
+            s.commit()
+        return removed
+
+    def get_source_impact(self, name: str) -> dict:
+        """Compute pre-delete impact: feature count + groups using those features.
+
+        Returns ``{features_count, groups: [{name, feature_count}]}``. The
+        UI's delete-confirmation modal renders these so the user sees the
+        blast radius before confirming.
+        """
+        source = self.get_source_by_name(name)
+        if source is None:
+            return {"features_count": 0, "groups": []}
+        with self.session() as s:
+            features_count = int(
+                s.execute(
+                    text("SELECT COUNT(*) FROM features WHERE data_source_id = :sid"),
+                    {"sid": source.id},
+                ).scalar()
+                or 0
+            )
+            group_rows = (
+                s.execute(
+                    text(
+                        "SELECT g.name AS name, COUNT(*) AS feature_count "
+                        "FROM feature_group_members gm "
+                        "JOIN features f ON f.id = gm.feature_id "
+                        "JOIN feature_groups g ON g.id = gm.group_id "
+                        "WHERE f.data_source_id = :sid "
+                        "GROUP BY g.id, g.name "
+                        "ORDER BY g.name"
+                    ),
+                    {"sid": source.id},
+                )
+                .mappings()
+                .all()
+            )
+        return {
+            "features_count": features_count,
+            "groups": [{"name": r["name"], "feature_count": int(r["feature_count"])} for r in group_rows],
+        }
+
+    def record_scan_log(
+        self,
+        source_id: str,
+        *,
+        started_at: datetime,
+        finished_at: datetime,
+        duration_seconds: float,
+        status: str,
+        files_scanned: int = 0,
+        features_added: int = 0,
+        features_updated: int = 0,
+        features_removed: int = 0,
+        error_message: str | None = None,
+        triggered_by: str = "api",
+    ) -> str:
+        """Insert one scan-attempt audit row. Returns the new log id."""
+        log_id = _new_id()
+        with self.session() as s:
+            s.execute(
+                text(
+                    "INSERT INTO scan_logs (id, source_id, started_at, finished_at, "
+                    " duration_seconds, files_scanned, features_added, features_updated, "
+                    " features_removed, status, error_message, triggered_by) "
+                    "VALUES (:id, :source_id, :started_at, :finished_at, "
+                    "        :duration_seconds, :files_scanned, :features_added, "
+                    "        :features_updated, :features_removed, :status, "
+                    "        :error_message, :triggered_by)"
+                ),
+                {
+                    "id": log_id,
+                    "source_id": source_id,
+                    "started_at": started_at,
+                    "finished_at": finished_at,
+                    "duration_seconds": duration_seconds,
+                    "files_scanned": files_scanned,
+                    "features_added": features_added,
+                    "features_updated": features_updated,
+                    "features_removed": features_removed,
+                    "status": status,
+                    "error_message": error_message,
+                    "triggered_by": triggered_by,
+                },
+            )
+            s.commit()
+        return log_id
+
+    def list_scan_logs(self, source_id: str, limit: int = 10) -> list[ScanLog]:
+        """Return scan-attempt rows for a source, newest first."""
+        with self.session() as s:
+            rows = (
+                s.execute(
+                    text("SELECT * FROM scan_logs WHERE source_id = :sid ORDER BY started_at DESC LIMIT :limit"),
+                    {"sid": source_id, "limit": limit},
+                )
+                .mappings()
+                .all()
+            )
+        return [ScanLog(**dict(r)) for r in rows]
 
     # --- Features ---
 

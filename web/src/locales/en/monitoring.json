@@ -8,13 +8,8 @@
     "critical": "Critical"
   },
   "actions": {
-    "run_check_now": "Run Check Now",
-    "checking": "Checking...",
     "refresh_baseline": "Refresh Baseline",
     "export_report": "Export Report"
-  },
-  "hints": {
-    "run_baseline_first": "Run 'Refresh Baseline' first"
   },
   "drift_table": {
     "title": "Feature Drift Status",

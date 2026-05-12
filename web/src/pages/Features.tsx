@@ -1,7 +1,12 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Plus, RefreshCw, Check, AlertTriangle, Shield, FileText, FolderSearch, X, ChevronDown, ChevronRight, Pencil, Download, Tag as TagIcon, FolderPlus, Trash2 } from 'lucide-react'
+import { RefreshCw, Check, AlertTriangle, Shield, FileText, FolderSearch, X, ChevronDown, ChevronRight, Pencil, Download, Tag as TagIcon, FolderPlus, Trash2 } from 'lucide-react'
+import { PageHeader } from '../components/PageHeader'
+import { RefreshButton } from '../components/RefreshButton'
+import { Alert } from '../components/Alert'
+import { ConfirmDialog } from '../components/ConfirmDialog'
+import { FilterSelect, FilterClearLink, FilterCountChip } from '../components/filters'
 import { api, invalidateCache, timeAgo } from '../api'
 import { DataTable } from '../components/DataTable'
 import { VirtualizedTable } from '../components/VirtualizedTable'
@@ -94,7 +99,6 @@ export function Features() {
   )
   const [selectedForExport, setSelectedForExport] = useState<Set<string>>(new Set())
   const [exportOpen, setExportOpen] = useState(false)
-  const [addModalOpen, setAddModalOpen] = useState(false)
   const [scanModalOpen, setScanModalOpen] = useState(false)
   const [genModalOpen, setGenModalOpen] = useState(false)
   const [genProgress, setGenProgress] = useState<string | null>(null)
@@ -256,22 +260,6 @@ export function Features() {
 
   const undocCount = features.filter((f) => !f.has_doc).length
 
-  const handleAddSource = async (form: Record<string, string>) => {
-    try {
-      const payload: Record<string, unknown> = { path: form.path }
-      if (form.name) payload.name = form.name
-      if (form.description) payload.description = form.description
-      if (form.owner) payload.owner = form.owner
-      if (form.tags) payload.tags = form.tags.split(',').map((t: string) => t.trim())
-      const src = await api.sources.add(payload) as { name: string }
-      await api.sources.scan(src.name)
-      invalidateCache('/features')
-      invalidateCache('/sources')
-      setAddModalOpen(false)
-      load()
-    } catch { /* ignore */ }
-  }
-
   const toggleExportSelect = (name: string, e: React.MouseEvent) => {
     e.stopPropagation()
     setSelectedForExport(prev => {
@@ -402,60 +390,65 @@ export function Features() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-semibold">{t('page.title')}</h1>
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-[var(--text-tertiary)]">{t('count_label', { count: pageTotal })}</span>
-          <button onClick={load} disabled={loading} className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium border border-[var(--border-default)] rounded-lg bg-[var(--bg-primary)] hover:bg-[var(--bg-secondary)] disabled:opacity-50">
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-            {t('actions.refresh', { ns: 'common' })}
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title={t('page.title')}
+        actions={
+          <>
+            <span className="text-xs text-[var(--text-tertiary)]">{t('count_label', { count: pageTotal })}</span>
+            <RefreshButton onClick={load} loading={loading} />
+          </>
+        }
+      />
 
       <div className="flex gap-3 items-center mb-4 flex-wrap">
         <SearchInput placeholder={t('search_placeholder')} onSearch={setSearchQuery} className="w-full sm:max-w-xs" />
-        <select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)}
-          className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px]">
-          <option value="">{t('filters.all_sources')}</option>
-          {sources.map((s) => <option key={s.name} value={s.name}>{s.name}</option>)}
-        </select>
-        <select value={dtypeFilter} onChange={(e) => setDtypeFilter(e.target.value)}
-          className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px]">
-          <option value="">{t('filters.all_types')}</option>
-          <option value="int64">int64</option>
-          <option value="float64">float64</option>
-          <option value="string">string</option>
-          <option value="bool">bool</option>
-        </select>
-        <select value={healthFilter} onChange={(e) => setHealthFilter(e.target.value)}
-          className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px]">
-          <option value="">{t('filters.all_grades')}</option>
-          <option value="attention">{t('filters.needs_attention')}</option>
-          <option value="A">{t('filters.grade_only', { grade: 'A' })}</option>
-        </select>
-        <select value={statusFilter}
-          onChange={(e) => {
-            const v = e.target.value
-            setStatusFilter(isFeatureStatus(v) ? v : '')
-          }}
-          className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px]">
-          <option value="">{t('filters.all_statuses')}</option>
-          {FEATURE_STATUSES.map(s => (
-            <option key={s} value={s}>{t(`status.${s}`)}</option>
-          ))}
-        </select>
+        <FilterSelect
+          ariaLabel={t('filters.all_sources')}
+          value={sourceFilter}
+          onChange={setSourceFilter}
+          options={[
+            { value: '', label: t('filters.all_sources') },
+            ...sources.map((s) => ({ value: s.name, label: s.name })),
+          ]}
+        />
+        <FilterSelect
+          ariaLabel={t('filters.all_types')}
+          value={dtypeFilter}
+          onChange={setDtypeFilter}
+          options={[
+            { value: '', label: t('filters.all_types') },
+            { value: 'int64', label: 'int64' },
+            { value: 'float64', label: 'float64' },
+            { value: 'string', label: 'string' },
+            { value: 'bool', label: 'bool' },
+          ]}
+        />
+        <FilterSelect
+          ariaLabel={t('filters.all_grades')}
+          value={healthFilter}
+          onChange={setHealthFilter}
+          options={[
+            { value: '', label: t('filters.all_grades') },
+            { value: 'attention', label: t('filters.needs_attention') },
+            { value: 'A', label: t('filters.grade_only', { grade: 'A' }) },
+          ]}
+        />
+        <FilterSelect<FeatureStatus | ''>
+          ariaLabel={t('filters.all_statuses')}
+          value={statusFilter}
+          onChange={(v) => setStatusFilter(isFeatureStatus(v) ? v : '')}
+          options={[
+            { value: '', label: t('filters.all_statuses') },
+            ...FEATURE_STATUSES.map((s) => ({ value: s, label: t(`status.${s}`) })),
+          ]}
+        />
         <button
           onClick={() => setDocFilter(!docFilter)}
           className={`px-3 py-2 text-[13px] rounded-lg border transition-colors ${docFilter ? 'bg-brand text-white border-brand' : 'bg-[var(--bg-primary)] border-[var(--border-default)] hover:bg-[var(--bg-secondary)]'}`}
         >
           {t('actions.undocumented_only')}
         </button>
-        {hasActiveFilters && (
-          <button onClick={clearAllFilters} className="text-xs text-brand hover:underline">
-            {t('actions.clear_all_filters')}
-          </button>
-        )}
+        <FilterClearLink show={hasActiveFilters} onClick={clearAllFilters} label={t('actions.clear_all_filters')} />
         {(undocCount > 0 || genProgress) && (
           <button
             onClick={() => !genProgress && setGenModalOpen(true)}
@@ -473,29 +466,16 @@ export function Features() {
             <Download size={16} /> {t('actions.export_selected', { count: selectedForExport.size })}
           </button>
         )}
-        <button onClick={() => setAddModalOpen(true)} className="flex items-center gap-1.5 px-4 py-2 bg-brand text-white rounded-lg text-[13px] font-medium hover:bg-brand-emphasis transition-colors">
-          <Plus size={16} /> {t('actions.add_source')}
-        </button>
       </div>
 
       {bulkBanner && (
-        <div
-          role="status"
-          className={`mb-3 flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-[13px] ${
-            bulkBanner.kind === 'success'
-              ? 'border-[var(--success)]/40 bg-[var(--success)]/10 text-[var(--success)]'
-              : 'border-[var(--danger)]/40 bg-[var(--danger)]/10 text-[var(--danger)]'
-          }`}
-        >
-          <span>{bulkBanner.message}</span>
-          <button
-            onClick={() => setBulkBanner(null)}
-            className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
-            aria-label={t('actions.close', { ns: 'common' })}
-          >
-            <X size={14} />
-          </button>
-        </div>
+        <Alert
+          severity={bulkBanner.kind === 'success' ? 'success' : 'danger'}
+          message={bulkBanner.message}
+          dismissible
+          onDismiss={() => setBulkBanner(null)}
+          className="mb-3"
+        />
       )}
 
       {selectedForExport.size > 0 && (
@@ -569,7 +549,6 @@ export function Features() {
           setGenProgress(`Generating... (0/${total})`)
         }}
       />
-      <AddSourceModal open={addModalOpen} onClose={() => setAddModalOpen(false)} onSubmit={handleAddSource} />
       <BulkScanModal open={scanModalOpen} onClose={() => setScanModalOpen(false)} onDone={() => { setScanModalOpen(false); load() }} />
       <ExportModal
         open={exportOpen}
@@ -1254,42 +1233,6 @@ function GenerateDocsModal({ open, onClose, features, selectedSpecs, onStarted }
 }
 
 
-function AddSourceModal({ open, onClose, onSubmit }: { open: boolean; onClose: () => void; onSubmit: (form: Record<string, string>) => void }) {
-  const { t } = useTranslation('features')
-  const [form, setForm] = useState({ path: '', name: '', description: '', owner: '', tags: '' })
-  const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }))
-
-  return (
-    <Modal open={open} onClose={onClose} title={t('add_source_modal.title')} actions={
-      <>
-        <button onClick={onClose} className="px-4 py-2 text-sm border border-[var(--border-default)] rounded-lg">{t('actions.cancel', { ns: 'common' })}</button>
-        <button onClick={() => onSubmit(form)} disabled={!form.path} className="px-4 py-2 text-sm bg-brand text-white rounded-lg disabled:opacity-50">Add</button>
-      </>
-    }>
-      <div className="space-y-3">
-        {[
-          { k: 'path', label: 'Path', placeholder: '/path/to/data', required: true },
-          { k: 'name', label: 'Name', placeholder: 'Optional name' },
-          { k: 'description', label: 'Description', placeholder: 'Describe this source' },
-          { k: 'owner', label: 'Owner', placeholder: 'Owner name' },
-          { k: 'tags', label: 'Tags', placeholder: 'Comma-separated tags' },
-        ].map(({ k, label, placeholder, required }) => (
-          <div key={k}>
-            <label className="block text-xs font-medium mb-1">{label} {required && <span className="text-[var(--danger)]">*</span>}</label>
-            <input
-              value={form[k as keyof typeof form]}
-              onChange={(e) => set(k, e.target.value)}
-              placeholder={placeholder}
-              className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px] focus:border-brand outline-none"
-            />
-          </div>
-        ))}
-      </div>
-    </Modal>
-  )
-}
-
-
 function BulkScanModal({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: () => void }) {
   const { t } = useTranslation('features')
   const [form, setForm] = useState({ path: '', recursive: true, owner: localStorage.getItem('featcat_user') || '', dry_run: false })
@@ -1773,81 +1716,36 @@ function BulkDeleteModal({
   onConfirm: () => Promise<void>
 }) {
   const { t } = useTranslation('features')
-  const [submitting, setSubmitting] = useState(false)
-  const [acknowledged, setAcknowledged] = useState(false)
-
-  useEffect(() => {
-    if (open) {
-      setSubmitting(false)
-      setAcknowledged(false)
-    }
-  }, [open])
-
   const preview = names.slice(0, 50)
   const overflow = Math.max(0, names.length - preview.length)
 
-  const submit = async () => {
-    setSubmitting(true)
-    try {
-      await onConfirm()
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
   return (
-    <Modal
+    <ConfirmDialog
       open={open}
       onClose={onClose}
       title={t('bulk.delete_modal.title', { count: names.length })}
-      maxWidth="max-w-lg"
-      actions={
-        <>
-          <button onClick={onClose} className="px-4 py-2 text-sm border border-[var(--border-default)] rounded-lg">
-            {t('actions.cancel', { ns: 'common' })}
-          </button>
-          <button
-            onClick={submit}
-            disabled={!acknowledged || submitting || names.length === 0}
-            className="px-4 py-2 text-sm bg-[var(--danger)] text-white rounded-lg disabled:opacity-50"
-          >
-            {submitting
-              ? t('actions.loading', { ns: 'common' })
-              : t('bulk.delete_modal.confirm_button', { count: names.length })}
-          </button>
-        </>
+      warning={t('bulk.delete_modal.warning', { count: names.length })}
+      confirmLabel={t('bulk.delete_modal.confirm_button', { count: names.length })}
+      pendingLabel={t('actions.loading', { ns: 'common' })}
+      requireCheckbox={t('bulk.delete_modal.acknowledge')}
+      onConfirm={onConfirm}
+      message={
+        <div className="space-y-3">
+          <p className="text-xs text-[var(--text-tertiary)]">{t('bulk.delete_modal.cleanup_note')}</p>
+          <div className="max-h-48 overflow-y-auto overscroll-contain rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-primary)] p-2">
+            <ul className="space-y-0.5 text-[12px] font-mono">
+              {preview.map((n) => (
+                <li key={n} className="truncate">{n}</li>
+              ))}
+            </ul>
+            {overflow > 0 && (
+              <p className="mt-1 text-[11px] text-[var(--text-tertiary)]">
+                {t('bulk.delete_modal.and_more', { count: overflow })}
+              </p>
+            )}
+          </div>
+        </div>
       }
-    >
-      <div className="space-y-3">
-        <div className="flex items-start gap-2 rounded-lg border border-[var(--danger)]/40 bg-[var(--danger)]/10 px-3 py-2">
-          <AlertTriangle size={16} className="mt-0.5 shrink-0 text-[var(--danger)]" />
-          <p className="text-[13px] text-[var(--danger)]">
-            {t('bulk.delete_modal.warning', { count: names.length })}
-          </p>
-        </div>
-        <p className="text-xs text-[var(--text-tertiary)]">{t('bulk.delete_modal.cleanup_note')}</p>
-        <div className="max-h-48 overflow-y-auto overscroll-contain rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-primary)] p-2">
-          <ul className="space-y-0.5 text-[12px] font-mono">
-            {preview.map((n) => (
-              <li key={n} className="truncate">{n}</li>
-            ))}
-          </ul>
-          {overflow > 0 && (
-            <p className="mt-1 text-[11px] text-[var(--text-tertiary)]">
-              {t('bulk.delete_modal.and_more', { count: overflow })}
-            </p>
-          )}
-        </div>
-        <label className="flex items-center gap-2 text-[13px] cursor-pointer">
-          <input
-            type="checkbox"
-            checked={acknowledged}
-            onChange={(e) => setAcknowledged(e.target.checked)}
-            className="accent-accent"
-          />
-          {t('bulk.delete_modal.acknowledge')}
-        </label>
-      </div>
-    </Modal>
+    />
   )
 }

@@ -28,7 +28,9 @@
     "edit": "Edit",
     "create": "Create",
     "done": "Done",
-    "add": "Add"
+    "add": "Add",
+    "clear_all_filters": "Clear all filters",
+    "dismiss": "Dismiss"
   },
   "state": {
     "empty": "No data",

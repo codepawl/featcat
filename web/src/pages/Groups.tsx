@@ -5,11 +5,15 @@ import { GroupDriftHeatmap } from '../components/charts/GroupDriftHeatmap'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import { api, invalidateCache } from '../api'
 import { Badge } from '../components/Badge'
+import { ConfirmDialog } from '../components/ConfirmDialog'
 import { DataTable } from '../components/DataTable'
 import { ExportModal } from '../components/ExportModal'
 import { FeatureSelector, toFeatureItems } from '../components/FeatureSelector'
 import { Modal } from '../components/Modal'
+import { PageHeader } from '../components/PageHeader'
+import { SegmentedBar } from '../components/SegmentedBar'
 import { Skeleton } from '../components/Skeleton'
+import { Tabs, type TabDefinition } from '../components/Tabs'
 
 type GroupTab = 'members' | 'health' | 'monitoring' | 'docs' | 'versions'
 
@@ -46,6 +50,7 @@ export function Groups() {
   const [createOpen, setCreateOpen] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
   const [tab, setTab] = useState<GroupTab>('members')
 
   const load = () => {
@@ -68,10 +73,11 @@ export function Groups() {
       .finally(() => setDetailLoading(false))
   }
 
-  const deleteGroup = async (name: string) => {
-    if (!window.confirm(t('confirm_delete', { name }))) return
-    await api.groups.delete(name)
+  const confirmDeleteGroup = async () => {
+    if (!deleteTarget) return
+    await api.groups.delete(deleteTarget)
     invalidateCache('/groups')
+    setDeleteTarget(null)
     setSelected(null)
     setDetail(null)
     load()
@@ -97,12 +103,14 @@ export function Groups() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-semibold">{t('page.title')}</h1>
-        <button onClick={() => setCreateOpen(true)} className="flex items-center gap-1.5 px-4 py-2 bg-brand text-white rounded-lg text-[13px] font-medium hover:bg-brand-emphasis transition-colors">
-          <Plus size={16} /> {t('actions.new_group')}
-        </button>
-      </div>
+      <PageHeader
+        title={t('page.title')}
+        actions={
+          <button onClick={() => setCreateOpen(true)} className="flex items-center gap-1.5 px-4 py-2 bg-brand text-white rounded-lg text-[13px] font-medium hover:bg-brand-emphasis transition-colors">
+            <Plus size={16} /> {t('actions.new_group')}
+          </button>
+        }
+      />
 
       <div className="flex flex-col md:flex-row gap-4" style={{ minHeight: '500px' }}>
         {/* Left: group list */}
@@ -164,39 +172,25 @@ export function Groups() {
                       <Download size={14} /> {t('actions.export')}
                     </button>
                   )}
-                  <button onClick={() => deleteGroup(detail.name)} className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium border border-[var(--danger-subtle-bg)] text-[var(--danger)] rounded-lg hover:bg-[var(--danger-subtle-bg)]">
+                  <button onClick={() => setDeleteTarget(detail.name)} className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium border border-[var(--danger-subtle-bg)] text-[var(--danger)] rounded-lg hover:bg-[var(--danger-subtle-bg)]">
                     <Trash2 size={14} /> {t('actions.delete')}
                   </button>
                 </div>
               </div>
 
-              <div className="flex gap-1 mb-3 border-b border-[var(--border-subtle)]">
-                {([
-                  { id: 'members', labelKey: 'tabs.members', icon: UserPlus, withCount: true },
-                  { id: 'health', labelKey: 'tabs.health', icon: HeartPulse, withCount: false },
-                  { id: 'monitoring', labelKey: 'tabs.monitoring', icon: Activity, withCount: false },
-                  { id: 'versions', labelKey: 'tabs.versions', icon: History, withCount: false },
-                  { id: 'docs', labelKey: 'tabs.docs', icon: FileText, withCount: false },
-                ] as { id: GroupTab; labelKey: string; icon: typeof UserPlus; withCount: boolean }[]).map((entry) => {
-                  const Icon = entry.icon
-                  const label = entry.withCount
-                    ? `${t(entry.labelKey, { defaultValue: 'Members' })} (${detail.members?.length || 0})`
-                    : t(entry.labelKey, { defaultValue: entry.id })
-                  return (
-                    <button
-                      key={entry.id}
-                      onClick={() => setTab(entry.id)}
-                      className={`flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium border-b-2 transition-colors ${
-                        tab === entry.id
-                          ? 'border-brand text-brand'
-                          : 'border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'
-                      }`}
-                    >
-                      <Icon size={13} />
-                      {label}
-                    </button>
-                  )
-                })}
+              <div className="mb-3">
+                <Tabs<GroupTab>
+                  value={tab}
+                  onChange={setTab}
+                  size="compact"
+                  tabs={([
+                    { id: 'members', label: `${t('tabs.members', { defaultValue: 'Members' })} (${detail.members?.length || 0})`, icon: UserPlus },
+                    { id: 'health', label: t('tabs.health', { defaultValue: 'health' }), icon: HeartPulse },
+                    { id: 'monitoring', label: t('tabs.monitoring', { defaultValue: 'monitoring' }), icon: Activity },
+                    { id: 'versions', label: t('tabs.versions', { defaultValue: 'versions' }), icon: History },
+                    { id: 'docs', label: t('tabs.docs', { defaultValue: 'docs' }), icon: FileText },
+                  ] satisfies TabDefinition<GroupTab>[])}
+                />
               </div>
 
               {tab === 'members' && (
@@ -236,6 +230,13 @@ export function Groups() {
           groupName={detail.name}
         />
       )}
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        title={t('confirm_delete', { name: deleteTarget ?? '' })}
+        confirmLabel={t('actions.delete')}
+        onConfirm={confirmDeleteGroup}
+      />
     </div>
   )
 }
@@ -383,13 +384,16 @@ function GroupHealthTab({ groupName }: { groupName: string }) {
         </div>
         <div className="border border-[var(--border-subtle)] rounded-xl p-3">
           <div className="text-[11px] uppercase text-[var(--text-tertiary)] tracking-wide mb-2">{t('health.distribution', { defaultValue: 'Grade distribution' })}</div>
-          <div className="flex h-2.5 rounded overflow-hidden">
-            {(['A','B','C','D'] as const).map(g => {
-              const n = data.grade_distribution[g] || 0
-              const pct = (n / total) * 100
-              return pct > 0 ? <div key={g} className={GRADE_COLORS[g]} style={{ width: `${pct}%` }} title={`${g}: ${n}`} /> : null
-            })}
-          </div>
+          <SegmentedBar
+            ariaLabel={t('health.distribution', { defaultValue: 'Grade distribution' })}
+            height={4}
+            rounded={false}
+            segments={(['A', 'B', 'C', 'D'] as const).map((g) => ({
+              value: data.grade_distribution[g] || 0,
+              color: GRADE_COLORS[g],
+              label: `${g}: ${data.grade_distribution[g] || 0}`,
+            }))}
+          />
           <div className="flex gap-3 mt-2 text-[11px] text-[var(--text-secondary)] flex-wrap">
             {(['A','B','C','D'] as const).map(g => (
               <span key={g} className="flex items-center gap-1">

@@ -4,6 +4,8 @@ import { Sun, Moon, Trash2, RefreshCw } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { SUPPORTED_LANGS, type SupportedLang } from '../i18n/config'
 import { api, invalidateCache } from '../api'
+import { ConfirmDialog } from '../components/ConfirmDialog'
+import { PageHeader } from '../components/PageHeader'
 
 type Theme = 'light' | 'dark'
 
@@ -28,10 +30,7 @@ export function Settings() {
 
   return (
     <div className="max-w-[720px] space-y-4">
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold">{t('page.title')}</h1>
-        <p className="text-sm text-[var(--text-tertiary)] mt-0.5">{t('page.subtitle')}</p>
-      </div>
+      <PageHeader title={t('page.title')} subtitle={t('page.subtitle')} />
 
       <div className={CARD}>
         <h2 className="text-sm font-semibold mb-1">{t('language.title')}</h2>
@@ -120,6 +119,7 @@ function LLMCacheCard() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<'clear' | 'expired' | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [confirmClearOpen, setConfirmClearOpen] = useState(false)
 
   const load = () => {
     setLoading(true)
@@ -130,7 +130,7 @@ function LLMCacheCard() {
   useEffect(() => { load() }, [])
 
   const clear = async () => {
-    if (!window.confirm(t('llm_cache.confirm_clear', { defaultValue: 'Xóa TOÀN BỘ phản hồi LLM đã cache?' }))) return
+    setConfirmClearOpen(false)
     setBusy('clear')
     try {
       await api.admin.cacheClear()
@@ -168,11 +168,29 @@ function LLMCacheCard() {
 
       {error && <p className="text-[12px] text-[var(--danger)] mb-3">{error}</p>}
 
-      <div className="grid grid-cols-3 gap-3 mb-4">
+      <div className="grid grid-cols-3 gap-3 mb-2">
         <Stat label={t('llm_cache.total', { defaultValue: 'Total' })} value={stats?.total ?? '—'} />
         <Stat label={t('llm_cache.active', { defaultValue: 'Active' })} value={stats?.active ?? '—'} />
         <Stat label={t('llm_cache.expired', { defaultValue: 'Expired' })} value={stats?.expired ?? '—'} />
       </div>
+
+      {/* Empty-state hint distinguishes "cache hasn't been used yet" (normal)
+          from "cache is broken" (was the original bug — 0/0/0 with no
+          context). The coverage line names exactly which features write
+          to the cache so users aren't confused about why AI Chat doesn't
+          increment counters. */}
+      {stats && stats.total === 0 && !loading && (
+        <p className="text-[11px] text-[var(--text-tertiary)] italic mb-2">
+          {t('llm_cache.empty_hint', {
+            defaultValue: 'Cache trống — chưa có yêu cầu AI nào sinh kết quả cache. Dùng Discovery / Auto-doc / NL Query / Monitoring để điền cache.',
+          })}
+        </p>
+      )}
+      <p className="text-[11px] text-[var(--text-tertiary)] mb-4">
+        {t('llm_cache.coverage_hint', {
+          defaultValue: 'Áp dụng cho: Discovery, Auto-doc, NL Query, Monitoring LLM analysis. AI Chat luôn streaming nên không cache.',
+        })}
+      </p>
 
       <div className="flex gap-2">
         <button
@@ -183,13 +201,20 @@ function LLMCacheCard() {
           <Trash2 size={12} /> {busy === 'expired' ? '…' : t('llm_cache.clear_expired', { defaultValue: 'Clear expired' })}
         </button>
         <button
-          onClick={clear}
+          onClick={() => setConfirmClearOpen(true)}
           disabled={busy !== null}
           className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium border border-[var(--danger-subtle-bg)] text-[var(--danger)] rounded-lg hover:bg-[var(--danger-subtle-bg)] disabled:opacity-50"
         >
           <Trash2 size={12} /> {busy === 'clear' ? '…' : t('llm_cache.clear_all', { defaultValue: 'Clear all' })}
         </button>
       </div>
+      <ConfirmDialog
+        open={confirmClearOpen}
+        onClose={() => setConfirmClearOpen(false)}
+        title={t('llm_cache.confirm_clear', { defaultValue: 'Xóa TOÀN BỘ phản hồi LLM đã cache?' })}
+        confirmLabel={t('llm_cache.clear_all', { defaultValue: 'Clear all' })}
+        onConfirm={clear}
+      />
     </div>
   )
 }
