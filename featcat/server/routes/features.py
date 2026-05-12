@@ -816,6 +816,10 @@ class RecommendRequest(BaseModel):
     use_case: str = Field(..., min_length=3, max_length=500)
     top_k: int = Field(default=10, ge=1, le=50)
     use_llm: bool = True
+    exclude_ids: list[str] | None = Field(
+        default=None,
+        description="Feature ids to drop from results (e.g. members already in a group).",
+    )
 
 
 class FeatureMatch(BaseModel):
@@ -846,21 +850,27 @@ def _feature_to_brief(feature: Any, doc_ids: set[str]) -> FeatureBrief:
     )
 
 
-def _run_tfidf_recommend(db: Any, use_case: str, top_k: int) -> list[FeatureMatch]:
+def _run_tfidf_recommend(
+    db: Any, use_case: str, top_k: int, exclude_ids: frozenset[str] = frozenset()
+) -> list[FeatureMatch]:
     doc_ids = set(db.get_all_feature_docs().keys())
-    results = db.recommend_by_text(use_case, top_k=top_k)
-    return [
+    # Over-fetch by the exclusion size so we still return up to top_k after filtering.
+    fetch_k = top_k + len(exclude_ids) if exclude_ids else top_k
+    results = db.recommend_by_text(use_case, top_k=fetch_k)
+    matches = [
         FeatureMatch(
             feature=_feature_to_brief(feat, doc_ids),
             score=round(score, 4),
             reason=f"Keyword similarity {score:.2f}",
         )
         for feat, score in results
+        if feat.id not in exclude_ids
     ]
+    return matches[:top_k]
 
 
 async def _maybe_llm_recommend(
-    db: Any, llm: Any, use_case: str, top_k: int
+    db: Any, llm: Any, use_case: str, top_k: int, exclude_ids: frozenset[str] = frozenset()
 ) -> tuple[list[FeatureMatch] | None, str | None]:
     """Run the LLM discovery path with an 8s timeout.
 
@@ -893,12 +903,15 @@ async def _maybe_llm_recommend(
 
     doc_ids = set(db.get_all_feature_docs().keys())
     matches: list[FeatureMatch] = []
-    for entry in existing[:top_k]:
+    # Iterate the full LLM list (not [:top_k]) so excluded entries don't starve the result.
+    for entry in existing:
+        if len(matches) >= top_k:
+            break
         name = entry.get("name") if isinstance(entry, dict) else None
         if not name:
             continue
         feat = db.get_feature_by_name(name)
-        if feat is None:
+        if feat is None or feat.id in exclude_ids:
             continue
         score = float(entry.get("relevance", entry.get("score", 0.0)) or 0.0)
         reason = entry.get("reason") or "LLM ranked"
@@ -927,14 +940,22 @@ async def recommend_features(
     request and renders whatever ``method`` we return — no retries.
     """
     use_case = body.use_case.strip()
-    cache_key = f"recommend:{hashlib.sha256(use_case.encode('utf-8')).hexdigest()[:16]}:{body.top_k}:{body.use_llm}"
+    exclude_ids: frozenset[str] = frozenset(body.exclude_ids or ())
+    # Sorted so the cache key is stable across client orderings of the same set.
+    exclude_fingerprint = (
+        hashlib.sha256(",".join(sorted(exclude_ids)).encode("utf-8")).hexdigest()[:8] if exclude_ids else "0"
+    )
+    cache_key = (
+        f"recommend:{hashlib.sha256(use_case.encode('utf-8')).hexdigest()[:16]}"
+        f":{body.top_k}:{body.use_llm}:{exclude_fingerprint}"
+    )
     cached = cache_get(cache_key)
     if cached is not None:
         return RecommendResponse(**cached)
 
     fallback_summary: str
     if body.use_llm:
-        matches_opt, reason = await _maybe_llm_recommend(db, llm, use_case, body.top_k)
+        matches_opt, reason = await _maybe_llm_recommend(db, llm, use_case, body.top_k, exclude_ids)
         if matches_opt is not None:
             response = RecommendResponse(
                 use_case=use_case,
@@ -950,7 +971,7 @@ async def recommend_features(
     else:
         fallback_summary = "Ranked by keyword similarity (LLM bypassed)"
 
-    matches = await run_in_threadpool(_run_tfidf_recommend, db, use_case, body.top_k)
+    matches = await run_in_threadpool(_run_tfidf_recommend, db, use_case, body.top_k, exclude_ids)
     response = RecommendResponse(
         use_case=use_case,
         method="tfidf",
