@@ -422,6 +422,44 @@ class TestCatalogAgent:
         # Non-matching first line → not detectable, default False.
         assert _list_features_short("No features match those filters.") is False
 
+    def test_intent_classifier_filters_tools_into_llm_call(self, db_with_features: CatalogDB, monkeypatch):
+        """Agent must hand the LLM only the intent-matched tool subset, not all 14."""
+        # Force the intent filter on regardless of env state.
+        import featcat.ai.agent as agent_mod
+
+        monkeypatch.setattr(agent_mod, "_INTENT_FILTER_ON", True)
+
+        mock_llm = MagicMock()
+        # No tool calls → exits cleanly after first LLM call.
+        mock_llm.chat.return_value = {
+            "content": "ok",
+            "tool_calls": None,
+            "finish_reason": "stop",
+        }
+        agent = agent_mod.CatalogAgent(mock_llm, db_with_features)
+        # "Tóm tắt tình trạng catalog" → summary intent → only catalog_summary.
+        asyncio.get_event_loop().run_until_complete(_collect_events(agent.chat("Tóm tắt tình trạng catalog")))
+
+        call_args = mock_llm.chat.call_args
+        tools_passed = call_args.kwargs["tools"]
+        names = [t["function"]["name"] for t in tools_passed]
+        assert names == ["catalog_summary"], f"expected catalog_summary only, got {names}"
+
+    def test_intent_filter_off_passes_full_inventory(self, db_with_features: CatalogDB, monkeypatch):
+        """FEATCAT_INTENT_FILTER=off bypasses the filter and sends all 14 tools."""
+        import featcat.ai.agent as agent_mod
+        from featcat.ai.tools import CATALOG_TOOLS
+
+        monkeypatch.setattr(agent_mod, "_INTENT_FILTER_ON", False)
+
+        mock_llm = MagicMock()
+        mock_llm.chat.return_value = {"content": "ok", "tool_calls": None, "finish_reason": "stop"}
+        agent = agent_mod.CatalogAgent(mock_llm, db_with_features)
+        asyncio.get_event_loop().run_until_complete(_collect_events(agent.chat("Tóm tắt catalog")))
+
+        tools_passed = mock_llm.chat.call_args.kwargs["tools"]
+        assert tools_passed is CATALOG_TOOLS, "filter-off must pass the original CATALOG_TOOLS object"
+
 
 # --- Helpers ---
 
