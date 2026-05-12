@@ -4,6 +4,7 @@
     "search": "Search",
     "features": "Features",
     "groups": "Groups",
+    "sources": "Sources",
     "similarity": "Similarity",
     "lineage": "Lineage",
     "audit": "Audit",
@@ -26,5 +27,9 @@
     "connected": "Connected",
     "disconnected": "Disconnected",
     "checking": "checking..."
+  },
+  "actions": {
+    "collapse": "Collapse sidebar",
+    "expand": "Expand sidebar"
   }
 }

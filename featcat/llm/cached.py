@@ -58,3 +58,25 @@ class CachedLLM(BaseLLM):
 
     def health_check(self) -> bool:
         return self.inner.health_check()
+
+    def chat(
+        self,
+        messages: list[dict],
+        temperature: float = 0.3,
+        tools: list[dict] | None = None,
+    ) -> dict:
+        """Forward chat completion to inner LLM without caching.
+
+        Chat with tool calling is stateful and depends on full conversation
+        history — caching would either miss on every realistic input or
+        return stale responses for replayed sessions. Pass through directly.
+        """
+        return self.inner.chat(messages, temperature=temperature, tools=tools)
+
+    def stream_chat(
+        self,
+        messages: list[dict],
+        temperature: float = 0.3,
+    ) -> Iterator[str]:
+        """Forward streaming chat to inner LLM without caching."""
+        yield from self.inner.stream_chat(messages, temperature=temperature)

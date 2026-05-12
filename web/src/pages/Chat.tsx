@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Send, Sparkles, Activity, Search, Lightbulb, Bot, Loader2, Trash2 } from 'lucide-react'
+import { Send, Sparkles, Activity, Search, Lightbulb, Brain, Loader2, Trash2, ArrowUpRight, AlertCircle, RotateCw } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { api, invalidateCache } from '../api'
 import { useChatStore } from '../hooks/useChatStore'
@@ -8,7 +8,6 @@ import { ChatMessage } from '../components/ChatMessage'
 import { Reasoning, ReasoningTrigger, ReasoningContent } from '@/components/ai-elements/reasoning'
 import { Tool, ToolHeader, ToolContent, ToolInput, ToolOutput } from '@/components/ai-elements/tool'
 import { Response } from '@/components/ai-elements/response'
-import { Suggestion, Suggestions } from '@/components/ai-elements/suggestion'
 import { CodeBlock, CodeBlockCopyButton } from '@/components/ai-elements/code-block'
 import { chatStore } from '../stores/chatStore'
 import type { ChatMessage as ChatMsg } from '../stores/chatStore'
@@ -113,22 +112,31 @@ function SuggestionCard({ icon: Icon, title, example, onClick }: { icon: LucideI
   return (
     <button
       onClick={onClick}
-      className="text-left p-4 bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg hover:border-[var(--border-muted)] hover:bg-[var(--bg-secondary)] transition-colors"
+      className="group relative text-left p-5 bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-xl hover:border-brand/40 hover:bg-[var(--bg-secondary)] hover:shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_-12px_rgba(0,0,0,0.08)] transition-all duration-200"
     >
-      <Icon size={18} className="text-[var(--brand)] mb-2" />
-      <div className="text-sm font-medium text-[var(--text-primary)] mb-1">{title}</div>
-      <div className="text-xs text-[var(--text-tertiary)] leading-relaxed">{example}</div>
+      <div className="flex items-start justify-between mb-3">
+        <div className="w-9 h-9 rounded-lg bg-brand/10 text-brand flex items-center justify-center group-hover:bg-brand/15 transition-colors">
+          <Icon size={18} strokeWidth={1.75} />
+        </div>
+        <ArrowUpRight
+          size={16}
+          className="text-[var(--text-tertiary)] opacity-0 -translate-x-1 translate-y-1 group-hover:opacity-100 group-hover:translate-x-0 group-hover:translate-y-0 group-hover:text-brand transition-all duration-200"
+        />
+      </div>
+      <div className="text-[14px] font-medium text-[var(--text-primary)] mb-1 tracking-tight">{title}</div>
+      <div className="text-[12.5px] text-[var(--text-tertiary)] leading-relaxed italic">{example}</div>
     </button>
   )
 }
 
 export function Chat() {
   const { t } = useTranslation('chat')
-  const { messages, addMessage, updateLastMessage, appendToLastMessage, upsertToolCall, clear } = useChatStore()
+  const { messages, addMessage, updateLastMessage, appendToLastMessage, upsertToolCall, popLastMessage, clear } = useChatStore()
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const [llmAvailable, setLlmAvailable] = useState<boolean | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const sessionIdRef = useRef<string | null>(null)
 
@@ -152,6 +160,10 @@ export function Chat() {
     const q = (overrideInput ?? input).trim()
     if (!q || busy) return
     setInput('')
+    // Auto-resize keeps the textarea expanded after typing; clearing the
+    // value alone doesn't shrink it. Reset height explicitly so the input
+    // collapses back to a single row after send.
+    if (textareaRef.current) textareaRef.current.style.height = 'auto'
     setBusy(true)
 
     if (q.startsWith('/discover ') || q.startsWith('discover: ')) {
@@ -181,7 +193,11 @@ export function Chat() {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: res.statusText }))
-        updateLastMessage({ content: t('errors.prefix', { message: err.detail || res.statusText }), isStreaming: false })
+        updateLastMessage({
+          content: err.detail || res.statusText,
+          error: true,
+          isStreaming: false,
+        })
         setBusy(false)
         return
       }
@@ -239,7 +255,8 @@ export function Chat() {
             const hasContent = last?.content?.trim() || last?.result || last?.html
             if (!hasContent) {
               updateLastMessage({
-                content: '⚠ ' + t('status.empty_response'),
+                content: t('status.empty_response'),
+                error: true,
                 isStreaming: false,
               })
             } else {
@@ -249,7 +266,11 @@ export function Chat() {
             return true
           }
           case 'error':
-            updateLastMessage({ content: t('errors.prefix', { message: data.content }), isStreaming: false })
+            updateLastMessage({
+              content: data.content,
+              error: true,
+              isStreaming: false,
+            })
             setBusy(false)
             return true
         }
@@ -283,7 +304,8 @@ export function Chat() {
     } catch (err) {
       if ((err as Error).name === 'AbortError') return
       updateLastMessage({
-        content: '⚠ ' + t('status.connection_lost'),
+        content: t('status.connection_lost'),
+        error: true,
         isStreaming: false,
       })
       setBusy(false)
@@ -296,7 +318,7 @@ export function Chat() {
       const data = await api.ai.discover(useCase)
       addMessage({ role: 'ai', content: '', result: data })
     } catch (e: any) {
-      addMessage({ role: 'ai', content: t('errors.prefix', { message: e.message }) })
+      addMessage({ role: 'ai', content: e.message, error: true })
     }
     setBusy(false)
   }
@@ -313,7 +335,11 @@ export function Chat() {
         result: details.length ? { results: details.map(dd => ({ feature: dd.feature, score: dd.psi, reason: dd.severity })) } : undefined,
       })
     } catch (e) {
-      addMessage({ role: 'ai', content: t('errors.prefix', { message: e instanceof Error ? e.message : String(e) }) })
+      addMessage({
+        role: 'ai',
+        content: e instanceof Error ? e.message : String(e),
+        error: true,
+      })
     }
     setBusy(false)
   }
@@ -325,53 +351,92 @@ export function Chat() {
       const html = `<div class="grid grid-cols-4 gap-3 text-center"><div><div class="text-lg font-semibold font-mono">${s.total_features || s.features || 0}</div><div class="text-[11px] text-[var(--text-tertiary)]">${t('stats_labels.features', { ns: 'dashboard', defaultValue: 'Features' })}</div></div><div><div class="text-lg font-semibold font-mono">${s.sources || 0}</div><div class="text-[11px] text-[var(--text-tertiary)]">${t('stats.sources', { ns: 'dashboard' })}</div></div><div><div class="text-lg font-semibold font-mono">${s.coverage ? Math.round(s.coverage) : 0}%</div><div class="text-[11px] text-[var(--text-tertiary)]">${t('stats.doc_coverage', { ns: 'dashboard' })}</div></div><div><div class="text-lg font-semibold font-mono">${s.documented || 0}/${s.total_features || s.features || 0}</div><div class="text-[11px] text-[var(--text-tertiary)]">${t('documentation.section_title', { ns: 'features', defaultValue: 'Documented' })}</div></div></div>`
       addMessage({ role: 'ai', content: '', html })
     } catch (e: any) {
-      addMessage({ role: 'ai', content: t('errors.prefix', { message: e.message }) })
+      addMessage({ role: 'ai', content: e.message, error: true })
     }
     setBusy(false)
   }
 
-  const renderAiContent = (msg: ChatMsg) => (
-    <>
-      {(msg.thinking || (msg.isStreaming && !msg.content && !msg.result)) && (
-        <Reasoning
-          className="mb-3"
-          isStreaming={msg.isStreaming === true && !(msg.isDoneThinking ?? false)}
-        >
-          <ReasoningTrigger />
-          <ReasoningContent>{msg.thinking || ''}</ReasoningContent>
-        </Reasoning>
-      )}
-      {msg.tools && msg.tools.length > 0 && (
-        <div className="mb-3 space-y-2">
-          {msg.tools.map((tool) => (
-            <Tool key={tool.id} defaultOpen={false}>
-              <ToolHeader type="dynamic-tool" toolName={tool.name} state={tool.state} />
-              <ToolContent>
-                {tool.input !== undefined && <ToolInput input={tool.input} />}
-                {(tool.output !== undefined || tool.error) && (
-                  <ToolOutput output={tool.output} errorText={tool.error} />
-                )}
-              </ToolContent>
-            </Tool>
-          ))}
+  const retryLast = () => {
+    if (busy) return
+    const current = chatStore.getMessages()
+    if (current.length < 2) return
+    const lastAi = current[current.length - 1]
+    const lastUser = current[current.length - 2]
+    if (!lastAi.error || lastUser.role !== 'user') return
+    const query = lastUser.content
+    popLastMessage()
+    setBusy(true)
+    addMessage({ role: 'ai', content: '', isStreaming: true })
+    streamQuery(query)
+  }
+
+  const renderAiContent = (msg: ChatMsg, isLast: boolean) => {
+    if (msg.error) {
+      return (
+        <div className="inline-flex flex-col gap-2 rounded-2xl rounded-tl-sm bg-[var(--danger-subtle-bg,var(--bg-secondary))] border border-[var(--danger)]/30 px-4 py-3 max-w-[85%]">
+          <div className="flex items-center gap-2 text-[var(--danger)]">
+            <AlertCircle size={14} />
+            <span className="text-[12px] font-semibold uppercase tracking-wide">
+              {t('errors.label')}
+            </span>
+          </div>
+          <p className="text-[13.5px] leading-relaxed text-[var(--text-primary)] break-words">
+            {msg.content}
+          </p>
+          {isLast && (
+            <button
+              onClick={retryLast}
+              disabled={busy}
+              className="self-start inline-flex items-center gap-1.5 mt-1 text-[12px] font-medium text-brand hover:text-brand-emphasis disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              <RotateCw size={12} className={busy ? 'animate-spin' : ''} />
+              {t('errors.retry')}
+            </button>
+          )}
         </div>
-      )}
-      {msg.isStreaming && !msg.content && !msg.thinking && !msg.result && (
-        <div className="flex items-center gap-2 text-sm text-[var(--text-tertiary)]">
-          <Loader2 size={14} className="animate-spin" /> {t('status.generating')}
-        </div>
-      )}
-      {msg.result && <ResultTable data={msg.result} />}
-      {!msg.result && msg.html && <div dangerouslySetInnerHTML={{ __html: msg.html }} />}
-      {!msg.result && !msg.html && msg.content && (
-        tryParseResult(msg.content)
-          ? <ResultTable data={tryParseResult(msg.content)} />
-          : msg.content.startsWith('⚠')
-            ? <div className="text-[var(--warning)] text-sm italic">{msg.content}</div>
+      )
+    }
+    return (
+      <>
+        {(msg.thinking || (msg.isStreaming && !msg.content && !msg.result)) && (
+          <Reasoning
+            className="mb-3"
+            isStreaming={msg.isStreaming === true && !(msg.isDoneThinking ?? false)}
+          >
+            <ReasoningTrigger />
+            <ReasoningContent>{msg.thinking || ''}</ReasoningContent>
+          </Reasoning>
+        )}
+        {msg.tools && msg.tools.length > 0 && (
+          <div className="mb-3 space-y-0.5">
+            {msg.tools.map((tool) => (
+              <Tool key={tool.id} defaultOpen={false}>
+                <ToolHeader type="dynamic-tool" toolName={tool.name} state={tool.state} />
+                <ToolContent>
+                  {tool.input !== undefined && <ToolInput input={tool.input} />}
+                  {(tool.output !== undefined || tool.error) && (
+                    <ToolOutput output={tool.output} errorText={tool.error} />
+                  )}
+                </ToolContent>
+              </Tool>
+            ))}
+          </div>
+        )}
+        {msg.isStreaming && !msg.content && !msg.thinking && !msg.result && (
+          <div className="flex items-center gap-2 text-sm text-[var(--text-tertiary)]">
+            <Loader2 size={14} className="animate-spin" /> {t('status.generating')}
+          </div>
+        )}
+        {msg.result && <ResultTable data={msg.result} />}
+        {!msg.result && msg.html && <div dangerouslySetInnerHTML={{ __html: msg.html }} />}
+        {!msg.result && !msg.html && msg.content && (
+          tryParseResult(msg.content)
+            ? <ResultTable data={tryParseResult(msg.content)} />
             : <Response>{msg.content}</Response>
-      )}
-    </>
-  )
+        )}
+      </>
+    )
+  }
 
   const isEmpty = messages.length === 0
 
@@ -384,20 +449,28 @@ export function Chat() {
       )}
 
       {isEmpty ? (
-        <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 overflow-y-auto">
-          <div className="max-w-3xl w-full text-center">
-            <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-[var(--brand-subtle-bg)] mb-6">
-              <Bot size={24} className="text-[var(--brand)]" />
+        <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 overflow-y-auto animate-fade-in">
+          <div className="max-w-2xl w-full">
+            <div className="flex flex-col items-center text-center mb-10">
+              <div className="relative mb-6">
+                <div
+                  aria-hidden
+                  className="absolute inset-0 rounded-2xl bg-brand/20 blur-2xl scale-110 opacity-60"
+                />
+                <div className="relative w-16 h-16 rounded-2xl bg-gradient-to-br from-brand/15 to-brand/5 border border-brand/20 flex items-center justify-center">
+                  <Brain size={28} strokeWidth={1.5} className="text-brand" />
+                </div>
+              </div>
+
+              <h1 className="text-[28px] leading-tight font-semibold text-[var(--text-primary)] tracking-tight mb-2">
+                {t('empty.greeting')}
+              </h1>
+              <p className="text-[14px] text-[var(--text-tertiary)] max-w-md leading-relaxed">
+                {t('empty.subtitle')}
+              </p>
             </div>
 
-            <h1 className="text-2xl font-semibold text-[var(--text-primary)] mb-2">
-              {t('empty.greeting')}
-            </h1>
-            <p className="text-sm text-[var(--text-secondary)] mb-10">
-              {t('empty.subtitle')}
-            </p>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 text-left">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left">
               {SUGGESTIONS.map((s, i) => (
                 <SuggestionCard
                   key={i}
@@ -412,51 +485,79 @@ export function Chat() {
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto px-4">
-          {messages.map((m) => (
-            <ChatMessage key={m.id} role={m.role}>
-              {m.role === 'user' ? m.content : renderAiContent(m)}
-            </ChatMessage>
-          ))}
-          <div ref={messagesEndRef} />
+          {/* Reading width capped at 800px (matches ChatGPT/Claude). Both
+              AI and user messages share this width; the centred container
+              keeps line length comfortable on wide displays. */}
+          <div className="max-w-[1200px] mx-auto">
+            {messages.map((m, idx) => (
+              <ChatMessage key={m.id} role={m.role}>
+                {m.role === 'user' ? m.content : renderAiContent(m, idx === messages.length - 1)}
+              </ChatMessage>
+            ))}
+            <div ref={messagesEndRef} />
+          </div>
         </div>
       )}
 
-      <div className="border-t border-[var(--border-subtle)] bg-[var(--bg-primary)] p-4">
-        {!isEmpty && (
-          <>
-            <Suggestions className="mb-2">
-              {SUGGESTIONS.map((s) => (
-                <Suggestion
-                  key={s.promptKey}
-                  suggestion={t(s.promptKey)}
-                  onClick={(text) => send(text)}
-                >
-                  {t(s.titleKey)}
-                </Suggestion>
-              ))}
-            </Suggestions>
-            <div className="flex gap-2 mb-2">
-              <button onClick={() => { clear(); sessionIdRef.current = null }} title={t('input.clear_title')}
-                className="ml-auto flex items-center gap-1 px-3 py-1 text-[11px] text-[var(--text-tertiary)] border border-[var(--border-default)] rounded-md hover:bg-[var(--bg-secondary)] transition-colors">
-                <Trash2 size={12} /> {t('input.clear')}
+      {/* Input area — outer container has the full-width border + bg so the
+          separator runs edge-to-edge. Inner 800px column carries all padding
+          so the content stays centered without looking detached from the
+          border above it (matches ChatGPT / Claude). */}
+      <div className="border-t border-[var(--border-subtle)] bg-transparent">
+        <div className="max-w-[1200px] mx-auto px-4 py-4">
+          {/* Unified pill-shaped input: textarea + embedded send button. The
+              container owns the focus ring so the whole pill highlights when
+              the textarea is focused (ChatGPT-style). */}
+          <div className="relative flex items-end gap-2 border border-[var(--border-default)] rounded-2xl bg-[var(--bg-secondary)] focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/20 transition-colors">
+            <textarea
+              ref={textareaRef}
+              value={input}
+              onChange={(e) => {
+                setInput(e.target.value)
+                // Auto-resize up to 200px, then scroll. Reset to 'auto' first
+                // so shrink-back works when the user deletes lines.
+                const el = e.target
+                el.style.height = 'auto'
+                el.style.height = `${Math.min(el.scrollHeight, 200)}px`
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  send()
+                }
+              }}
+              placeholder={t('input.placeholder')}
+              disabled={busy}
+              rows={1}
+              className="flex-1 bg-transparent px-4 py-3 text-[14px] outline-none resize-none disabled:opacity-50 placeholder:text-[var(--text-tertiary)]"
+            />
+            <button
+              onClick={() => send()}
+              disabled={busy || !input.trim()}
+              aria-label={t('input.send')}
+              className="m-2 p-2 rounded-lg bg-brand text-white hover:bg-brand-emphasis disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
+            >
+              {busy ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+            </button>
+          </div>
+
+          {/* Footer: keyboard hint left, clear-chat right. Both small + muted
+              so they don't compete with the input. Only shown when there's a
+              conversation to clear. */}
+          <div className="flex items-center justify-between mt-2 px-1 min-h-[18px]">
+            <span className="text-[11px] text-[var(--text-tertiary)] hidden sm:inline">
+              {t('input.hint_enter_send')}
+            </span>
+            {!isEmpty && (
+              <button
+                onClick={() => { clear(); sessionIdRef.current = null }}
+                title={t('input.clear_title')}
+                className="ml-auto flex items-center gap-1 text-[11px] text-[var(--text-tertiary)] hover:text-[var(--danger)] transition-colors"
+              >
+                <Trash2 size={12} /> {t('input.clear_chat')}
               </button>
-            </div>
-          </>
-        )}
-        <div className="flex gap-2">
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
-            placeholder={t('input.placeholder')}
-            disabled={busy}
-            className="flex-1 bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px] focus:border-brand focus:ring-2 focus:ring-brand/20 outline-none disabled:opacity-50"
-          />
-          <button onClick={() => send()} disabled={busy || !input.trim()}
-            className="flex items-center gap-1.5 px-4 py-2 bg-brand text-white rounded-lg text-[13px] font-medium disabled:opacity-50 hover:bg-brand-emphasis transition-colors">
-            {busy ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-            {t('input.send')}
-          </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

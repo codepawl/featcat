@@ -19,12 +19,13 @@ export interface ChatMessage {
   result?: any
   html?: string
   tools?: ToolCall[]
+  /** Marks the message as an error (LLM failure, network drop, etc.). Renders
+   *  the styled error bubble + retry affordance instead of plain text. */
+  error?: boolean
   timestamp: number
 }
 
-let messages: ChatMessage[] = [
-  { id: 'welcome', role: 'ai', content: 'Welcome to featcat AI Chat! Ask anything about your features.', timestamp: Date.now() },
-]
+let messages: ChatMessage[] = []
 const listeners = new Set<() => void>()
 
 function notify() {
@@ -67,9 +68,15 @@ export const chatStore = {
   },
 
   clear: () => {
-    messages = [
-      { id: 'welcome', role: 'ai', content: 'Welcome to featcat AI Chat! Ask anything about your features.', timestamp: Date.now() },
-    ]
+    messages = []
+    notify()
+  },
+
+  /** Drop the most recent message. Used by retry to remove a failed AI
+   *  message before replaying the originating user query. */
+  popLastMessage: () => {
+    if (messages.length === 0) return
+    messages = messages.slice(0, -1)
     notify()
   },
 

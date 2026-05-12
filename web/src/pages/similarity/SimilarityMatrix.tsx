@@ -1,16 +1,19 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api, type SimilarityFeatureBrief } from '../../api'
 import { FeatureSelector, toFeatureItems } from '../../components/FeatureSelector'
 import { Skeleton } from '../../components/Skeleton'
-import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import { MatrixGrid } from './MatrixGrid'
 import { PairPanel } from './PairPanel'
 
 const DEFAULT_THRESHOLD = 0.3
 const DEFAULT_FEATURE_COUNT = 30
 const FEATURE_CAP = 100
-const THRESHOLD_DEBOUNCE_MS = 400
+// Fetch every pair the backend can compute, then filter client-side as the
+// user drags the slider. The server caches by (sorted ids, threshold) — using
+// a fixed baseline of 0 means every slider movement reuses the same cache
+// entry rather than triggering N fetches.
+const FETCH_THRESHOLD_BASELINE = 0
 
 interface RawFeature {
   id: string
@@ -35,6 +38,13 @@ function bySourceThenName<T extends { name: string }>(a: T, b: T): number {
   return a.name.localeCompare(b.name)
 }
 
+function clampThreshold(value: number): number {
+  if (!Number.isFinite(value)) return 0
+  if (value < 0) return 0
+  if (value > 1) return 1
+  return Math.round(value * 100) / 100
+}
+
 export function SimilarityMatrix() {
   const { t } = useTranslation('similarity')
 
@@ -43,23 +53,21 @@ export function SimilarityMatrix() {
 
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [threshold, setThreshold] = useState(DEFAULT_THRESHOLD)
-  const debouncedThreshold = useDebouncedValue(threshold, THRESHOLD_DEBOUNCE_MS)
 
   const [matrixData, setMatrixData] = useState<MatrixPayload | null>(null)
   const [matrixLoading, setMatrixLoading] = useState(false)
   const [matrixError, setMatrixError] = useState<string | null>(null)
   const [activePair, setActivePair] = useState<{ a: string; b: string } | null>(null)
 
-  // Load full feature list once.
   useEffect(() => {
     let active = true
-    api.features.list()
+    api.features
+      .list()
       .then((feats) => {
         if (!active) return
         const arr = (feats as RawFeature[]) ?? []
         const sorted = [...arr].sort(bySourceThenName)
         setAllFeatures(sorted)
-        // Auto-select first N to give the user something to look at on load.
         setSelected(new Set(sorted.slice(0, DEFAULT_FEATURE_COUNT).map((f) => f.name)))
       })
       .catch(() => {
@@ -84,7 +92,6 @@ export function SimilarityMatrix() {
     return m
   }, [allFeatures])
 
-  // Stable, source-grouped order of selected specs; then truncate to the cap.
   const selectedSorted = useMemo(() => {
     return [...selected].sort((a, b) => {
       const aSrc = a.split('.')[0] ?? ''
@@ -101,7 +108,11 @@ export function SimilarityMatrix() {
   )
   const exceedsCap = selected.size > FEATURE_CAP
 
-  // Fetch matrix whenever selection or debounced threshold changes.
+  // The fetch key is the comma-joined sorted id list — stable across slider
+  // moves. The threshold input is fixed at the baseline so we never miss the
+  // server cache when the user drags.
+  const fetchKey = useMemo(() => [...cappedIds].sort().join(','), [cappedIds])
+
   useEffect(() => {
     if (cappedIds.length < 2) {
       setMatrixData(null)
@@ -112,7 +123,7 @@ export function SimilarityMatrix() {
     setMatrixLoading(true)
     setMatrixError(null)
     api.similarity
-      .matrix(cappedIds, debouncedThreshold)
+      .matrix(cappedIds, FETCH_THRESHOLD_BASELINE)
       .then((data) => {
         if (active) setMatrixData(data)
       })
@@ -128,15 +139,31 @@ export function SimilarityMatrix() {
     return () => {
       active = false
     }
-  }, [cappedIds, debouncedThreshold])
+    // fetchKey captures the id-list identity; cappedIds itself is a new array
+    // each render but its joined-sorted key is stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchKey])
 
-  const handleCellClick = (aId: string, bId: string) => {
+  const handleCellClick = useCallback((aId: string, bId: string) => {
     setActivePair({ a: aId, b: bId })
-  }
+  }, [])
+
+  // Client-side filter for the rendered grid: cells below the live threshold
+  // become empty. Counts the visible pairs for the status line.
+  const visiblePairCount = useMemo(() => {
+    if (!matrixData) return 0
+    let count = 0
+    for (const c of matrixData.cells) {
+      if (c.score >= threshold) count += 1
+    }
+    return count
+  }, [matrixData, threshold])
+
+  const noVisiblePairs =
+    matrixData !== null && matrixData.cells.length > 0 && visiblePairCount === 0
 
   return (
     <div className="flex h-full min-h-0 gap-4 p-4">
-      {/* Left column — feature picker */}
       <aside className="w-80 shrink-0 flex flex-col gap-3 border-r border-[var(--border-subtle)] pr-4">
         <div>
           <div className="text-[12px] font-semibold text-[var(--text-secondary)] mb-1">
@@ -158,23 +185,30 @@ export function SimilarityMatrix() {
         )}
       </aside>
 
-      {/* Right column — controls + grid */}
       <section className="flex-1 min-w-0 flex flex-col gap-3">
         <div className="flex items-center gap-4 flex-wrap">
-          <label className="flex items-center gap-2 text-[12px] text-[var(--text-secondary)]">
+          <label className="flex items-center gap-3 text-[12px] text-[var(--text-secondary)]">
             <span className="whitespace-nowrap">{t('matrix.threshold_label')}</span>
             <input
               type="range"
               min={0}
               max={1}
-              step={0.05}
+              step={0.01}
               value={threshold}
-              onChange={(e) => setThreshold(Number.parseFloat(e.target.value))}
-              className="accent-brand"
+              onChange={(e) => setThreshold(clampThreshold(Number.parseFloat(e.target.value)))}
+              className="accent-brand w-48"
+              aria-label={t('matrix.threshold_label')}
             />
-            <span className="font-mono text-[11px] tabular-nums w-9 text-right">
-              {threshold.toFixed(2)}
-            </span>
+            <input
+              type="number"
+              min={0}
+              max={1}
+              step={0.05}
+              value={threshold.toFixed(2)}
+              onChange={(e) => setThreshold(clampThreshold(Number.parseFloat(e.target.value)))}
+              className="w-16 px-2 py-1 rounded border border-[var(--border-default)] bg-[var(--bg-primary)] font-mono text-[11px] tabular-nums focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
+              aria-label={t('matrix.threshold_label')}
+            />
           </label>
           <span className="text-[11px] text-[var(--text-tertiary)]">
             {exceedsCap
@@ -200,17 +234,16 @@ export function SimilarityMatrix() {
             </div>
           ) : matrixError ? (
             <EmptyState title={t('matrix.empty.error.title')} subtitle={matrixError} />
-          ) : matrixData && matrixData.cells.length === 0 ? (
+          ) : matrixData && (matrixData.cells.length === 0 || noVisiblePairs) ? (
             <EmptyState
               title={t('matrix.empty.no_pairs.title')}
-              subtitle={t('matrix.empty.no_pairs.subtitle', {
-                threshold: debouncedThreshold.toFixed(2),
-              })}
+              subtitle={t('matrix.empty.no_pairs.subtitle', { threshold: threshold.toFixed(2) })}
             />
           ) : matrixData ? (
             <MatrixGrid
               features={matrixData.features}
               cells={matrixData.cells}
+              threshold={threshold}
               onCellClick={handleCellClick}
             />
           ) : null}
