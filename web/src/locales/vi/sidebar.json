@@ -4,6 +4,7 @@
     "search": "Tìm kiếm",
     "features": "Features",
     "groups": "Nhóm",
+    "sources": "Nguồn",
     "similarity": "Tương đồng",
     "lineage": "Lineage",
     "audit": "Nhật ký",
@@ -26,5 +27,9 @@
     "connected": "Đã kết nối",
     "disconnected": "Mất kết nối",
     "checking": "đang kiểm tra..."
+  },
+  "actions": {
+    "collapse": "Thu gọn thanh bên",
+    "expand": "Mở rộng thanh bên"
   }
 }
