@@ -17,7 +17,7 @@
   "detail": {
     "select_hint": "Chọn một nhóm để xem chi tiết",
     "owner_label": "Chủ sở hữu",
-    "members_heading": "Thành viên ({{count}})",
+    "members_heading": "Feature ({{count}})",
     "members_empty": "Chưa có Feature nào trong nhóm này",
     "project_label": "Dự án",
     "members_label": "features"
@@ -47,33 +47,33 @@
   "export_title": "{{name}} ({{count}} Feature)",
   "confirm_delete": "Xóa nhóm \"{{name}}\"?",
   "tabs": {
-    "members": "Thành viên",
+    "members": "Feature",
     "health": "Sức khỏe",
     "monitoring": "Giám sát",
     "docs": "Tài liệu"
   },
   "health": {
-    "empty": "Chưa có thành viên để đánh giá",
+    "empty": "Chưa có feature để đánh giá",
     "average": "Điểm trung bình",
     "distribution": "Phân bố hạng",
     "doc_coverage": "Độ phủ tài liệu",
     "doc_coverage_hint": "{{documented}}/{{total}} đã có tài liệu",
     "currently_critical_one": "Đang critical ({{count}})",
     "currently_critical_other": "Đang critical ({{count}})",
-    "lowest": "Thành viên điểm thấp nhất",
-    "all_healthy": "Tất cả thành viên đều khỏe",
+    "lowest": "Feature điểm thấp nhất",
+    "all_healthy": "Tất cả feature đều khỏe",
     "refresh": "Làm mới"
   },
   "monitoring": {
-    "empty": "Không có thành viên",
+    "empty": "Không có feature",
     "severity": "Phân bố mức độ nghiêm trọng",
-    "severity_count": "Thành viên",
+    "severity_count": "Feature",
     "no_severity_data": "Chưa có dữ liệu severity",
     "psi_avg": "PSI trung bình",
     "psi_thresholds": "0.10 warning · 0.20 critical",
     "last_check": "Kiểm tra gần nhất",
-    "with_drift": "Thành viên đang drift",
-    "no_drift": "Không có thành viên drift"
+    "with_drift": "Feature đang drift",
+    "no_drift": "Không có Feature drift"
   },
   "drift_heatmap": {
     "title": "Heatmap drift ({{days}} ngày qua)",
@@ -82,10 +82,10 @@
     "truncated": "Hiển thị {{shown}} trên {{total}} Feature theo mức độ severity gần nhất. Hãy lọc hoặc tách nhóm để xem hết."
   },
   "docs": {
-    "empty": "Hãy thêm thành viên trước khi tạo lại tài liệu",
-    "help": "Sinh tài liệu AI cho mọi thành viên trong nhóm. Bỏ qua các tài liệu đã có trừ khi bật regenerate.",
+    "empty": "Hãy thêm feature trước khi tạo lại tài liệu",
+    "help": "Sinh tài liệu AI cho mọi feature trong nhóm. Bỏ qua các tài liệu đã có trừ khi bật regenerate.",
     "regenerate_label": "Tạo lại tài liệu đã có",
-    "regenerate_hint": "Ghi đè tài liệu của các thành viên đã có sẵn.",
+    "regenerate_hint": "Ghi đè tài liệu của các feature đã có sẵn.",
     "hint_label": "Hint chung (tùy chọn)",
     "hint_placeholder": "ví dụ: các feature mô tả sự kiện thanh toán",
     "start": "Tạo lại tài liệu",

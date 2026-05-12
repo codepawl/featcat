@@ -62,7 +62,7 @@
       "score_label": "Điểm tương đồng",
       "feature_a": "Feature A",
       "feature_b": "Feature B",
-      "reasons_label": "Vì sao điểm này"
+      "reasons_label": "Vì sao có điểm này"
     },
     "reasons": {
       "semantic_match": "semantic_match",
