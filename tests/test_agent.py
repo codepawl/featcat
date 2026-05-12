@@ -98,6 +98,69 @@ class TestToolExecutor:
         assert len(result) <= 1600  # 1500 + truncation message
         assert "truncated" in result
 
+    def test_list_features_no_filters(self, db_with_features: CatalogDB):
+        executor = ToolExecutor(db_with_features)
+        result = executor.execute("list_features", {})
+        assert "user_data.age" in result
+        assert "user_data.revenue" in result
+        assert "Showing 3 of 3" in result
+
+    def test_list_features_filter_by_source(self, db_with_features: CatalogDB):
+        executor = ToolExecutor(db_with_features)
+        result = executor.execute("list_features", {"source": "user_data", "dtype": "float64"})
+        assert "user_data.revenue" in result
+        assert "user_data.age" not in result
+
+    def test_list_features_undocumented(self, db_with_features: CatalogDB):
+        executor = ToolExecutor(db_with_features)
+        # All features in fixture have no doc → has_doc=False returns all 3
+        result = executor.execute("list_features", {"has_doc": False})
+        assert "[no doc]" in result
+        assert "user_data.age" in result
+
+    def test_list_features_documented_empty(self, db_with_features: CatalogDB):
+        executor = ToolExecutor(db_with_features)
+        result = executor.execute("list_features", {"has_doc": True})
+        assert "No features match" in result
+
+    def test_count_features_total(self, db_with_features: CatalogDB):
+        executor = ToolExecutor(db_with_features)
+        result = executor.execute("count_features", {})
+        assert "3 features" in result
+
+    def test_count_features_filtered(self, db_with_features: CatalogDB):
+        executor = ToolExecutor(db_with_features)
+        result = executor.execute("count_features", {"dtype": "bool"})
+        assert "1 features" in result
+        assert "bool" in result
+
+    def test_catalog_summary(self, db_with_features: CatalogDB):
+        executor = ToolExecutor(db_with_features)
+        result = executor.execute("catalog_summary", {})
+        assert "3 features" in result
+        assert "1 sources" in result
+        assert "Doc coverage" in result
+
+    def test_features_by_source(self, db_with_features: CatalogDB):
+        executor = ToolExecutor(db_with_features)
+        result = executor.execute("features_by_source", {})
+        assert "user_data: 3 features" in result
+
+    def test_list_groups_empty(self, db_with_features: CatalogDB):
+        executor = ToolExecutor(db_with_features)
+        result = executor.execute("list_groups", {})
+        assert "No feature groups" in result
+
+    def test_get_group_not_found(self, db_with_features: CatalogDB):
+        executor = ToolExecutor(db_with_features)
+        result = executor.execute("get_group", {"name": "nonexistent"})
+        assert "not found" in result
+
+    def test_find_similar_unknown_feature(self, db_with_features: CatalogDB):
+        executor = ToolExecutor(db_with_features)
+        result = executor.execute("find_similar_features", {"feature_name": "nope.nope"})
+        assert "not found" in result
+
 
 # --- SessionManager tests ---
 
