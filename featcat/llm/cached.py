@@ -64,6 +64,7 @@ class CachedLLM(BaseLLM):
         messages: list[dict],
         temperature: float = 0.3,
         tools: list[dict] | None = None,
+        max_tokens: int | None = None,
     ) -> dict:
         """Forward chat completion to inner LLM without caching.
 
@@ -71,12 +72,13 @@ class CachedLLM(BaseLLM):
         history — caching would either miss on every realistic input or
         return stale responses for replayed sessions. Pass through directly.
         """
-        return self.inner.chat(messages, temperature=temperature, tools=tools)
+        return self.inner.chat(messages, temperature=temperature, tools=tools, max_tokens=max_tokens)
 
     def stream_chat(
         self,
         messages: list[dict],
         temperature: float = 0.3,
+        max_tokens: int | None = None,
     ) -> Iterator[str]:
         """Forward streaming chat to inner LLM without caching."""
-        yield from self.inner.stream_chat(messages, temperature=temperature)
+        yield from self.inner.stream_chat(messages, temperature=temperature, max_tokens=max_tokens)

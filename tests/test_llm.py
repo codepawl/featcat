@@ -145,3 +145,65 @@ class TestLlamaCppErrors:
         llm = LlamaCppLLM(base_url="http://localhost:99999")
         with pytest.raises(LLMConnectionError):
             llm.generate("test")
+
+
+class TestLlamaCppMaxTokens:
+    """chat/stream_chat must honour the max_tokens kwarg in the wire payload."""
+
+    def test_chat_payload_uses_explicit_max_tokens(self, monkeypatch):
+        import json
+
+        from featcat.llm import llamacpp as llamacpp_mod
+
+        captured: dict = {}
+
+        class _FakeResp:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def read(self):
+                return json.dumps(
+                    {"choices": [{"message": {"content": "ok", "tool_calls": None}, "finish_reason": "stop"}]}
+                ).encode()
+
+        def _fake_urlopen(req, timeout=None):
+            captured["body"] = json.loads(req.data.decode())
+            return _FakeResp()
+
+        monkeypatch.setattr(llamacpp_mod, "urlopen", _fake_urlopen)
+
+        llm = LlamaCppLLM(base_url="http://localhost:8080")
+        llm.chat([{"role": "user", "content": "hi"}], max_tokens=600)
+        assert captured["body"]["max_tokens"] == 600
+
+    def test_chat_payload_defaults_to_2048(self, monkeypatch):
+        import json
+
+        from featcat.llm import llamacpp as llamacpp_mod
+
+        captured: dict = {}
+
+        class _FakeResp:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def read(self):
+                return json.dumps(
+                    {"choices": [{"message": {"content": "ok", "tool_calls": None}, "finish_reason": "stop"}]}
+                ).encode()
+
+        def _fake_urlopen(req, timeout=None):
+            captured["body"] = json.loads(req.data.decode())
+            return _FakeResp()
+
+        monkeypatch.setattr(llamacpp_mod, "urlopen", _fake_urlopen)
+
+        llm = LlamaCppLLM(base_url="http://localhost:8080")
+        llm.chat([{"role": "user", "content": "hi"}])
+        assert captured["body"]["max_tokens"] == 2048
