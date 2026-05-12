@@ -73,6 +73,60 @@ _SUMMARY_PROMPT = (
 # more than a few sentences and caps the worst-case latency.
 _SUMMARY_MAX_TOKENS = 600
 
+# Tools whose executor output is already user-readable. When every tool call
+# in a round is in this set (or list_features below the size threshold), the
+# agent streams the tool result directly to the user and skips the second LLM
+# call. Cuts ~30-60s off fact-lookup queries on a 2B model. See audit
+# `audits/ai-chat-mvp-failure-analysis-2026-05-12.md`.
+SELF_EXPLANATORY_TOOLS: frozenset[str] = frozenset({
+    "list_sources",
+    "get_feature_detail",
+    "get_group",
+    "catalog_summary",
+    "features_by_source",
+    "list_groups",
+    "count_features",
+})
+
+# list_features is self-explanatory only when the result is short enough to be
+# meaningful without prose framing.
+_LIST_FEATURES_SHORT_THRESHOLD = 20
+
+# Vietnamese intros rotated for self-explanatory tool replies. Picked by
+# message count so consecutive queries vary without RNG (deterministic for
+# tests).
+_VI_RESULT_INTROS: tuple[str, ...] = (
+    "Đây là kết quả:",
+    "Đây là thông tin cho bạn:",
+    "Kết quả:",
+)
+
+
+def _list_features_short(result: str) -> bool:
+    """Parse the 'Showing N of M matching features:' line to gate self-explanation.
+
+    Returns True when list_features returned ≤ _LIST_FEATURES_SHORT_THRESHOLD
+    rows so the raw output is digestible without prose framing.
+    """
+    first_line = result.split("\n", 1)[0] if result else ""
+    m = re.match(r"Showing\s+(\d+)\s+of\s+\d+\s+matching features:", first_line)
+    if not m:
+        return False
+    return int(m.group(1)) <= _LIST_FEATURES_SHORT_THRESHOLD
+
+
+def _all_self_explanatory(executed: list[tuple[str, str]]) -> bool:
+    """True when every (tool_name, result) pair is in the self-explanatory set."""
+    if not executed:
+        return False
+    for name, result in executed:
+        if name in SELF_EXPLANATORY_TOOLS:
+            continue
+        if name == "list_features" and _list_features_short(result):
+            continue
+        return False
+    return True
+
 _TOOL_TAG_RE = re.compile(
     r"</?tool_call[^>]*>|</?function[^>]*>|</?parameter[^>]*>|\{\"name\":\s*\"[a-z_]+\"",
     re.DOTALL,
@@ -123,6 +177,7 @@ class CatalogAgent:
             tool_calls = result.get("tool_calls")
             if tool_calls:
                 duplicate = False
+                executed: list[tuple[str, str]] = []
                 for tc in tool_calls:
                     func = tc.get("function", tc)
                     tool_name = func.get("name", "")
@@ -139,6 +194,7 @@ class CatalogAgent:
                     yield {"type": "tool_call", "name": tool_name, "params": tool_params}
 
                     tool_result = self.executor.execute(tool_name, tool_params)
+                    executed.append((tool_name, tool_result))
 
                     yield {"type": "tool_result", "name": tool_name, "result": tool_result}
 
@@ -153,6 +209,19 @@ class CatalogAgent:
 
                 if duplicate:
                     break  # Fall through to forced summary
+
+                # If every tool in this round is self-explanatory, stream the
+                # result directly with a VI intro and skip the second LLM call.
+                # Saves a full generation pass (~30-60s on Gemma 4 E2B CPU).
+                if _all_self_explanatory(executed):
+                    intro = _VI_RESULT_INTROS[len(messages) % len(_VI_RESULT_INTROS)]
+                    direct = intro + "\n\n" + "\n\n".join(r for _n, r in executed)
+                    chunk_size = 20
+                    for i in range(0, len(direct), chunk_size):
+                        yield {"type": "token", "content": direct[i : i + chunk_size]}
+                    yield {"type": "done"}
+                    return
+
                 continue  # Next round
 
             # No tool calls → final text response

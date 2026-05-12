@@ -304,6 +304,75 @@ class TestCatalogAgent:
         tokens = "".join(e.get("content", "") for e in events if e["type"] == "token")
         assert "LLM error" in tokens
 
+    def test_self_explanatory_tool_skips_second_llm_call(self, db_with_features: CatalogDB):
+        """When the tool result is already user-readable, agent streams it directly."""
+        from featcat.ai.agent import CatalogAgent
+
+        mock_llm = MagicMock()
+        mock_llm.chat.return_value = {
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": "call_0",
+                    "function": {"name": "catalog_summary", "arguments": "{}"},
+                }
+            ],
+            "finish_reason": "tool_calls",
+        }
+        agent = CatalogAgent(mock_llm, db_with_features)
+        events = asyncio.get_event_loop().run_until_complete(
+            _collect_events(agent.chat("Tổng quan catalog"))
+        )
+
+        # Exactly one LLM round — second prose pass was skipped.
+        assert mock_llm.chat.call_count == 1
+
+        tokens = "".join(e["content"] for e in events if e["type"] == "token")
+        # VI intro + tool output should appear inline.
+        from featcat.ai.agent import _VI_RESULT_INTROS
+
+        assert "Catalog:" in tokens  # from _tool_catalog_summary output
+        assert any(intro in tokens for intro in _VI_RESULT_INTROS)
+        assert events[-1]["type"] == "done"
+
+    def test_non_self_explanatory_tool_still_calls_llm_twice(self, db_with_features: CatalogDB):
+        """search_features needs prose framing — second LLM call must happen."""
+        from featcat.ai.agent import CatalogAgent
+
+        mock_llm = MagicMock()
+        mock_llm.chat.side_effect = [
+            {
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "call_0",
+                        "function": {"name": "search_features", "arguments": '{"query": "revenue"}'},
+                    }
+                ],
+                "finish_reason": "tool_calls",
+            },
+            {
+                "content": "Found one matching feature.",
+                "tool_calls": None,
+                "finish_reason": "stop",
+            },
+        ]
+        agent = CatalogAgent(mock_llm, db_with_features)
+        asyncio.get_event_loop().run_until_complete(_collect_events(agent.chat("find revenue")))
+        assert mock_llm.chat.call_count == 2
+
+    def test_list_features_large_result_keeps_second_llm_call(self, db_with_features: CatalogDB):
+        """list_features returning > 20 rows isn't self-explanatory; agent still summarises."""
+        from featcat.ai.agent import _list_features_short
+
+        # Fixture has 3 features, but the short-threshold check uses the result string.
+        short_result = "Showing 5 of 5 matching features:\n- a\n- b\n- c\n- d\n- e"
+        long_result = "Showing 30 of 30 matching features:\n" + "\n".join(f"- f{i}" for i in range(30))
+        assert _list_features_short(short_result) is True
+        assert _list_features_short(long_result) is False
+        # Non-matching first line → not detectable, default False.
+        assert _list_features_short("No features match those filters.") is False
+
 
 # --- Helpers ---
 
