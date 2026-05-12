@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import threading
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -24,6 +25,24 @@ _THINKING_KEYWORDS = frozenset(
 def _needs_thinking(query: str) -> bool:
     q = query.lower()
     return any(kw in q for kw in _THINKING_KEYWORDS)
+
+
+# Matches numbered list markers: "1)", "1.", " 2)", "\n3)" etc. We require
+# 3+ DISTINCT numbers to trigger so accidental "1)" in a single question
+# doesn't false-positive. The 80-char floor avoids tripping on short prompts.
+_NUMBERED_ITEM_RE = re.compile(r"(?:^|\s)(\d+)[\)\.](?=\s|$)", re.MULTILINE)
+
+_MULTIPART_DECLINE_VI = (
+    "Mình xử lý mỗi lần một câu hỏi thôi nhé. Bạn vui lòng hỏi từng yêu cầu riêng — bắt đầu với phần nào trước ạ?"
+)
+
+
+def _is_multipart(query: str) -> bool:
+    """True when the query has 3+ distinct numbered items (1) / 1.) — decline."""
+    if len(query) < 80:
+        return False
+    matches = _NUMBERED_ITEM_RE.findall(query)
+    return len(set(matches)) >= 3
 
 
 class DiscoverRequest(BaseModel):
@@ -256,6 +275,21 @@ async def agent_chat(body: ChatRequest, db=Depends(get_db), llm=Depends(get_llm)
     session = session_mgr.get_or_create(session_id)
 
     async def event_stream():
+        # Pre-flight: queries with 3+ numbered items are multi-part. The agent
+        # on a 2B model handles the first item and goes silent on the rest
+        # (see D4 in PR #59). Decline politely without burning an LLM call.
+        if _is_multipart(query):
+            chunk_size = 20
+            for i in range(0, len(_MULTIPART_DECLINE_VI), chunk_size):
+                yield {
+                    "event": "message",
+                    "data": json.dumps({"type": "token", "content": _MULTIPART_DECLINE_VI[i : i + chunk_size]}),
+                }
+            yield {"event": "message", "data": json.dumps({"type": "done"})}
+            session.add_message("user", query)
+            session.add_message("assistant", _MULTIPART_DECLINE_VI)
+            return
+
         llm_ok = False
         if llm is not None:
             with contextlib.suppress(Exception):

@@ -297,16 +297,11 @@ class ToolExecutor:
         thresh = max(0.4, min(0.95, thresh))
         lim = max(1, min(int(limit or 20), 50))
         sources = [source] if source else None
-        pairs, total, _summary = self.backend.find_duplicate_pairs(
-            threshold=thresh, limit=lim, sources=sources
-        )
+        pairs, total, _summary = self.backend.find_duplicate_pairs(threshold=thresh, limit=lim, sources=sources)
         if not pairs:
             scope = f" in source '{source}'" if source else ""
             return f"No duplicate pairs found{scope} above threshold {thresh:.2f}."
-        header = (
-            f"Found {total} duplicate pair(s) above threshold {thresh:.2f}; "
-            f"showing top {len(pairs)}:"
-        )
+        header = f"Found {total} duplicate pair(s) above threshold {thresh:.2f}; showing top {len(pairs)}:"
         lines = [header]
         for p in pairs:
             a_name = p["a"]["name"] if isinstance(p.get("a"), dict) else getattr(p.get("a"), "name", "?")

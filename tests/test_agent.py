@@ -371,9 +371,7 @@ class TestCatalogAgent:
             "finish_reason": "tool_calls",
         }
         agent = CatalogAgent(mock_llm, db_with_features)
-        events = asyncio.get_event_loop().run_until_complete(
-            _collect_events(agent.chat("Tổng quan catalog"))
-        )
+        events = asyncio.get_event_loop().run_until_complete(_collect_events(agent.chat("Tổng quan catalog")))
 
         # Exactly one LLM round — second prose pass was skipped.
         assert mock_llm.chat.call_count == 1

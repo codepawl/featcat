@@ -81,15 +81,17 @@ _SUMMARY_MAX_TOKENS = 600
 # agent streams the tool result directly to the user and skips the second LLM
 # call. Cuts ~30-60s off fact-lookup queries on a 2B model. See audit
 # `audits/ai-chat-mvp-failure-analysis-2026-05-12.md`.
-SELF_EXPLANATORY_TOOLS: frozenset[str] = frozenset({
-    "list_sources",
-    "get_feature_detail",
-    "get_group",
-    "catalog_summary",
-    "features_by_source",
-    "list_groups",
-    "count_features",
-})
+SELF_EXPLANATORY_TOOLS: frozenset[str] = frozenset(
+    {
+        "list_sources",
+        "get_feature_detail",
+        "get_group",
+        "catalog_summary",
+        "features_by_source",
+        "list_groups",
+        "count_features",
+    }
+)
 
 # list_features is self-explanatory only when the result is short enough to be
 # meaningful without prose framing.
@@ -129,6 +131,7 @@ def _all_self_explanatory(executed: list[tuple[str, str]]) -> bool:
             continue
         return False
     return True
+
 
 _TOOL_TAG_RE = re.compile(
     r"</?tool_call[^>]*>|</?function[^>]*>|</?parameter[^>]*>|\{\"name\":\s*\"[a-z_]+\"",
@@ -245,9 +248,7 @@ class CatalogAgent:
         """Make a final LLM call without tools to summarize results."""
         messages.append({"role": "user", "content": _SUMMARY_PROMPT})
         try:
-            result = await run_in_threadpool(
-                self.llm.chat, messages, temperature=0.3, max_tokens=_SUMMARY_MAX_TOKENS
-            )
+            result = await run_in_threadpool(self.llm.chat, messages, temperature=0.3, max_tokens=_SUMMARY_MAX_TOKENS)
             content = _clean_content(result.get("content") or "")
             if content:
                 chunk_size = 20
