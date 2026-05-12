@@ -221,6 +221,11 @@ class MonitoringCheck(Base):
     __table_args__ = (
         Index("idx_monitoring_checks_feature", "feature_name"),
         Index("idx_monitoring_checks_date", "checked_at"),
+        # Composite indexes for the new chart endpoints — feature timeline scans
+        # and catalog-wide drift-rate aggregation both benefit from a covering
+        # leading column on the filter predicate.
+        Index("idx_monitoring_checks_feature_date", "feature_id", "checked_at"),
+        Index("idx_monitoring_checks_date_severity", "checked_at", "severity"),
     )
 
     id: Mapped[str] = mapped_column(Text, primary_key=True)
@@ -230,6 +235,12 @@ class MonitoringCheck(Base):
     severity: Mapped[str] = mapped_column(Text, nullable=False)
     checked_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
     llm_analysis_json: Mapped[str | None] = mapped_column(Text)
+    # Per-check metrics added for the multi-metric feature chart. All nullable:
+    # legacy rows have these as NULL; only checks performed after this column
+    # landed will have values populated. Frontend handles the gap.
+    null_ratio: Mapped[float | None] = mapped_column(Float)
+    mean_z_score: Mapped[float | None] = mapped_column(Float)
+    sample_size: Mapped[int | None] = mapped_column(Integer)
 
 
 class FeatureLineage(Base):

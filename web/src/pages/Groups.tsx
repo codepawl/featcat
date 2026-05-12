@@ -215,7 +215,16 @@ export function Groups() {
       </div>
 
       <CreateGroupModal open={createOpen} onClose={() => setCreateOpen(false)} onCreated={() => { setCreateOpen(false); load() }} />
-      {selected && <AddFeaturesModal open={addOpen} onClose={() => setAddOpen(false)} groupName={selected.name} onAdded={() => { setAddOpen(false); load(); selectGroup(selected) }} />}
+      {selected && (
+        <AddFeaturesModal
+          open={addOpen}
+          onClose={() => setAddOpen(false)}
+          groupName={selected.name}
+          description={detail?.description ?? selected.description ?? ''}
+          existingMemberIds={(detail?.members ?? []).map((m: { id: string }) => m.id).filter(Boolean)}
+          onAdded={() => { setAddOpen(false); load(); selectGroup(selected) }}
+        />
+      )}
       {detail && (
         <ExportModal
           open={exportOpen}
@@ -272,7 +281,21 @@ function CreateGroupModal({ open, onClose, onCreated }: { open: boolean; onClose
 }
 
 
-function AddFeaturesModal({ open, onClose, groupName, onAdded }: { open: boolean; onClose: () => void; groupName: string; onAdded: () => void }) {
+function AddFeaturesModal({
+  open,
+  onClose,
+  groupName,
+  description,
+  existingMemberIds,
+  onAdded,
+}: {
+  open: boolean
+  onClose: () => void
+  groupName: string
+  description: string
+  existingMemberIds: string[]
+  onAdded: () => void
+}) {
   const { t } = useTranslation('groups')
   const [features, setFeatures] = useState<ReturnType<typeof toFeatureItems>>([])
   const [selectedSpecs, setSelectedSpecs] = useState<Set<string>>(new Set())
@@ -311,6 +334,8 @@ function AddFeaturesModal({ open, onClose, groupName, onAdded }: { open: boolean
         selected={selectedSpecs}
         onChange={setSelectedSpecs}
         groupName={groupName}
+        useCase={description || groupName}
+        excludeIds={existingMemberIds}
         showAISuggest
       />
     </Modal>
