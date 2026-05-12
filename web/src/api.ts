@@ -78,6 +78,15 @@ export interface DriftRateResponse {
   series: DriftRatePoint[]
 }
 
+export interface MetricSeriesPoint {
+  checked_at: string
+  psi: number | null
+  severity: string
+  null_ratio: number | null
+  mean_z_score: number | null
+  sample_size: number | null
+}
+
 export interface DriftMatrixCell {
   date: string
   severity: string
@@ -176,9 +185,15 @@ export const api = {
     },
     baseline: () => request<Record<string, unknown>>('/monitor/baseline', { method: 'POST' }),
     report: () => request<Record<string, unknown>>('/monitor/report'),
-    history: (featureSpec: string, days = 30) =>
-      cachedRequest<{ checked_at: string; psi: number | null; severity: string }[]>(
-        `/monitor/history/${encodeURIComponent(featureSpec)}?days=${days}`
+    /**
+     * Per-feature metric history including auxiliary metrics
+     * (null_ratio, mean_z_score, sample_size). Legacy rows return null
+     * for the new metrics; the chart uses connectNulls=false to surface
+     * the gap visibly.
+     */
+    metrics: (featureSpec: string, days = 30) =>
+      cachedRequest<MetricSeriesPoint[]>(
+        `/monitor/metrics/${encodeURIComponent(featureSpec)}?days=${days}`,
       ),
     baselineStats: (featureSpec: string) =>
       cachedRequest<{ feature_spec: string; baseline_stats: Record<string, number>; computed_at: string | null }>(
