@@ -10,7 +10,8 @@ import { Badge } from '../components/Badge'
 import { Modal } from '../components/Modal'
 import { Skeleton } from '../components/Skeleton'
 import { ScoreTooltip } from '../components/ScoreTooltip'
-import { PsiTimeline } from '../components/charts/PsiTimeline'
+import { MultiMetricTimeline } from '../components/charts/MultiMetricTimeline'
+import type { MetricSeriesPoint } from '../api'
 import { DistributionShift } from '../components/charts/DistributionShift'
 
 export function Monitoring() {
@@ -245,18 +246,22 @@ interface MonitoringDetailItem {
 }
 
 function FeatureDetail({ item, onNavigate, onClose, t }: { item: MonitoringDetailItem; onNavigate: () => void; onClose: () => void; t: TFunction<'monitoring'> }) {
-  const [history, setHistory] = useState<{ checked_at: string; psi: number | null; severity: string }[]>([])
+  const [history, setHistory] = useState<MetricSeriesPoint[]>([])
+  const [historyDays, setHistoryDays] = useState(30)
   const [historyLoading, setHistoryLoading] = useState(true)
   const [baselineData, setBaselineData] = useState<Record<string, number> | null>(null)
   const [baselineLoading, setBaselineLoading] = useState(true)
 
   useEffect(() => {
     setHistoryLoading(true)
-    setBaselineLoading(true)
-    api.monitor.history(item.feature, 30)
+    api.monitor.metrics(item.feature, historyDays)
       .then(setHistory)
       .catch(() => setHistory([]))
       .finally(() => setHistoryLoading(false))
+  }, [item.feature, historyDays])
+
+  useEffect(() => {
+    setBaselineLoading(true)
     api.monitor.baselineStats(item.feature)
       .then(r => setBaselineData(r.baseline_stats))
       .catch(() => setBaselineData(null))
@@ -277,8 +282,15 @@ function FeatureDetail({ item, onNavigate, onClose, t }: { item: MonitoringDetai
         <span className="text-[var(--text-tertiary)]">{psiLabel(item.psi, t)}</span>
       </div>
 
-      {/* PSI Timeline Chart */}
-      <PsiTimeline data={history} loading={historyLoading} />
+      {/* Multi-metric history (PSI + null ratio + Z-score on left axis,
+          sample size on right axis). Legacy rows render PSI-only since
+          the auxiliary metrics weren't persisted before the schema migration. */}
+      <MultiMetricTimeline
+        data={history}
+        loading={historyLoading}
+        days={historyDays}
+        onRangeChange={setHistoryDays}
+      />
 
       {/* Distribution Shift Comparison */}
       <DistributionShift
