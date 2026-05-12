@@ -249,6 +249,53 @@ export const api = {
         `/groups/${encodeURIComponent(name)}/regenerate-docs`,
         { method: 'POST', body: JSON.stringify({ regenerate_existing: opts.regenerate_existing ?? false, global_hint: opts.global_hint ?? null }) }
       ),
+    freeze: (name: string, opts: { note?: string; frozen_by?: string } = {}) =>
+      request<{
+        group: string
+        version_number: number
+        frozen_at: string
+        frozen_by: string
+        note: string
+        member_count: number
+      }>(
+        `/groups/${encodeURIComponent(name)}/freeze`,
+        { method: 'POST', body: JSON.stringify({ note: opts.note ?? '', frozen_by: opts.frozen_by ?? '' }) }
+      ),
+    versions: (name: string) => cachedRequest<{
+      version_number: number
+      frozen_at: string
+      frozen_by: string
+      note: string
+      member_count: number
+    }[]>(`/groups/${encodeURIComponent(name)}/versions`),
+    version: (name: string, n: number) => cachedRequest<{
+      version_number: number
+      frozen_at: string
+      frozen_by: string
+      note: string
+      snapshot: {
+        group: { id: string; name: string; description: string; project: string; owner: string }
+        features: {
+          id: string
+          name: string
+          dtype: string
+          description: string
+          tags: string[]
+          owner: string
+          stats: Record<string, unknown>
+          definition: string | null
+          definition_type: string | null
+          column_name: string
+          source_path: string
+          source_format: string
+          source_name: string
+          deleted_after_freeze: boolean
+        }[]
+      }
+      warnings: string[]
+    }>(`/groups/${encodeURIComponent(name)}/versions/${n}`),
+    exportUrl: (name: string, n: number, format: 'json' | 'csv' | 'parquet') =>
+      `${API}/groups/${encodeURIComponent(name)}/versions/${n}/export?format=${format}`,
   },
   definitions: {
     get: (name: string) => cachedRequest<any>(`/features/by-name/definition?name=${encodeURIComponent(name)}`),

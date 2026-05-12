@@ -36,7 +36,7 @@ from sqlalchemy.exc import OperationalError
 from ..db.connection import make_engine, make_session_factory, resolve_backend
 from ..db.models import Base
 from .backend import CatalogBackend
-from .models import DataSource, Feature, FeatureGroup, _new_id
+from .models import DataSource, Feature, FeatureGroup, FeatureGroupVersion, _new_id
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -1153,6 +1153,147 @@ class LocalBackend(CatalogBackend):
                 ).scalar()
                 or 0
             )
+
+    # --- Feature Group Versions (freeze + export) ---
+
+    def freeze_group(self, group_id: str, note: str = "", frozen_by: str = "") -> FeatureGroupVersion:
+        """Snapshot the group's current members into a new version row.
+
+        Joins ``features`` with ``data_sources`` so the snapshot captures
+        the source path/format at freeze time — sources can be re-pointed
+        or deleted later without invalidating the snapshot. Stats and tag
+        list are JSON-decoded once here so the snapshot is a clean nested
+        document rather than a string-of-strings.
+        """
+        group = next((g for g in self.list_groups() if g.id == group_id), None)
+        if group is None:
+            raise KeyError(f"Group not found: {group_id}")
+
+        frozen_at = _utcnow()
+        with self.session() as s:
+            next_version = int(
+                s.execute(
+                    text(
+                        "SELECT COALESCE(MAX(version_number), 0) + 1 FROM feature_group_versions WHERE group_id = :gid"
+                    ),
+                    {"gid": group_id},
+                ).scalar()
+                or 1
+            )
+
+            member_rows = (
+                s.execute(
+                    text(
+                        "SELECT f.id, f.name, f.dtype, f.description, f.tags, f.owner, f.stats, "
+                        "       f.definition, f.definition_type, f.column_name, "
+                        "       ds.path AS source_path, ds.format AS source_format, ds.name AS source_name "
+                        "FROM features f "
+                        "JOIN feature_group_members gm ON f.id = gm.feature_id "
+                        "LEFT JOIN data_sources ds ON ds.id = f.data_source_id "
+                        "WHERE gm.group_id = :gid "
+                        "ORDER BY f.name"
+                    ),
+                    {"gid": group_id},
+                )
+                .mappings()
+                .all()
+            )
+
+            features: list[dict[str, Any]] = []
+            for r in member_rows:
+                tags_raw = r.get("tags")
+                stats_raw = r.get("stats")
+                features.append(
+                    {
+                        "id": r["id"],
+                        "name": r["name"],
+                        "dtype": r.get("dtype") or "",
+                        "description": r.get("description") or "",
+                        "tags": json.loads(tags_raw) if isinstance(tags_raw, str) and tags_raw else [],
+                        "owner": r.get("owner") or "",
+                        "stats": json.loads(stats_raw) if isinstance(stats_raw, str) and stats_raw else {},
+                        "definition": r.get("definition"),
+                        "definition_type": r.get("definition_type"),
+                        "column_name": r.get("column_name") or "",
+                        "source_path": r.get("source_path") or "",
+                        "source_format": r.get("source_format") or "",
+                        "source_name": r.get("source_name") or "",
+                    }
+                )
+
+            snapshot = {
+                "group": {
+                    "id": group.id,
+                    "name": group.name,
+                    "description": group.description,
+                    "project": group.project,
+                    "owner": group.owner,
+                },
+                "version_number": next_version,
+                "frozen_at": frozen_at.isoformat(),
+                "frozen_by": frozen_by,
+                "note": note,
+                "features": features,
+            }
+            snapshot_json = json.dumps(snapshot, ensure_ascii=False, sort_keys=False)
+
+            version = FeatureGroupVersion(
+                group_id=group_id,
+                version_number=next_version,
+                snapshot_json=snapshot_json,
+                note=note,
+                frozen_by=frozen_by,
+                frozen_at=frozen_at,
+            )
+            s.execute(
+                text(
+                    "INSERT INTO feature_group_versions "
+                    "(id, group_id, version_number, snapshot_json, note, frozen_by, frozen_at) "
+                    "VALUES (:id, :gid, :vn, :sj, :note, :by, :at)"
+                ),
+                {
+                    "id": version.id,
+                    "gid": group_id,
+                    "vn": next_version,
+                    "sj": snapshot_json,
+                    "note": note,
+                    "by": frozen_by,
+                    "at": frozen_at,
+                },
+            )
+            s.commit()
+            return version
+
+    def list_group_versions(self, group_id: str) -> list[FeatureGroupVersion]:
+        with self.session() as s:
+            rows = (
+                s.execute(
+                    text(
+                        "SELECT id, group_id, version_number, snapshot_json, note, frozen_by, frozen_at "
+                        "FROM feature_group_versions WHERE group_id = :gid "
+                        "ORDER BY version_number DESC"
+                    ),
+                    {"gid": group_id},
+                )
+                .mappings()
+                .all()
+            )
+            return [FeatureGroupVersion(**dict(r)) for r in rows]
+
+    def get_group_version(self, group_id: str, version_number: int) -> FeatureGroupVersion | None:
+        with self.session() as s:
+            row = (
+                s.execute(
+                    text(
+                        "SELECT id, group_id, version_number, snapshot_json, note, frozen_by, frozen_at "
+                        "FROM feature_group_versions WHERE group_id = :gid AND version_number = :vn"
+                    ),
+                    {"gid": group_id, "vn": version_number},
+                )
+                .mappings()
+                .first()
+            )
+            return FeatureGroupVersion(**dict(row)) if row else None
 
     # --- Feature Definitions ---
 

@@ -115,6 +115,24 @@ class FeatureGroup(BaseModel):
     updated_at: datetime = Field(default_factory=_utcnow)
 
 
+class FeatureGroupVersion(BaseModel):
+    """Frozen snapshot of a group's members for reproducibility.
+
+    ``snapshot_json`` is a JSON string capturing the group metadata and
+    every member's name/dtype/definition/source at freeze time. Stored as
+    a string (not a parsed dict) so it round-trips losslessly through the
+    DB and the API without datetime/numeric coercion drift.
+    """
+
+    id: str = Field(default_factory=_new_id)
+    group_id: str
+    version_number: int
+    snapshot_json: str
+    note: str = ""
+    frozen_by: str = ""
+    frozen_at: datetime = Field(default_factory=_utcnow)
+
+
 class UsageEvent(BaseModel):
     """A logged usage event for a feature."""
 
