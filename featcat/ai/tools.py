@@ -195,8 +195,9 @@ CATALOG_TOOLS: list[dict] = [
         "function": {
             "name": "find_similar_features",
             "description": (
-                "Find features similar to a reference feature (semantic similarity over name + "
-                "description + tags). Use for 'features similar to X' or duplicate-style questions."
+                "Find features similar to ONE reference feature by name. Use for 'features similar "
+                "to X', 'gì giống X'. Requires feature_name. For catalog-wide duplicate scans, use "
+                "find_duplicate_pairs instead."
             ),
             "parameters": {
                 "type": "object",
@@ -205,6 +206,35 @@ CATALOG_TOOLS: list[dict] = [
                     "top_k": {"type": "integer", "description": "Max results (1-20, default 5)"},
                 },
                 "required": ["feature_name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "find_duplicate_pairs",
+            "description": (
+                "Find feature pairs that look like duplicates across the catalog. Use for "
+                "'có feature nào nghi ngờ duplicate', 'tìm duplicate trong source X', or 'tìm "
+                "duplicate với threshold N'. Different from find_similar_features (which is "
+                "per-reference-feature)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "threshold": {
+                        "type": "number",
+                        "description": "Minimum similarity score (0.4-0.95). Default 0.7.",
+                    },
+                    "source": {
+                        "type": "string",
+                        "description": "Optional: restrict to one source name (e.g. 'device_logs').",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max pairs to return (1-50). Default 20.",
+                    },
+                },
             },
         },
     },

@@ -161,6 +161,57 @@ class TestToolExecutor:
         result = executor.execute("find_similar_features", {"feature_name": "nope.nope"})
         assert "not found" in result
 
+    def test_find_duplicate_pairs_empty(self, db_with_features: CatalogDB):
+        """Fixture has 3 unrelated features → no duplicates expected."""
+        executor = ToolExecutor(db_with_features)
+        result = executor.execute("find_duplicate_pairs", {})
+        assert "No duplicate pairs found" in result
+
+    def test_find_duplicate_pairs_with_source(self, db_with_features: CatalogDB):
+        """Scope marker should appear when source is passed."""
+        executor = ToolExecutor(db_with_features)
+        result = executor.execute("find_duplicate_pairs", {"source": "user_data", "threshold": 0.9})
+        assert "user_data" in result
+        assert "0.90" in result
+
+    def test_find_duplicate_pairs_formats_pairs(self, db_with_features: CatalogDB, monkeypatch):
+        """Patched backend returns one pair — verify header + row formatting."""
+        executor = ToolExecutor(db_with_features)
+        fake_pair = {
+            "a": {"name": "user_data.age"},
+            "b": {"name": "user_data.revenue"},
+            "score": 0.85,
+            "reasons": [{"code": "name_similarity", "detail": "x"}, {"code": "schema_match", "detail": "y"}],
+        }
+        monkeypatch.setattr(
+            db_with_features,
+            "find_duplicate_pairs",
+            lambda threshold, limit, sources=None: ([fake_pair], 1, None),
+        )
+        result = executor.execute("find_duplicate_pairs", {"threshold": 0.8})
+        assert "Found 1 duplicate pair" in result
+        assert "user_data.age" in result
+        assert "user_data.revenue" in result
+        assert "0.850" in result
+        assert "name_similarity" in result and "schema_match" in result
+
+    def test_find_duplicate_pairs_clamps_threshold(self, db_with_features: CatalogDB, monkeypatch):
+        """threshold below 0.4 / above 0.95 must be clamped."""
+        executor = ToolExecutor(db_with_features)
+        captured = {}
+
+        def fake(threshold, limit, sources=None):
+            captured["t"] = threshold
+            captured["l"] = limit
+            return ([], 0, None)
+
+        monkeypatch.setattr(db_with_features, "find_duplicate_pairs", fake)
+        executor.execute("find_duplicate_pairs", {"threshold": 0.01, "limit": 1000})
+        assert captured["t"] == 0.4
+        assert captured["l"] == 50  # MAX 50
+        executor.execute("find_duplicate_pairs", {"threshold": 0.99})
+        assert captured["t"] == 0.95
+
 
 # --- SessionManager tests ---
 

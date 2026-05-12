@@ -287,6 +287,36 @@ class ToolExecutor:
             lines.append(f"  - {s.get('name')} ({s.get('dtype')}): similarity={sim:.3f}")
         return "\n".join(lines)
 
+    def _tool_find_duplicate_pairs(
+        self,
+        threshold: float | None = None,
+        source: str | None = None,
+        limit: int | None = None,
+    ) -> str:
+        thresh = float(threshold) if threshold is not None else 0.7
+        thresh = max(0.4, min(0.95, thresh))
+        lim = max(1, min(int(limit or 20), 50))
+        sources = [source] if source else None
+        pairs, total, _summary = self.backend.find_duplicate_pairs(
+            threshold=thresh, limit=lim, sources=sources
+        )
+        if not pairs:
+            scope = f" in source '{source}'" if source else ""
+            return f"No duplicate pairs found{scope} above threshold {thresh:.2f}."
+        header = (
+            f"Found {total} duplicate pair(s) above threshold {thresh:.2f}; "
+            f"showing top {len(pairs)}:"
+        )
+        lines = [header]
+        for p in pairs:
+            a_name = p["a"]["name"] if isinstance(p.get("a"), dict) else getattr(p.get("a"), "name", "?")
+            b_name = p["b"]["name"] if isinstance(p.get("b"), dict) else getattr(p.get("b"), "name", "?")
+            score = p.get("score", 0.0)
+            reasons = p.get("reasons", []) or []
+            codes = ", ".join(r.get("code", "?") for r in reasons) if reasons else "unknown"
+            lines.append(f"  - {a_name} ↔ {b_name}: {score:.3f} ({codes})")
+        return "\n".join(lines)
+
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------

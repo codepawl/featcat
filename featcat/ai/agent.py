@@ -43,7 +43,10 @@ list_features(has_doc=False, source=..., dtype=...)
 - Catalog overview ("tổng quan catalog", "health summary"): catalog_summary()
 - Groups list: list_groups()
 - One group's members ("group X có gì"): get_group(name=...)
-- Similar/duplicate features: find_similar_features(feature_name=..., top_k=5)
+- Similar features (per reference feature): find_similar_features(feature_name=..., top_k=5)
+- Catalog-wide duplicates ("có feature nào nghi ngờ duplicate", "tìm duplicate \
+trong source X", "duplicate với threshold N"): \
+find_duplicate_pairs(threshold=..., source=...)
 - Greeting ("xin chào"): respond directly, no tool needed
 
 Common workflows:
