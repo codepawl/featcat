@@ -1,21 +1,23 @@
-import { useMemo } from 'react'
+import { memo, useCallback, useMemo } from 'react'
 import type { SimilarityFeatureBrief } from '../../api'
 
 interface MatrixGridProps {
   features: SimilarityFeatureBrief[]
   cells: { a: number; b: number; score: number }[]
+  threshold: number
   onCellClick: (aId: string, bId: string) => void
 }
 
-// Heatmap colors keyed off score thresholds. Mirrors the DocDebtHeatmap
-// pattern: Tailwind utility classes with `dark:` variants so the colors invert
-// cleanly under the project's class-based dark mode.
-function scoreClasses(score: number): { bg: string; text: string } {
-  if (score < 0.3) return { bg: 'bg-transparent', text: 'text-[var(--text-tertiary)]' }
-  if (score < 0.5) return { bg: 'bg-brand/10 dark:bg-brand/25', text: 'text-[var(--text-primary)]' }
-  if (score < 0.7) return { bg: 'bg-brand/30 dark:bg-brand/45', text: 'text-[var(--text-primary)]' }
-  if (score < 0.9) return { bg: 'bg-brand/60 dark:bg-brand/65', text: 'text-white' }
-  return { bg: 'bg-brand', text: 'text-white' }
+// 5-bucket scale. Step boundaries chosen so even the lowest bucket has a
+// visible tint (the old `bg-brand/10` in light mode was indistinguishable from
+// the page background). Hover ring kept inside the cell padding so it doesn't
+// shift neighbours.
+function bucketClasses(score: number): { bg: string; text: string } {
+  if (score < 0.5) return { bg: 'bg-brand/15 dark:bg-brand/20', text: 'text-[var(--text-secondary)]' }
+  if (score < 0.65) return { bg: 'bg-brand/30 dark:bg-brand/35', text: 'text-[var(--text-primary)]' }
+  if (score < 0.8) return { bg: 'bg-brand/55 dark:bg-brand/55', text: 'text-white' }
+  if (score < 0.92) return { bg: 'bg-brand/75 dark:bg-brand/75', text: 'text-white' }
+  return { bg: 'bg-brand text-white', text: 'text-white' }
 }
 
 function columnPart(name: string): string {
@@ -28,18 +30,83 @@ function sourcePart(name: string): string {
   return idx === -1 ? '' : name.slice(0, idx)
 }
 
-export function MatrixGrid({ features, cells, onCellClick }: MatrixGridProps) {
-  // O(1) lookup of a cell's score by (i, j) where i < j.
+// Hatched stripe pattern for self-similarity diagonal — distinct from real
+// scores at a glance. Uses CSS variable so it picks up the brand color in
+// both themes.
+const DIAGONAL_STYLE: React.CSSProperties = {
+  backgroundImage:
+    'repeating-linear-gradient(45deg, var(--brand) 0 4px, color-mix(in srgb, var(--brand) 60%, transparent) 4px 8px)',
+}
+
+interface CellProps {
+  rowId: string
+  colId: string
+  rowName: string
+  colName: string
+  score: number | undefined
+  kind: 'diagonal' | 'lower' | 'upper-empty' | 'upper-scored'
+  borderLeft: boolean
+  onClick: (a: string, b: string) => void
+}
+
+const MatrixCell = memo(function MatrixCell({
+  rowId,
+  colId,
+  rowName,
+  colName,
+  score,
+  kind,
+  borderLeft,
+  onClick,
+}: CellProps) {
+  const borderClass = `border border-[var(--border-subtle)]${
+    borderLeft ? ' border-l-2 border-l-[var(--border-default)]' : ''
+  }`
+
+  if (kind === 'diagonal') {
+    return (
+      <td
+        className={`${borderClass} w-10 h-10 align-middle p-0`}
+        style={DIAGONAL_STYLE}
+        title={`${rowName} (self)`}
+        aria-label="self"
+      />
+    )
+  }
+
+  if (kind === 'lower') {
+    return <td className={`${borderClass} bg-[var(--bg-tertiary)]/30 w-10 h-10`} />
+  }
+
+  if (kind === 'upper-empty' || score === undefined) {
+    return <td className={`${borderClass} w-10 h-10`} />
+  }
+
+  const cls = bucketClasses(score)
+  const handle = () => onClick(rowId, colId)
+  return (
+    <td
+      className={`${borderClass} ${cls.bg} ${cls.text} text-center w-10 h-10 align-middle cursor-pointer hover:outline hover:outline-2 hover:-outline-offset-1 hover:outline-brand transition-colors`}
+      title={`${rowName} ↔ ${colName}: ${score.toFixed(3)}`}
+      onClick={handle}
+    >
+      {score.toFixed(2)}
+    </td>
+  )
+})
+
+function MatrixGridImpl({ features, cells, threshold, onCellClick }: MatrixGridProps) {
+  // O(1) score lookup keyed by row*n + col. Built once per cells/features
+  // change — independent of threshold so the slider never re-builds this.
+  const n = features.length
   const cellLookup = useMemo(() => {
     const m = new Map<number, number>()
-    for (const c of cells) m.set(c.a * features.length + c.b, c.score)
+    for (const c of cells) m.set(c.a * n + c.b, c.score)
     return m
-  }, [cells, features.length])
+  }, [cells, n])
 
-  const n = features.length
-
-  // Detect source-group boundaries: cell (i, j) needs a thicker left border
-  // when feature j's source differs from j-1's; same for top borders on rows.
+  // Source-group boundaries: cell j gets a thicker left border when feature
+  // j's source differs from j-1's. Same flag drives the top border on rows.
   const isNewSource = useMemo(() => {
     const flags: boolean[] = []
     for (let i = 0; i < n; i++) {
@@ -74,60 +141,46 @@ export function MatrixGrid({ features, cells, onCellClick }: MatrixGridProps) {
       </thead>
       <tbody>
         {features.map((rowFeat, i) => (
-          <tr key={rowFeat.id} className={isNewSource[i] ? 'border-t-2 border-t-[var(--border-default)]' : ''}>
+          <tr
+            key={rowFeat.id}
+            className={isNewSource[i] ? 'border-t-2 border-t-[var(--border-default)]' : ''}
+          >
             <th
               className="sticky left-0 z-10 bg-[var(--bg-primary)] border-r border-[var(--border-default)] text-right pr-2 py-1 font-medium text-[var(--text-secondary)] whitespace-nowrap"
               title={rowFeat.name}
             >
-              <span className="inline-block max-w-[180px] truncate align-middle">{columnPart(rowFeat.name)}</span>
+              <span className="inline-block max-w-[180px] truncate align-middle">
+                {columnPart(rowFeat.name)}
+              </span>
             </th>
             {features.map((colFeat, j) => {
-              const newSourceLeft = isNewSource[j]
-              const baseBorder = `border border-[var(--border-subtle)] ${
-                newSourceLeft ? 'border-l-2 border-l-[var(--border-default)]' : ''
-              }`
-
+              let kind: CellProps['kind']
+              let score: number | undefined
               if (i === j) {
-                // Diagonal: always 1.0, not clickable, distinct styling.
-                return (
-                  <td
-                    key={colFeat.id}
-                    className={`${baseBorder} bg-brand/80 text-white text-center w-9 h-9 align-middle`}
-                    title={`${rowFeat.name} = self (1.00)`}
-                  >
-                    1.00
-                  </td>
-                )
+                kind = 'diagonal'
+              } else if (j < i) {
+                kind = 'lower'
+              } else {
+                score = cellLookup.get(i * n + j)
+                if (score === undefined || score < threshold) {
+                  kind = 'upper-empty'
+                  score = undefined
+                } else {
+                  kind = 'upper-scored'
+                }
               }
-
-              if (j < i) {
-                // Lower triangle: leave empty to drive the eye to the upper.
-                return <td key={colFeat.id} className={`${baseBorder} bg-[var(--bg-tertiary)]/40 w-9 h-9`} />
-              }
-
-              const score = cellLookup.get(i * n + j)
-              if (score === undefined) {
-                // Upper triangle but below threshold — render dimmed blank.
-                return (
-                  <td
-                    key={colFeat.id}
-                    className={`${baseBorder} bg-transparent text-[var(--text-muted)] text-center w-9 h-9 align-middle`}
-                  >
-                    ·
-                  </td>
-                )
-              }
-
-              const cls = scoreClasses(score)
               return (
-                <td
+                <MatrixCell
                   key={colFeat.id}
-                  className={`${baseBorder} ${cls.bg} ${cls.text} text-center w-9 h-9 align-middle cursor-pointer hover:outline hover:outline-2 hover:outline-brand`}
-                  title={`${rowFeat.name} ↔ ${colFeat.name}: ${score.toFixed(3)}`}
-                  onClick={() => onCellClick(rowFeat.id, colFeat.id)}
-                >
-                  {score.toFixed(2)}
-                </td>
+                  rowId={rowFeat.id}
+                  colId={colFeat.id}
+                  rowName={rowFeat.name}
+                  colName={colFeat.name}
+                  score={score}
+                  kind={kind}
+                  borderLeft={isNewSource[j]}
+                  onClick={onCellClick}
+                />
               )
             })}
           </tr>
@@ -135,4 +188,14 @@ export function MatrixGrid({ features, cells, onCellClick }: MatrixGridProps) {
       </tbody>
     </table>
   )
+}
+
+export const MatrixGrid = memo(MatrixGridImpl)
+
+// Re-export the memoized cell click handler shape so callers can build a
+// stable onClick (otherwise React.memo's referential equality fails).
+export function useStableCellClick(
+  setActivePair: (pair: { a: string; b: string }) => void,
+): (a: string, b: string) => void {
+  return useCallback((a, b) => setActivePair({ a, b }), [setActivePair])
 }
