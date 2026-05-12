@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 from typing import TYPE_CHECKING, Any
 
 from starlette.concurrency import run_in_threadpool
 
 from .executor import ToolExecutor
+from .intent import select_tool_schemas
 from .tools import CATALOG_TOOLS
 
 if TYPE_CHECKING:
@@ -21,6 +23,12 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 MAX_TOOL_ROUNDS = 2
+
+# Intent classifier filters CATALOG_TOOLS down to a focused subset per query
+# (~830 token savings on matched intents). Set FEATCAT_INTENT_FILTER=off to
+# bypass and send all 14 tools — escape hatch if a misclassification breaks
+# something in production.
+_INTENT_FILTER_ON = os.environ.get("FEATCAT_INTENT_FILTER", "on").lower() != "off"
 
 SYSTEM_PROMPT = """\
 You are featcat, a feature catalog assistant for FPT Telecom's Data Science team.
@@ -169,11 +177,28 @@ class CatalogAgent:
             messages.extend(history[-6:])
         messages.append({"role": "user", "content": user_message})
 
+        # Pick a focused tool subset based on the user's current turn. Done
+        # once before the loop so both agent rounds see the same subset.
+        if _INTENT_FILTER_ON:
+            tool_schemas, selection = select_tool_schemas(user_message)
+            logger.info(
+                "intent_classified",
+                extra={
+                    "labels": list(selection.labels),
+                    "tool_count": len(tool_schemas),
+                    "fallback": selection.fallback,
+                    # Privacy: log only the first 80 chars of the query.
+                    "query_prefix": user_message[:80],
+                },
+            )
+        else:
+            tool_schemas = CATALOG_TOOLS
+
         tool_call_history: set[str] = set()
 
         for _round in range(MAX_TOOL_ROUNDS):
             try:
-                result = await run_in_threadpool(self.llm.chat, messages, tools=CATALOG_TOOLS)
+                result = await run_in_threadpool(self.llm.chat, messages, tools=tool_schemas)
             except Exception as e:
                 logger.error("LLM chat failed: %s", e)
                 yield {"type": "token", "content": f"LLM error: {e}"}
