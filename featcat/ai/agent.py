@@ -64,8 +64,14 @@ unless the user asks for more detail. Do NOT chain all tools in one turn.
 
 _SUMMARY_PROMPT = (
     "Based on the tool results above, give a concise answer to my original question. "
-    "Do NOT call any tools. Do NOT output XML tags. Just answer in plain text."
+    "Do NOT call any tools. Do NOT output XML tags. Just answer in plain text. "
+    "Trả lời ngắn gọn, dưới 4 câu. Tập trung vào điểm chính."
 )
+
+# Hard cap for the forced-summary LLM call. The first agent-loop call keeps the
+# 2048 default so tool-arg generation isn't truncated; the summary doesn't need
+# more than a few sentences and caps the worst-case latency.
+_SUMMARY_MAX_TOKENS = 600
 
 _TOOL_TAG_RE = re.compile(
     r"</?tool_call[^>]*>|</?function[^>]*>|</?parameter[^>]*>|\{\"name\":\s*\"[a-z_]+\"",
@@ -167,7 +173,9 @@ class CatalogAgent:
         """Make a final LLM call without tools to summarize results."""
         messages.append({"role": "user", "content": _SUMMARY_PROMPT})
         try:
-            result = await run_in_threadpool(self.llm.chat, messages, temperature=0.3)
+            result = await run_in_threadpool(
+                self.llm.chat, messages, temperature=0.3, max_tokens=_SUMMARY_MAX_TOKENS
+            )
             content = _clean_content(result.get("content") or "")
             if content:
                 chunk_size = 20
