@@ -95,6 +95,12 @@
     "with_drift": "Members with drift",
     "no_drift": "No drifting members"
   },
+  "drift_heatmap": {
+    "title": "Drift heatmap (last {{days}} days)",
+    "feature_col": "Feature",
+    "empty": "No monitored features in this group yet",
+    "truncated": "Showing top {{shown}} of {{total}} features by latest severity. Filter the group or split it to see all members."
+  },
   "docs": {
     "empty": "Add members before regenerating docs",
     "help": "Generate AI documentation for every member in this group. Existing docs are skipped unless regenerate is on.",
