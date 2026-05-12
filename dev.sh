@@ -21,6 +21,34 @@ fi
 # during model download / health-wait still tears the container down.
 trap 'docker stop featcat-llm 2>/dev/null || true; kill 0 2>/dev/null || true' EXIT
 
+# Pre-flight: refuse to start if the backend or frontend ports are already
+# in use. Without this, ``featcat serve`` crashes with EADDRINUSE *after*
+# the LLM container has spun up and the watcher process has forked, leaving
+# the user with a half-started stack and the bind error buried in output.
+# Checked before any expensive setup (model download, LLM container) to
+# fail fast.
+check_port_free() {
+  local port="$1"
+  local label="$2"
+  # ss is universal on Linux; the regex avoids matching ":80000" or similar.
+  if ss -tln 2>/dev/null | grep -qE "[:.]${port}[[:space:]]"; then
+    echo "error: port ${port} (${label}) is already in use." >&2
+    if command -v lsof >/dev/null 2>&1; then
+      local owners
+      owners="$(lsof -ti:"${port}" 2>/dev/null | xargs -I{} ps -p {} -o pid=,comm= 2>/dev/null)"
+      if [ -n "$owners" ]; then
+        echo "  holders:" >&2
+        echo "${owners}" | sed 's/^/    /' >&2
+      fi
+    fi
+    echo "" >&2
+    echo "  to free it:  kill \$(lsof -ti:${port})   # or: fuser -k ${port}/tcp" >&2
+    return 1
+  fi
+}
+check_port_free 8000 backend || exit 1
+check_port_free 5173 frontend || exit 1
+
 # --- One-time setup ---
 
 # Download GGUF model if not present (atomic via .part to avoid corrupt files)
