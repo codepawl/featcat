@@ -59,5 +59,9 @@
   "thinking_stream": {
     "using_tool": "Đang dùng công cụ: {{tool}}...",
     "looking_up": "Đang tra cứu: {{tool}}..."
+  },
+  "reasoning": {
+    "thinking": "Đang suy nghĩ...",
+    "thought": "Đã suy nghĩ"
   }
 }

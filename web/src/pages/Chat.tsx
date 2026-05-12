@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Send, Sparkles, Activity, Search, Lightbulb, Brain, Loader2, Trash2, ArrowUpRight, AlertCircle, RotateCw } from 'lucide-react'
+import { Send, Sparkles, Activity, Search, Lightbulb, Brain, Loader2, Trash2, ArrowUpRight, AlertCircle, RotateCw, ChevronDown } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { api, invalidateCache } from '../api'
 import { useChatStore } from '../hooks/useChatStore'
@@ -370,6 +370,25 @@ export function Chat() {
     streamQuery(query)
   }
 
+  const renderAiMeta = (msg: ChatMsg): ReactNode => {
+    if (msg.error || !msg.tools || msg.tools.length === 0) return null
+    return (
+      <div className="space-y-0.5">
+        {msg.tools.map((tool) => (
+          <Tool key={tool.id} defaultOpen={false}>
+            <ToolHeader type="dynamic-tool" toolName={tool.name} state={tool.state} />
+            <ToolContent>
+              {tool.input !== undefined && <ToolInput input={tool.input} />}
+              {(tool.output !== undefined || tool.error) && (
+                <ToolOutput output={tool.output} errorText={tool.error} />
+              )}
+            </ToolContent>
+          </Tool>
+        ))}
+      </div>
+    )
+  }
+
   const renderAiContent = (msg: ChatMsg, isLast: boolean) => {
     if (msg.error) {
       return (
@@ -396,33 +415,36 @@ export function Chat() {
         </div>
       )
     }
+    const thinkingPreview = msg.thinking?.trim().split('\n').filter(Boolean).pop()?.slice(-100)
     return (
       <>
-        {(msg.thinking || (msg.isStreaming && !msg.content && !msg.result)) && (
+        {(msg.thinking !== undefined || msg.isDoneThinking) && (
           <Reasoning
             className="mb-3"
             isStreaming={msg.isStreaming === true && !(msg.isDoneThinking ?? false)}
           >
-            <ReasoningTrigger />
+            <ReasoningTrigger className="group">
+              {msg.isDoneThinking ? (
+                <span className="text-[13px] text-[var(--text-tertiary)] flex-1 text-left">
+                  {t('reasoning.thought')}
+                </span>
+              ) : (
+                <>
+                  <Loader2 size={13} className="animate-spin shrink-0 text-[var(--text-tertiary)]" />
+                  <span className="text-[13px] italic text-[var(--text-tertiary)] truncate flex-1 text-left">
+                    {thinkingPreview || t('reasoning.thinking')}
+                  </span>
+                </>
+              )}
+              <ChevronDown
+                size={14}
+                className="shrink-0 text-[var(--text-tertiary)] transition-transform group-data-[state=open]:rotate-180"
+              />
+            </ReasoningTrigger>
             <ReasoningContent>{msg.thinking || ''}</ReasoningContent>
           </Reasoning>
         )}
-        {msg.tools && msg.tools.length > 0 && (
-          <div className="mb-3 space-y-0.5">
-            {msg.tools.map((tool) => (
-              <Tool key={tool.id} defaultOpen={false}>
-                <ToolHeader type="dynamic-tool" toolName={tool.name} state={tool.state} />
-                <ToolContent>
-                  {tool.input !== undefined && <ToolInput input={tool.input} />}
-                  {(tool.output !== undefined || tool.error) && (
-                    <ToolOutput output={tool.output} errorText={tool.error} />
-                  )}
-                </ToolContent>
-              </Tool>
-            ))}
-          </div>
-        )}
-        {msg.isStreaming && !msg.content && !msg.thinking && !msg.result && (
+        {msg.isStreaming && !msg.content && msg.thinking === undefined && !msg.result && (
           <div className="flex items-center gap-2 text-sm text-[var(--text-tertiary)]">
             <Loader2 size={14} className="animate-spin" /> {t('status.generating')}
           </div>
@@ -457,7 +479,7 @@ export function Chat() {
                   aria-hidden
                   className="absolute inset-0 rounded-2xl bg-brand/20 blur-2xl scale-110 opacity-60"
                 />
-                <div className="relative w-16 h-16 rounded-2xl bg-gradient-to-br from-brand/15 to-brand/5 border border-brand/20 flex items-center justify-center">
+                <div className="relative w-16 h-16 rounded-2xl bg-gradient-to-br from-brand/15 to-brand/5 flex items-center justify-center">
                   <Brain size={28} strokeWidth={1.5} className="text-brand" />
                 </div>
               </div>
@@ -490,7 +512,11 @@ export function Chat() {
               keeps line length comfortable on wide displays. */}
           <div className="max-w-[1200px] mx-auto">
             {messages.map((m, idx) => (
-              <ChatMessage key={m.id} role={m.role}>
+              <ChatMessage
+                key={m.id}
+                role={m.role}
+                above={m.role === 'ai' ? renderAiMeta(m) : undefined}
+              >
                 {m.role === 'user' ? m.content : renderAiContent(m, idx === messages.length - 1)}
               </ChatMessage>
             ))}
@@ -503,7 +529,7 @@ export function Chat() {
           separator runs edge-to-edge. Inner 800px column carries all padding
           so the content stays centered without looking detached from the
           border above it (matches ChatGPT / Claude). */}
-      <div className="border-t border-[var(--border-subtle)] bg-transparent">
+      <div className="bg-transparent">
         <div className="max-w-[1200px] mx-auto px-4 py-4">
           {/* Unified pill-shaped input: textarea + embedded send button. The
               container owns the focus ring so the whole pill highlights when

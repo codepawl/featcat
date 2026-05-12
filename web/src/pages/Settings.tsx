@@ -29,7 +29,7 @@ export function Settings() {
   }
 
   return (
-    <div className="max-w-[720px] space-y-4">
+    <div className="max-w space-y-4">
       <PageHeader title={t('page.title')} subtitle={t('page.subtitle')} />
 
       <div className={CARD}>

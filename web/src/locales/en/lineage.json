@@ -48,7 +48,6 @@
     "subtitle": "Lineage edges connect a feature to its parents — sources, columns, or other features it derives from.",
     "cta_detect": "Auto-detect from SQL files:",
     "cta_detect_cmd": "featcat lineage detect --from sql/*.sql",
-    "cta_manual": "Or record manually:",
-    "cta_manual_cmd": "featcat lineage set <child> <parent>"
+    "cta_apply_hint": "Add --apply --confirm once you've reviewed the preview to write the edges."
   }
 }

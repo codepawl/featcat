@@ -3,6 +3,10 @@ import { Brain, User } from 'lucide-react'
 interface Props {
   role: 'user' | 'ai'
   children: React.ReactNode
+  /** Optional content rendered outside the bubble, directly above it.
+   *  Used for tool-call cards on AI messages so they read as metadata
+   *  separate from the answer itself. */
+  above?: React.ReactNode
 }
 
 /** Chat row: avatar + message content.
@@ -16,7 +20,7 @@ interface Props {
  *  - User message keeps the brand-bubble; AI message is unbubbled
  *    inline text (reader-friendly, ~700px line length).
  */
-export function ChatMessage({ role, children }: Props) {
+export function ChatMessage({ role, children, above }: Props) {
   return (
     <div
       className={`flex gap-3 py-4 animate-slide-up items-start ${role === 'user' ? 'flex-row-reverse' : ''}`}
@@ -30,13 +34,20 @@ export function ChatMessage({ role, children }: Props) {
       >
         {role === 'user' ? <User size={16} /> : <Brain size={16} />}
       </div>
-      <div className="min-w-0 flex-1">
+      <div className={`min-w-0 flex-1 ${role === 'user' ? 'text-right' : ''}`}>
+        {above && (
+          <div className="mb-1.5 max-w-[85%] text-left">
+            {above}
+          </div>
+        )}
         {role === 'user' ? (
-          <div className="inline-block bg-brand text-white px-4 py-2.5 rounded-2xl rounded-br-sm text-sm max-w-[85%]">
+          <div className="inline-block bg-brand text-white px-4 py-2.5 rounded-2xl rounded-br-sm text-sm max-w-[85%] text-left">
             {children}
           </div>
         ) : (
-          <div className="text-sm leading-relaxed">{children}</div>
+          <div className="inline-block bg-[var(--bg-secondary)] border border-[var(--border-default)] text-[var(--text-primary)] px-4 py-2.5 rounded-2xl rounded-tl-sm text-sm leading-relaxed max-w-[85%] text-left">
+            {children}
+          </div>
         )}
       </div>
     </div>
