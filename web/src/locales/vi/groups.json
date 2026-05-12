@@ -76,6 +76,10 @@
     "empty": "Chưa có thành viên để đánh giá",
     "average": "Điểm trung bình",
     "distribution": "Phân bố hạng",
+    "doc_coverage": "Độ phủ tài liệu",
+    "doc_coverage_hint": "{{documented}}/{{total}} đã có tài liệu",
+    "currently_critical_one": "Đang critical ({{count}})",
+    "currently_critical_other": "Đang critical ({{count}})",
     "lowest": "Thành viên điểm thấp nhất",
     "all_healthy": "Tất cả thành viên đều khỏe",
     "refresh": "Làm mới"
@@ -83,7 +87,10 @@
   "monitoring": {
     "empty": "Không có thành viên",
     "severity": "Phân bố mức độ nghiêm trọng",
+    "severity_count": "Thành viên",
+    "no_severity_data": "Chưa có dữ liệu severity",
     "psi_avg": "PSI trung bình",
+    "psi_thresholds": "0.10 warning · 0.20 critical",
     "last_check": "Kiểm tra gần nhất",
     "with_drift": "Thành viên đang drift",
     "no_drift": "Không có thành viên drift"

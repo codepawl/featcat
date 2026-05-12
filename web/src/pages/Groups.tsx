@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Trash2, UserPlus, X, Download, Activity, HeartPulse, FileText, RefreshCw, Sparkles, History, Snowflake, AlertTriangle } from 'lucide-react'
+import { Plus, Trash2, UserPlus, X, Download, Activity, HeartPulse, FileText, RefreshCw, Sparkles, History, Snowflake, AlertTriangle, Clock } from 'lucide-react'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import { api, invalidateCache } from '../api'
 import { Badge } from '../components/Badge'
 import { DataTable } from '../components/DataTable'
@@ -23,6 +24,15 @@ const SEVERITY_COLORS: Record<string, string> = {
   warning: 'bg-amber-500',
   critical: 'bg-red-500',
   unknown: 'bg-[var(--border-default)]',
+}
+
+// Hex equivalents for Recharts (which can't read Tailwind classes).
+// Matches the SEVERITY_COLORS palette in components/charts/PsiTimeline.tsx.
+const SEVERITY_HEX: Record<string, string> = {
+  healthy: '#1D9E75',
+  warning: '#F59E0B',
+  critical: '#EF4444',
+  unknown: '#94A3B8',
 }
 
 export function Groups() {
@@ -206,7 +216,16 @@ export function Groups() {
       </div>
 
       <CreateGroupModal open={createOpen} onClose={() => setCreateOpen(false)} onCreated={() => { setCreateOpen(false); load() }} />
-      {selected && <AddFeaturesModal open={addOpen} onClose={() => setAddOpen(false)} groupName={selected.name} onAdded={() => { setAddOpen(false); load(); selectGroup(selected) }} />}
+      {selected && (
+        <AddFeaturesModal
+          open={addOpen}
+          onClose={() => setAddOpen(false)}
+          groupName={selected.name}
+          description={detail?.description ?? selected.description ?? ''}
+          existingMemberIds={(detail?.members ?? []).map((m: { id: string }) => m.id).filter(Boolean)}
+          onAdded={() => { setAddOpen(false); load(); selectGroup(selected) }}
+        />
+      )}
       {detail && (
         <ExportModal
           open={exportOpen}
@@ -263,7 +282,21 @@ function CreateGroupModal({ open, onClose, onCreated }: { open: boolean; onClose
 }
 
 
-function AddFeaturesModal({ open, onClose, groupName, onAdded }: { open: boolean; onClose: () => void; groupName: string; onAdded: () => void }) {
+function AddFeaturesModal({
+  open,
+  onClose,
+  groupName,
+  description,
+  existingMemberIds,
+  onAdded,
+}: {
+  open: boolean
+  onClose: () => void
+  groupName: string
+  description: string
+  existingMemberIds: string[]
+  onAdded: () => void
+}) {
   const { t } = useTranslation('groups')
   const [features, setFeatures] = useState<ReturnType<typeof toFeatureItems>>([])
   const [selectedSpecs, setSelectedSpecs] = useState<Set<string>>(new Set())
@@ -302,6 +335,8 @@ function AddFeaturesModal({ open, onClose, groupName, onAdded }: { open: boolean
         selected={selectedSpecs}
         onChange={setSelectedSpecs}
         groupName={groupName}
+        useCase={description || groupName}
+        excludeIds={existingMemberIds}
         showAISuggest
       />
     </Modal>
@@ -327,12 +362,23 @@ function GroupHealthTab({ groupName }: { groupName: string }) {
   }
 
   const total = Object.values(data.grade_distribution).reduce((a, b) => a + b, 0) || 1
+  const documentedCount = data.members.filter(m => m.has_doc).length
+  const docPct = data.member_count > 0 ? Math.round((documentedCount / data.member_count) * 100) : 0
+  const criticalMembers = data.members.filter(m => m.drift_status === 'critical')
+
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <div className="border border-[var(--border-subtle)] rounded-xl p-3">
           <div className="text-[11px] uppercase text-[var(--text-tertiary)] tracking-wide">{t('health.average', { defaultValue: 'Average score' })}</div>
           <div className="text-2xl font-semibold mt-1">{data.average_score}<span className="text-sm text-[var(--text-tertiary)]">/100</span></div>
+        </div>
+        <div className="border border-[var(--border-subtle)] rounded-xl p-3">
+          <div className="text-[11px] uppercase text-[var(--text-tertiary)] tracking-wide">{t('health.doc_coverage', { defaultValue: 'Doc coverage' })}</div>
+          <div className="text-2xl font-semibold mt-1">{docPct}<span className="text-sm text-[var(--text-tertiary)]">%</span></div>
+          <div className="text-[11px] text-[var(--text-tertiary)] mt-0.5">
+            {t('health.doc_coverage_hint', { documented: documentedCount, total: data.member_count, defaultValue: '{{documented}} of {{total}} documented' })}
+          </div>
         </div>
         <div className="border border-[var(--border-subtle)] rounded-xl p-3">
           <div className="text-[11px] uppercase text-[var(--text-tertiary)] tracking-wide mb-2">{t('health.distribution', { defaultValue: 'Grade distribution' })}</div>
@@ -343,7 +389,7 @@ function GroupHealthTab({ groupName }: { groupName: string }) {
               return pct > 0 ? <div key={g} className={GRADE_COLORS[g]} style={{ width: `${pct}%` }} title={`${g}: ${n}`} /> : null
             })}
           </div>
-          <div className="flex gap-3 mt-2 text-[11px] text-[var(--text-secondary)]">
+          <div className="flex gap-3 mt-2 text-[11px] text-[var(--text-secondary)] flex-wrap">
             {(['A','B','C','D'] as const).map(g => (
               <span key={g} className="flex items-center gap-1">
                 <span className={`size-2 rounded-sm ${GRADE_COLORS[g]}`} /> {g}: {data.grade_distribution[g] || 0}
@@ -352,6 +398,32 @@ function GroupHealthTab({ groupName }: { groupName: string }) {
           </div>
         </div>
       </div>
+
+      {criticalMembers.length > 0 && (
+        <div className="border border-[var(--danger-subtle-bg)] bg-[var(--danger-subtle-bg)] rounded-xl p-3">
+          <div className="flex items-center gap-2 mb-2">
+            <AlertTriangle size={14} className="text-[var(--danger)]" />
+            <h4 className="text-xs font-semibold uppercase text-[var(--danger)] tracking-wide">
+              {t('health.currently_critical', { count: criticalMembers.length, defaultValue: 'Currently critical ({{count}})' })}
+            </h4>
+          </div>
+          <div className="divide-y divide-[var(--border-subtle)]">
+            {criticalMembers.map(m => (
+              <a
+                key={m.spec}
+                href={`/monitoring?feature=${encodeURIComponent(m.spec)}`}
+                className="flex items-center justify-between py-1.5 text-[13px] hover:underline"
+              >
+                <span className="font-mono text-[var(--danger)] truncate">{m.spec}</span>
+                <span className="flex items-center gap-2 shrink-0 text-[11px]">
+                  <Badge variant="critical">{m.grade}</Badge>
+                  <span className="font-mono">{m.score}/100</span>
+                </span>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div>
         <div className="flex items-center justify-between mb-2">
@@ -379,6 +451,19 @@ function GroupHealthTab({ groupName }: { groupName: string }) {
 }
 
 
+function SeverityTooltip({ active, payload }: { active?: boolean; payload?: { payload: { severity: string; count: number } }[] }) {
+  const { t } = useTranslation('groups')
+  if (!active || !payload?.[0]) return null
+  const { severity, count } = payload[0].payload
+  return (
+    <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[12px] shadow-lg">
+      <p className="capitalize font-medium">{severity}</p>
+      <p className="text-[var(--text-tertiary)]">{count} {t('monitoring.severity_count', { defaultValue: 'Members' }).toLowerCase()}</p>
+    </div>
+  )
+}
+
+
 function GroupMonitoringTab({ groupName }: { groupName: string }) {
   const { t } = useTranslation('groups')
   const [data, setData] = useState<Awaited<ReturnType<typeof api.groups.monitoring>> | null>(null)
@@ -396,35 +481,60 @@ function GroupMonitoringTab({ groupName }: { groupName: string }) {
     return <p className="text-sm text-[var(--text-tertiary)] py-4 text-center">{t('monitoring.empty', { defaultValue: 'No members' })}</p>
   }
 
+  const severityChartData = (['critical', 'warning', 'healthy', 'unknown'] as const)
+    .map(s => ({ severity: s, count: data.severity_counts[s] || 0 }))
+    .filter(d => d.count > 0)
+
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3">
+      {data.last_check_at && (
+        <div className="flex items-center gap-1.5 text-[12px] text-[var(--text-secondary)]">
+          <Clock size={12} className="text-[var(--text-tertiary)]" />
+          <span>{t('monitoring.last_check', { defaultValue: 'Last check' })}:</span>
+          <span className="font-mono">{new Date(data.last_check_at).toLocaleString()}</span>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div className="border border-[var(--border-subtle)] rounded-xl p-3">
           <div className="text-[11px] uppercase text-[var(--text-tertiary)] tracking-wide mb-2">{t('monitoring.severity', { defaultValue: 'Severity distribution' })}</div>
-          <div className="space-y-1.5">
-            {(['critical','warning','healthy','unknown'] as const).map(s => {
-              const n = data.severity_counts[s] || 0
-              if (n === 0) return null
-              return (
-                <div key={s} className="flex items-center gap-2 text-[12px]">
-                  <span className={`size-2 rounded-sm ${SEVERITY_COLORS[s]}`} />
-                  <span className="capitalize text-[var(--text-secondary)]">{s}</span>
-                  <span className="ml-auto font-mono text-[var(--text-primary)]">{n}</span>
-                </div>
-              )
-            })}
-          </div>
+          {severityChartData.length === 0 ? (
+            <p className="text-[12px] text-[var(--text-tertiary)] py-4 text-center">
+              {t('monitoring.no_severity_data', { defaultValue: 'No severity data yet' })}
+            </p>
+          ) : (
+            <ResponsiveContainer width="100%" height={120}>
+              <BarChart data={severityChartData} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
+                <XAxis
+                  dataKey="severity"
+                  tick={{ fontSize: 10, fill: 'var(--text-tertiary)' }}
+                  axisLine={{ stroke: 'var(--border-default)' }}
+                  tickFormatter={(s: string) => s.charAt(0).toUpperCase() + s.slice(1)}
+                />
+                <YAxis
+                  allowDecimals={false}
+                  tick={{ fontSize: 10, fill: 'var(--text-tertiary)' }}
+                  axisLine={{ stroke: 'var(--border-default)' }}
+                  width={28}
+                />
+                <Tooltip cursor={{ fill: 'var(--bg-secondary)' }} content={<SeverityTooltip />} />
+                <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                  {severityChartData.map(entry => (
+                    <Cell key={entry.severity} fill={SEVERITY_HEX[entry.severity] || SEVERITY_HEX.unknown} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </div>
-        <div className="border border-[var(--border-subtle)] rounded-xl p-3">
+        <div className="border border-[var(--border-subtle)] rounded-xl p-3 flex flex-col">
           <div className="text-[11px] uppercase text-[var(--text-tertiary)] tracking-wide">{t('monitoring.psi_avg', { defaultValue: 'Avg PSI' })}</div>
           <div className="text-2xl font-semibold mt-1 font-mono">
             {data.psi_average === null ? '—' : data.psi_average.toFixed(4)}
           </div>
-          {data.last_check_at && (
-            <div className="text-[11px] text-[var(--text-tertiary)] mt-1">
-              {t('monitoring.last_check', { defaultValue: 'Last check' })}: {new Date(data.last_check_at).toLocaleString()}
-            </div>
-          )}
+          <div className="text-[11px] text-[var(--text-tertiary)] mt-auto pt-2">
+            {t('monitoring.psi_thresholds', { defaultValue: '0.10 warning · 0.20 critical' })}
+          </div>
         </div>
       </div>
 

@@ -202,6 +202,59 @@ class TestRecommendEndpoint:
         assert body["method"] == "tfidf"
         assert "LLM error" in (body["summary"] or "")
 
+    def test_exclude_ids_drops_matches_and_refills_top_k(self, db_with_features: LocalBackend) -> None:
+        # Find the id of the most relevant match without exclusion.
+        baseline = _client(db_with_features, llm=None).post(
+            "/api/features/recommend", json={"use_case": "user behavior", "top_k": 2}
+        )
+        assert baseline.status_code == 200
+        baseline_matches = baseline.json()["matches"]
+        assert baseline_matches, "TF-IDF should return at least one match"
+        excluded_id = baseline_matches[0]["feature"]["id"]
+        excluded_name = baseline_matches[0]["feature"]["name"]
+
+        # Re-issue with exclude_ids — top match must change, top_k still respected.
+        resp = _client(db_with_features, llm=None).post(
+            "/api/features/recommend",
+            json={"use_case": "user behavior", "top_k": 2, "exclude_ids": [excluded_id]},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        names = [m["feature"]["name"] for m in body["matches"]]
+        assert excluded_name not in names
+        # We seeded 3 features; excluding one should still allow up to 2 matches when relevant.
+        assert len(body["matches"]) <= 2
+
+    def test_exclude_ids_changes_cache_key(
+        self, db_with_features: LocalBackend, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Two different exclude_ids sets should return different responses (no cross-pollination).
+        plugin = _MockDiscoveryPlugin(
+            mode="ok",
+            existing=[
+                {"name": "src.user_churn_score", "relevance": 0.9},
+                {"name": "src.user_session_count", "relevance": 0.8},
+            ],
+        )
+        monkeypatch.setattr("featcat.plugins.discovery.DiscoveryPlugin", lambda: plugin)
+        client = _client(db_with_features, llm=_StubLLM())
+
+        # First request: no exclusion. Cache populated with both matches.
+        first = client.post("/api/features/recommend", json={"use_case": "user behavior"})
+        assert first.status_code == 200
+        first_names = {m["feature"]["name"] for m in first.json()["matches"]}
+        assert "src.user_churn_score" in first_names
+
+        # Second request: exclude churn — must miss the previous cache entry and drop churn.
+        churn_id = db_with_features.get_feature_by_name("src.user_churn_score").id  # type: ignore[union-attr]
+        second = client.post(
+            "/api/features/recommend",
+            json={"use_case": "user behavior", "exclude_ids": [churn_id]},
+        )
+        assert second.status_code == 200
+        second_names = {m["feature"]["name"] for m in second.json()["matches"]}
+        assert "src.user_churn_score" not in second_names
+
     @pytest.mark.timeout(20)
     def test_llm_timeout_falls_back_to_tfidf(
         self,

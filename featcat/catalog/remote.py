@@ -322,11 +322,33 @@ class RemoteBackend(CatalogBackend):
     def get_monitoring_history(self, feature_name: str, days: int = 30) -> list[dict]:
         return self._request("GET", f"/api/monitor/history/{feature_name}", params={"days": days})
 
-    def save_monitoring_result(self, feature_id: str, feature_name: str, psi: float | None, severity: str) -> None:
+    def save_monitoring_result(
+        self,
+        feature_id: str,
+        feature_name: str,
+        psi: float | None,
+        severity: str,
+        *,
+        null_ratio: float | None = None,
+        mean_z_score: float | None = None,
+        sample_size: int | None = None,
+    ) -> None:
         pass  # Server-side only
 
     def get_baseline_for_feature(self, feature_name: str) -> dict | None:
         return self._request("GET", f"/api/monitor/baseline/{feature_name}")
+
+    def get_feature_metric_history(self, feature_name: str, days: int = 30) -> list[dict]:
+        return self._request("GET", f"/api/monitor/metrics/{feature_name}", params={"days": days})
+
+    def get_group_drift_matrix(self, group_id: str, days: int = 30) -> dict:
+        return self._request("GET", f"/api/groups/{group_id}/drift-matrix", params={"days": days})
+
+    def get_catalog_drift_trend(self, days: int = 90) -> list[dict]:
+        result = self._request("GET", "/api/monitor/drift-rate", params={"days": days})
+        # Server returns {date_range, series}; expose just the per-day rows for parity
+        # with the local backend's list-of-dicts shape.
+        return result.get("series", [])
 
     def get_stats_by_source(self) -> list[dict]:
         return self._request("GET", "/api/stats/by-source")

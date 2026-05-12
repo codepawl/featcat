@@ -415,12 +415,54 @@ class CatalogBackend(ABC):
         """Return PSI check history for a feature."""
 
     @abstractmethod
-    def save_monitoring_result(self, feature_id: str, feature_name: str, psi: float | None, severity: str) -> None:
-        """Save a monitoring check result for history tracking."""
+    def save_monitoring_result(
+        self,
+        feature_id: str,
+        feature_name: str,
+        psi: float | None,
+        severity: str,
+        *,
+        null_ratio: float | None = None,
+        mean_z_score: float | None = None,
+        sample_size: int | None = None,
+    ) -> None:
+        """Save a monitoring check result for history tracking.
+
+        ``null_ratio``/``mean_z_score``/``sample_size`` are optional auxiliary
+        metrics persisted alongside PSI for the multi-metric chart. They are
+        nullable so legacy callers and rows where the metric isn't computable
+        (e.g. non-numeric features for Z-score) still record correctly.
+        """
 
     @abstractmethod
     def get_baseline_for_feature(self, feature_name: str) -> dict | None:
         """Retrieve baseline stats for a feature by name, including metadata."""
+
+    @abstractmethod
+    def get_feature_metric_history(self, feature_name: str, days: int = 30) -> list[dict]:
+        """Return full per-check metric history (PSI + null_ratio + Z-score + sample_size).
+
+        Superset of ``get_monitoring_history``; legacy rows have NULL for the
+        new auxiliary metrics. Used by the multi-metric feature chart.
+        """
+
+    @abstractmethod
+    def get_group_drift_matrix(self, group_id: str, days: int = 30) -> dict:
+        """Return a 2D severity matrix (features × days) for the group.
+
+        Caps at 200 features sorted by latest-severity priority then name.
+        Returns ``{date_range, features: [{id, name, source, daily: [...]}],
+        truncated, total_count}``.
+        """
+
+    @abstractmethod
+    def get_catalog_drift_trend(self, days: int = 90) -> list[dict]:
+        """Return per-day catalog-wide critical/warning percentages.
+
+        For each of the last ``days`` days, computes the share of features
+        whose latest-check-on-or-before-that-day has severity == 'critical'
+        and == 'warning'. Used by the dashboard drift-rate trend chart.
+        """
 
     @abstractmethod
     def get_stats_by_source(self) -> list[dict]:
