@@ -59,5 +59,9 @@
   "thinking_stream": {
     "using_tool": "Using tool: {{tool}}...",
     "looking_up": "Looking up: {{tool}}..."
+  },
+  "reasoning": {
+    "thinking": "Thinking...",
+    "thought": "Thought"
   }
 }

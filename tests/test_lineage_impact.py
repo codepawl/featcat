@@ -184,6 +184,19 @@ class TestLineageFullEndpoint:
         assert resp.status_code == 200
         assert resp.json() == {"nodes": [], "edges": []}
 
+    def test_features_without_edges_returns_empty_graph(self, tmp_path: Path) -> None:
+        # The frontend empty-state CTA depends on this: a catalog with features
+        # but zero recorded lineage must yield {nodes: [], edges: []}, not the
+        # full feature list as orphan nodes.
+        db = LocalBackend(str(tmp_path / "no_edges.db"))
+        db.init_db()
+        src = db.add_source(DataSource(name="src_x", path="/x.parquet"))
+        db.upsert_feature(Feature(name="src_x.feat_a", data_source_id=src.id, column_name="feat_a", dtype="float64"))
+        db.upsert_feature(Feature(name="src_x.feat_b", data_source_id=src.id, column_name="feat_b", dtype="int64"))
+        resp = self._client(db).get("/api/lineage/full")
+        assert resp.status_code == 200
+        assert resp.json() == {"nodes": [], "edges": []}
+
     def test_full_endpoint_returns_feature_to_feature_edges(self, lineage_db: LocalBackend) -> None:
         resp = self._client(lineage_db).get("/api/lineage/full")
         assert resp.status_code == 200

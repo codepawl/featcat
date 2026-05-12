@@ -1,12 +1,12 @@
 {
   "page": {
     "title": "Lineage Feature",
-    "subtitle": "Đồ thị phụ thuộc toàn catalog. Mũi tên đi từ Feature cha đến Feature con — theo mũi tên để thấy luồng dữ liệu xuôi dòng."
+    "subtitle": "Đồ thị phụ thuộc. Mũi tên đi từ feature cha đến feature con."
   },
   "filter_placeholder": "Tìm node...",
   "actions": {
-    "fit": "Vừa màn hình",
-    "fit_title": "Vừa màn hình",
+    "fit": "Vừa khung hình",
+    "fit_title": "Vừa khung hình",
     "reset_layout": "Khôi phục bố cục",
     "reset_title": "Chạy lại bố cục",
     "show_all": "Hiển thị tất cả ({{count}})"
@@ -48,7 +48,6 @@
     "subtitle": "Cạnh lineage liên kết Feature với Feature/cột/nguồn mà nó được dẫn xuất từ đó.",
     "cta_detect": "Tự nhận diện từ file SQL:",
     "cta_detect_cmd": "featcat lineage detect --from sql/*.sql",
-    "cta_manual": "Hoặc ghi nhận thủ công:",
-    "cta_manual_cmd": "featcat lineage set <child> <parent>"
+    "cta_apply_hint": "Thêm --apply --confirm sau khi xem preview để ghi các cạnh vào catalog."
   }
 }

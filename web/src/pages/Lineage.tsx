@@ -922,8 +922,7 @@ export function Lineage() {
           <div className="mt-2 text-left bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-lg px-4 py-3 text-sm">
             <div className="text-[var(--text-secondary)] mb-1">{t('empty.cta_detect')}</div>
             <code className="font-mono text-[12px] text-brand">{t('empty.cta_detect_cmd')}</code>
-            <div className="text-[var(--text-secondary)] mt-3 mb-1">{t('empty.cta_manual')}</div>
-            <code className="font-mono text-[12px] text-brand">{t('empty.cta_manual_cmd')}</code>
+            <div className="text-[var(--text-tertiary)] text-xs mt-3">{t('empty.cta_apply_hint')}</div>
           </div>
         </div>
       ) : (
