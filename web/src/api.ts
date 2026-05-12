@@ -53,6 +53,19 @@ export interface SimilarityFeatureBrief {
 
 export type SimilarityReasonCode = 'name_similarity' | 'schema_match' | 'distribution_match' | 'semantic_match'
 
+export interface RecommendMatch {
+  feature: SimilarityFeatureBrief
+  score: number
+  reason: string
+}
+
+export interface RecommendResponse {
+  use_case: string
+  method: 'llm' | 'tfidf' | 'embedding'
+  matches: RecommendMatch[]
+  summary: string | null
+}
+
 export interface MetricSeriesPoint {
   checked_at: string
   psi: number | null
@@ -114,6 +127,12 @@ export const api = {
       deprecated: number;
       total: number;
     }>('/features/stats/status-counts'),
+    recommend: (body: { use_case: string; top_k?: number; use_llm?: boolean; exclude_ids?: string[] }) =>
+      request<RecommendResponse>('/features/recommend', {
+        method: 'POST',
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(30_000),
+      }),
   },
   docs: {
     get: (name: string) => cachedRequest<Record<string, unknown>>(`/docs/by-name?name=${encodeURIComponent(name)}`),

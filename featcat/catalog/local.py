@@ -230,6 +230,17 @@ class LocalBackend(CatalogBackend):
             "ALTER TABLE feature_lineage ADD COLUMN transform TEXT NOT NULL DEFAULT ''",
             "ALTER TABLE feature_lineage ADD COLUMN detected_method TEXT NOT NULL DEFAULT 'manual'",
             "ALTER TABLE monitoring_checks ADD COLUMN llm_analysis_json TEXT",
+            # Per-check metrics for the multi-metric feature chart. Legacy rows
+            # stay NULL; only post-migration checks populate these.
+            "ALTER TABLE monitoring_checks ADD COLUMN null_ratio REAL",
+            "ALTER TABLE monitoring_checks ADD COLUMN mean_z_score REAL",
+            "ALTER TABLE monitoring_checks ADD COLUMN sample_size INTEGER",
+            # Composite indexes for chart queries (feature timeline, catalog
+            # drift-rate). CREATE INDEX IF NOT EXISTS is itself idempotent but
+            # the suppress(OperationalError) wrapper covers older sqlites.
+            "CREATE INDEX IF NOT EXISTS idx_monitoring_checks_feature_date "
+            "ON monitoring_checks(feature_id, checked_at)",
+            "CREATE INDEX IF NOT EXISTS idx_monitoring_checks_date_severity ON monitoring_checks(checked_at, severity)",
         )
         with self.engine.begin() as conn:
             for stmt in legacy_alters:
@@ -1467,13 +1478,24 @@ class LocalBackend(CatalogBackend):
             ).first()
             return row[0] if row else None
 
-    def save_monitoring_result(self, feature_id: str, feature_name: str, psi: float | None, severity: str) -> None:
+    def save_monitoring_result(
+        self,
+        feature_id: str,
+        feature_name: str,
+        psi: float | None,
+        severity: str,
+        *,
+        null_ratio: float | None = None,
+        mean_z_score: float | None = None,
+        sample_size: int | None = None,
+    ) -> None:
         with self.session() as s:
             s.execute(
                 text(
                     "INSERT INTO monitoring_checks "
-                    "(id, feature_id, feature_name, psi, severity, checked_at) "
-                    "VALUES (:id, :fid, :name, :psi, :sev, :now)"
+                    "(id, feature_id, feature_name, psi, severity, checked_at, "
+                    " null_ratio, mean_z_score, sample_size) "
+                    "VALUES (:id, :fid, :name, :psi, :sev, :now, :nr, :mz, :ss)"
                 ),
                 {
                     "id": _new_id(),
@@ -1482,9 +1504,225 @@ class LocalBackend(CatalogBackend):
                     "psi": psi,
                     "sev": severity,
                     "now": _utcnow(),
+                    "nr": null_ratio,
+                    "mz": mean_z_score,
+                    "ss": sample_size,
                 },
             )
             s.commit()
+
+    def get_feature_metric_history(self, feature_name: str, days: int = 30) -> list[dict]:
+        """Per-check metric history including auxiliary metrics added later.
+
+        Legacy rows return NULL for null_ratio / mean_z_score / sample_size;
+        the frontend uses connectNulls=false to surface the gap visibly.
+        """
+        cutoff = _utcnow() - timedelta(days=days)
+        with self.session() as s:
+            rows = (
+                s.execute(
+                    text(
+                        "SELECT checked_at, psi, severity, null_ratio, mean_z_score, sample_size "
+                        "FROM monitoring_checks "
+                        "WHERE feature_name = :name AND checked_at >= :cutoff "
+                        "ORDER BY checked_at ASC"
+                    ),
+                    {"name": feature_name, "cutoff": cutoff},
+                )
+                .mappings()
+                .all()
+            )
+            return [dict(r) for r in rows]
+
+    # Severity priority used to sort features in the group heatmap so the
+    # most-alarming features land at the top of the truncated 200-row view.
+    _SEVERITY_PRIORITY = {"critical": 0, "warning": 1, "healthy": 2, "unknown": 3, "error": 0}
+
+    def get_group_drift_matrix(self, group_id: str, days: int = 30) -> dict:
+        """Build a (feature × day) severity matrix for the group.
+
+        Worst severity per (feature, day) wins when multiple checks land on
+        the same calendar day. Date keys are ISO date strings (YYYY-MM-DD)
+        so the JSON shape is reproducible without timezone math.
+        """
+        today = _utcnow().date()
+        date_range = [today - timedelta(days=days - 1 - i) for i in range(days)]
+        date_set = {d.isoformat() for d in date_range}
+
+        with self.session() as s:
+            members = (
+                s.execute(
+                    text(
+                        "SELECT f.id, f.name, f.data_source_id, "
+                        "       COALESCE(ds.name, '') AS source_name "
+                        "FROM features f "
+                        "JOIN feature_group_members gm ON f.id = gm.feature_id "
+                        "LEFT JOIN data_sources ds ON ds.id = f.data_source_id "
+                        "WHERE gm.group_id = :gid"
+                    ),
+                    {"gid": group_id},
+                )
+                .mappings()
+                .all()
+            )
+            if not members:
+                return {
+                    "date_range": [d.isoformat() for d in date_range],
+                    "features": [],
+                    "truncated": False,
+                    "total_count": 0,
+                }
+
+            feature_ids = [m["id"] for m in members]
+            cutoff_dt = _utcnow() - timedelta(days=days - 1)
+
+            checks = (
+                s.execute(
+                    text(
+                        "SELECT feature_id, severity, psi, checked_at "
+                        "FROM monitoring_checks "
+                        "WHERE feature_id IN :fids AND checked_at >= :cutoff"
+                    ).bindparams(bindparam("fids", expanding=True)),
+                    {"fids": feature_ids, "cutoff": cutoff_dt},
+                )
+                .mappings()
+                .all()
+            )
+
+        # Pivot in Python: { (feature_id, date_iso): {severity, psi} }, taking
+        # the worst severity per cell. SQLite's GROUP BY semantics for "worst
+        # severity" need a CASE rank — easier to reduce in Python and stay
+        # backend-portable.
+        cell_map: dict[tuple[str, str], dict[str, Any]] = {}
+        latest_severity: dict[str, str] = {}
+        latest_checked: dict[str, datetime] = {}
+        for row in checks:
+            checked_at: datetime = row["checked_at"]
+            if isinstance(checked_at, str):
+                # SQLite returns string for TIMESTAMP without converter; parse defensively.
+                checked_at = datetime.fromisoformat(checked_at)
+            day_iso = checked_at.date().isoformat()
+            if day_iso not in date_set:
+                continue
+            severity = row["severity"] or "unknown"
+            key = (row["feature_id"], day_iso)
+            existing = cell_map.get(key)
+            if existing is None or self._SEVERITY_PRIORITY.get(severity, 3) < self._SEVERITY_PRIORITY.get(
+                existing["severity"], 3
+            ):
+                cell_map[key] = {"severity": severity, "psi": row["psi"]}
+
+            # Track per-feature latest check for sort ordering below.
+            prev = latest_checked.get(row["feature_id"])
+            if prev is None or checked_at > prev:
+                latest_checked[row["feature_id"]] = checked_at
+                latest_severity[row["feature_id"]] = severity
+
+        sorted_members = sorted(
+            members,
+            key=lambda m: (
+                self._SEVERITY_PRIORITY.get(latest_severity.get(m["id"], "unknown"), 3),
+                m["name"],
+            ),
+        )
+
+        cap = 200
+        truncated = len(sorted_members) > cap
+        capped = sorted_members[:cap]
+
+        features_out: list[dict[str, Any]] = []
+        for m in capped:
+            daily: list[dict[str, Any]] = []
+            for d in date_range:
+                key = (m["id"], d.isoformat())
+                cell = cell_map.get(key)
+                if cell is None:
+                    daily.append({"date": d.isoformat(), "severity": "unknown", "psi": None})
+                else:
+                    daily.append({"date": d.isoformat(), "severity": cell["severity"], "psi": cell["psi"]})
+            features_out.append(
+                {
+                    "id": m["id"],
+                    "name": m["name"],
+                    "source": m["source_name"],
+                    "daily": daily,
+                }
+            )
+
+        return {
+            "date_range": [d.isoformat() for d in date_range],
+            "features": features_out,
+            "truncated": truncated,
+            "total_count": len(members),
+        }
+
+    def get_catalog_drift_trend(self, days: int = 90) -> list[dict]:
+        """Per-day critical/warning percentage across the catalog.
+
+        For each day in the window, take each feature's latest check
+        on-or-before that day and bucket by severity. The denominator is
+        the number of features that have *any* monitoring check on or
+        before that day (so the percentage isn't diluted by features
+        that were never monitored).
+        """
+        today = _utcnow().date()
+        date_range = [today - timedelta(days=days - 1 - i) for i in range(days)]
+        # Pull everything in window plus a generous lookback so "latest check
+        # on-or-before day D" is correct even for features not checked recently.
+        # Window = days + 365 keeps the query bounded; older legacy rows are dropped.
+        cutoff_dt = _utcnow() - timedelta(days=days + 365)
+
+        with self.session() as s:
+            checks = (
+                s.execute(
+                    text(
+                        "SELECT feature_id, severity, checked_at FROM monitoring_checks "
+                        "WHERE checked_at >= :cutoff "
+                        "ORDER BY feature_id, checked_at"
+                    ),
+                    {"cutoff": cutoff_dt},
+                )
+                .mappings()
+                .all()
+            )
+
+        # For each feature, build a sorted list of (datetime, severity).
+        per_feature: dict[str, list[tuple[datetime, str]]] = defaultdict(list)
+        for row in checks:
+            checked_at = row["checked_at"]
+            if isinstance(checked_at, str):
+                checked_at = datetime.fromisoformat(checked_at)
+            per_feature[row["feature_id"]].append((checked_at, row["severity"] or "unknown"))
+
+        series: list[dict[str, Any]] = []
+        for d in date_range:
+            day_end = datetime.combine(d, datetime.max.time(), tzinfo=timezone.utc)
+            critical = warning = total = 0
+            for feature_history in per_feature.values():
+                latest_severity: str | None = None
+                for checked_at, severity in feature_history:
+                    if checked_at <= day_end:
+                        latest_severity = severity
+                    else:
+                        break
+                if latest_severity is None:
+                    continue
+                total += 1
+                if latest_severity == "critical":
+                    critical += 1
+                elif latest_severity == "warning":
+                    warning += 1
+            critical_pct = round((critical / total) * 100, 2) if total else 0.0
+            warning_pct = round((warning / total) * 100, 2) if total else 0.0
+            series.append(
+                {
+                    "date": d.isoformat(),
+                    "critical_pct": critical_pct,
+                    "warning_pct": warning_pct,
+                    "total_features": total,
+                }
+            )
+        return series
 
     def get_baseline_for_feature(self, feature_name: str) -> dict | None:
         with self.session() as s:
