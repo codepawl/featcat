@@ -47,6 +47,19 @@
       "psi": "PSI"
     }
   },
+  "drift_trend": {
+    "title": "Xu hướng tỷ lệ Drift",
+    "subtitle": "% features trong catalog ở trạng thái critical / warning theo ngày",
+    "show_warning": "Hiện warning",
+    "range_days_one": "{{count}} ngày",
+    "range_days_other": "{{count}} ngày",
+    "alert_threshold": "Cảnh báo: {{pct}}%",
+    "critical": "Critical",
+    "warning": "Warning",
+    "tracked_features_one": "{{count}} feature được theo dõi",
+    "tracked_features_other": "{{count}} features được theo dõi",
+    "empty": "Chưa có lịch sử drift — chạy /monitor/check để bắt đầu theo dõi."
+  },
   "top_features": {
     "title": "Features dùng nhiều",
     "empty": "Chưa có dữ liệu sử dụng",

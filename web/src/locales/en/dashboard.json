@@ -47,6 +47,19 @@
       "psi": "PSI"
     }
   },
+  "drift_trend": {
+    "title": "Drift rate trend",
+    "subtitle": "% of catalog features in critical / warning status per day",
+    "show_warning": "Show warning",
+    "range_days_one": "{{count}} day",
+    "range_days_other": "{{count}} days",
+    "alert_threshold": "Alert: {{pct}}%",
+    "critical": "Critical",
+    "warning": "Warning",
+    "tracked_features_one": "{{count}} feature tracked",
+    "tracked_features_other": "{{count}} features tracked",
+    "empty": "No drift history yet — run a /monitor/check to start tracking."
+  },
   "top_features": {
     "title": "Top Features",
     "empty": "No usage data yet",

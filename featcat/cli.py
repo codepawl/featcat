@@ -2175,6 +2175,160 @@ def group_regenerate_docs(
         _time.sleep(2)
 
 
+@group_app.command("freeze")
+def group_freeze(
+    name: str = typer.Argument(help="Group name"),
+    note: str = typer.Option("", "--note", "-n", help="Freeze note (e.g. 'before holiday traffic')"),
+    by: str = typer.Option("", "--by", help="Owner attribution; defaults to $USER"),
+) -> None:
+    """Snapshot the group's current members as a new immutable version."""
+    import os as _os
+
+    db = _get_db()
+    group = db.get_group_by_name(name)
+    if group is None:
+        db.close()
+        console.print(f"[red]Group not found:[/red] {name}")
+        raise typer.Exit(1)
+    if db.count_group_members(group.id) == 0:
+        db.close()
+        console.print(f"[red]Group is empty:[/red] {name}")
+        raise typer.Exit(1)
+
+    frozen_by = by or _os.environ.get("USER", "")
+    version = db.freeze_group(group.id, note=note, frozen_by=frozen_by)
+    db.close()
+
+    member_count = len(json.loads(version.snapshot_json).get("features", []))
+    console.print(
+        f"[green]Frozen[/green] group [cyan]{name}[/cyan] as v{version.version_number} with {member_count} feature(s)"
+    )
+    if note:
+        console.print(f"  Note: {note}")
+
+
+@group_app.command("versions")
+def group_versions(
+    name: str = typer.Argument(help="Group name"),
+) -> None:
+    """List frozen versions for a group."""
+    db = _get_db()
+    group = db.get_group_by_name(name)
+    if group is None:
+        db.close()
+        console.print(f"[red]Group not found:[/red] {name}")
+        raise typer.Exit(1)
+    versions = db.list_group_versions(group.id)
+    db.close()
+
+    if not versions:
+        console.print(f"[dim]No versions for group '{name}' — run 'featcat group freeze {name}' first[/dim]")
+        return
+
+    table = Table(title=f"Versions of {name}")
+    table.add_column("Version", justify="right", style="cyan")
+    table.add_column("Frozen at")
+    table.add_column("By")
+    table.add_column("Members", justify="right")
+    table.add_column("Note")
+    for v in versions:
+        member_count = len(json.loads(v.snapshot_json).get("features", []))
+        table.add_row(
+            f"v{v.version_number}",
+            v.frozen_at.isoformat(timespec="seconds"),
+            v.frozen_by or "-",
+            str(member_count),
+            v.note or "-",
+        )
+    console.print(table)
+
+
+@group_app.command("export")
+def group_export(
+    name: str = typer.Argument(help="Group name"),
+    version: int = typer.Option(..., "--version", "-v", help="Version number to export"),
+    format: str = typer.Option(  # noqa: A002 — keeps --format flag as the obvious name
+        "json", "--format", "-f", help="Output format: json | csv | parquet"
+    ),
+    output: str = typer.Option("", "--output", "-o", help="Output file path; defaults to <name>-v<n>.<format>"),
+) -> None:
+    """Export a frozen group version as a feature manifest.
+
+    The manifest captures name, dtype, definition, and source path/format
+    for every feature in the version — not the underlying data values.
+    Reproducibility contract: re-running the pipeline against the same
+    sources should yield matching columns.
+    """
+    if format not in ("json", "csv", "parquet"):
+        console.print(f"[red]Invalid format:[/red] {format}")
+        raise typer.Exit(1)
+
+    db = _get_db()
+    group = db.get_group_by_name(name)
+    if group is None:
+        db.close()
+        console.print(f"[red]Group not found:[/red] {name}")
+        raise typer.Exit(1)
+    snapshot_version = db.get_group_version(group.id, version)
+    if snapshot_version is None:
+        db.close()
+        console.print(f"[red]Version not found:[/red] {name} v{version}")
+        raise typer.Exit(1)
+
+    snapshot = json.loads(snapshot_version.snapshot_json)
+    warnings: list[str] = []
+    for feature in snapshot.get("features", []):
+        current = db.get_feature_by_name(feature.get("name", ""))
+        if current is None:
+            feature["deleted_after_freeze"] = True
+            warnings.append(f"Feature '{feature.get('name')}' was deleted after this version was frozen.")
+        else:
+            feature["deleted_after_freeze"] = False
+    snapshot["warnings"] = warnings
+    db.close()
+
+    out_path = output or f"{name}-v{version}.{format}"
+
+    if format == "json":
+        with open(out_path, "w", encoding="utf-8") as fh:
+            json.dump(snapshot, fh, indent=2, ensure_ascii=False)
+    else:
+        columns = [
+            "name",
+            "dtype",
+            "definition",
+            "definition_type",
+            "column_name",
+            "source_name",
+            "source_path",
+            "source_format",
+            "owner",
+            "deleted_after_freeze",
+        ]
+        rows = [{c: f.get(c, "") for c in columns} for f in snapshot.get("features", [])]
+        if format == "csv":
+            import csv as _csv
+
+            with open(out_path, "w", encoding="utf-8", newline="") as fh:
+                writer = _csv.DictWriter(fh, fieldnames=columns)
+                writer.writeheader()
+                for row in rows:
+                    writer.writerow(row)
+        else:  # parquet
+            try:
+                import pyarrow as pa
+                import pyarrow.parquet as pq
+            except ImportError:
+                console.print("[red]pyarrow is not installed[/red]")
+                raise typer.Exit(1) from None
+            table = pa.Table.from_pylist([{c: str(r[c]) if r[c] is not None else "" for c in columns} for r in rows])
+            pq.write_table(table, out_path)
+
+    console.print(f"[green]Exported[/green] {name} v{version} → {out_path}")
+    for w in warnings:
+        typer.echo(f"warning: {w}", err=True)
+
+
 # =========================================================================
 # Feature Definitions
 # =========================================================================
