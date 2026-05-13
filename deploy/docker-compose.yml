@@ -35,7 +35,7 @@ services:
     restart: unless-stopped
 
   featcat:
-    image: codepawl/featcat:${FEATCAT_VERSION:-latest}
+    image: nxank4/featcat:${FEATCAT_VERSION:-latest}
     build:
       context: ..
       dockerfile: deploy/Dockerfile
@@ -90,7 +90,7 @@ services:
     restart: unless-stopped
 
   featcat-worker:
-    image: codepawl/featcat:${FEATCAT_VERSION:-latest}
+    image: nxank4/featcat:${FEATCAT_VERSION:-latest}
     build:
       context: ..
       dockerfile: deploy/Dockerfile
@@ -112,7 +112,7 @@ services:
     restart: unless-stopped
 
   featcat-beat:
-    image: codepawl/featcat:${FEATCAT_VERSION:-latest}
+    image: nxank4/featcat:${FEATCAT_VERSION:-latest}
     build:
       context: ..
       dockerfile: deploy/Dockerfile
@@ -127,7 +127,7 @@ services:
     restart: unless-stopped
 
   featcat-flower:
-    image: codepawl/featcat:${FEATCAT_VERSION:-latest}
+    image: nxank4/featcat:${FEATCAT_VERSION:-latest}
     build:
       context: ..
       dockerfile: deploy/Dockerfile

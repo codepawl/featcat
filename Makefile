@@ -1,6 +1,6 @@
 .PHONY: install lint format type-check test test-cov build clean check release-check docs docs-serve docs-clean bench docker-version docker-build docker-push
 
-DOCKER_IMAGE := codepawl/featcat
+DOCKER_IMAGE ?= nxank4/featcat
 VERSION := $(shell grep '^__version__' featcat/__init__.py | cut -d'"' -f2)
 
 install:
