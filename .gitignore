@@ -32,6 +32,8 @@ coverage.xml
 # Project runtime
 catalog.db
 *.db-journal
+*.db-shm
+*.db-wal
 docs/features.md
 docs/monitoring_report.md
 .env
@@ -65,6 +67,16 @@ web/.vite/
 web/package-lock.json
 featcat/server/static/
 
+# Playwright E2E
+web/playwright-report/
+web/test-results/
+web/tests/e2e/.auth/
+web/tests/e2e/.tmp/
+
 # OpenPawl
 .openpawl/
 CLAUDE.local.md
+site/
+
+# Local Claude Code agent scratchpads (planning notes, not source)
+.claude/

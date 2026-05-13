@@ -54,17 +54,83 @@ class RemoteBackend(CatalogBackend):
         result = self._request("GET", "/api/sources")
         return [DataSource.model_validate(s) for s in result]
 
+    def update_source(
+        self,
+        name: str,
+        *,
+        description: str | None = None,
+        format: str | None = None,  # noqa: A002 — mirrors DataSource.format
+    ) -> Any:
+        body: dict[str, Any] = {}
+        if description is not None:
+            body["description"] = description
+        if format is not None:
+            body["format"] = format
+        result = self._request("PATCH", f"/api/sources/{name}", json=body)
+        return DataSource.model_validate(result)
+
+    def delete_source(self, name: str) -> int:
+        result = self._request("DELETE", f"/api/sources/{name}")
+        # Server returns {"deleted": name, "features_removed": int}; older
+        # builds returned just {"deleted": name}, so default to 0 for safety.
+        if isinstance(result, dict):
+            return int(result.get("features_removed", 0))
+        return 0
+
+    def get_source_impact(self, name: str) -> dict:
+        return self._request("GET", f"/api/sources/{name}/impact")
+
+    def list_scan_logs(self, source_id: str, limit: int = 10) -> list:
+        # Remote endpoint keys by source name (path-routable, human-friendly);
+        # we accept source_id here for ABC parity but resolve to name first
+        # so the HTTP shape stays clean.
+        sources = self.list_sources()
+        match = next((s for s in sources if s.id == source_id), None)
+        if match is None:
+            return []
+        return self._request("GET", f"/api/sources/{match.name}/scan-logs", params={"limit": limit})
+
     # --- Features ---
 
     def upsert_feature(self, feature: Any) -> Any:
         # upsert is handled server-side via scan; for individual features, PATCH is used
         return feature
 
-    def list_features(self, source_name: str | None = None) -> list:
-        params = {}
+    def list_features(
+        self,
+        source_name: str | None = None,
+        *,
+        dtype: str | None = None,
+        owner: str | None = None,
+        tag: str | None = None,
+        search: str | None = None,
+        has_doc: bool | None = None,
+        sort: str = "name",
+        order: str = "asc",
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list:
+        params: dict[str, Any] = {"sort": sort, "order": order}
         if source_name:
             params["source"] = source_name
+        if dtype:
+            params["dtype"] = dtype
+        if owner:
+            params["owner"] = owner
+        if tag:
+            params["tag"] = tag
+        if search:
+            params["search"] = search
+        if has_doc is not None:
+            params["has_doc"] = "true" if has_doc else "false"
+        if limit is not None:
+            params["limit"] = limit
+            params["offset"] = offset
         result = self._request("GET", "/api/features", params=params)
+        # Server returns either a list (no limit) or {items, total, ...}
+        # envelope (limit set) — unwrap so callers get a list either way.
+        if isinstance(result, dict) and "items" in result:
+            return [Feature.model_validate(f) for f in result["items"]]
         return [Feature.model_validate(f) for f in result]
 
     def get_feature_by_name(self, name: str) -> Any | None:
@@ -202,6 +268,35 @@ class RemoteBackend(CatalogBackend):
         result = self._request("GET", f"/api/groups/{group_id}")
         return result.get("member_count", 0)
 
+    # --- Feature Group Versions (freeze + export) ---
+
+    def freeze_group(self, group_id: str, note: str = "", frozen_by: str = "") -> Any:
+        from .models import FeatureGroupVersion
+
+        result = self._request(
+            "POST",
+            f"/api/groups/{group_id}/freeze",
+            json={"note": note, "frozen_by": frozen_by},
+        )
+        return FeatureGroupVersion.model_validate(result)
+
+    def list_group_versions(self, group_id: str) -> list:
+        from .models import FeatureGroupVersion
+
+        rows = self._request("GET", f"/api/groups/{group_id}/versions")
+        return [FeatureGroupVersion.model_validate(r) for r in rows]
+
+    def get_group_version(self, group_id: str, version_number: int) -> Any | None:
+        from .models import FeatureGroupVersion
+
+        try:
+            result = self._request("GET", f"/api/groups/{group_id}/versions/{version_number}")
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                return None
+            raise
+        return FeatureGroupVersion.model_validate(result)
+
     # --- Feature Definitions ---
 
     def set_feature_definition(self, feature_id: str, definition: str, definition_type: str) -> None:
@@ -263,11 +358,33 @@ class RemoteBackend(CatalogBackend):
     def get_monitoring_history(self, feature_name: str, days: int = 30) -> list[dict]:
         return self._request("GET", f"/api/monitor/history/{feature_name}", params={"days": days})
 
-    def save_monitoring_result(self, feature_id: str, feature_name: str, psi: float | None, severity: str) -> None:
+    def save_monitoring_result(
+        self,
+        feature_id: str,
+        feature_name: str,
+        psi: float | None,
+        severity: str,
+        *,
+        null_ratio: float | None = None,
+        mean_z_score: float | None = None,
+        sample_size: int | None = None,
+    ) -> None:
         pass  # Server-side only
 
     def get_baseline_for_feature(self, feature_name: str) -> dict | None:
         return self._request("GET", f"/api/monitor/baseline/{feature_name}")
+
+    def get_feature_metric_history(self, feature_name: str, days: int = 30) -> list[dict]:
+        return self._request("GET", f"/api/monitor/metrics/{feature_name}", params={"days": days})
+
+    def get_group_drift_matrix(self, group_id: str, days: int = 30) -> dict:
+        return self._request("GET", f"/api/groups/{group_id}/drift-matrix", params={"days": days})
+
+    def get_catalog_drift_trend(self, days: int = 90) -> list[dict]:
+        result = self._request("GET", "/api/monitor/drift-rate", params={"days": days})
+        # Server returns {date_range, series}; expose just the per-day rows for parity
+        # with the local backend's list-of-dicts shape.
+        return result.get("series", [])
 
     def get_stats_by_source(self) -> list[dict]:
         return self._request("GET", "/api/stats/by-source")
@@ -293,6 +410,92 @@ class RemoteBackend(CatalogBackend):
             f"/api/lineage/feature/{feature_name}",
             params={"direction": direction, "depth": depth},
         )
+
+    # --- Action Items (lifecycle loop) ---
+
+    def create_action_item(
+        self,
+        feature_id: str,
+        source: str,
+        title: str,
+        recommendation: str,
+        context: dict | None = None,
+        created_by: str = "",
+    ) -> str:
+        result = self._request(
+            "POST",
+            "/api/actions",
+            json={
+                "feature_id": feature_id,
+                "source": source,
+                "title": title,
+                "recommendation": recommendation,
+                "context": context or {},
+                "created_by": created_by,
+            },
+        )
+        return result.get("id", "")
+
+    def find_pending_action(self, feature_id: str, source: str, title: str) -> dict | None:
+        items = self.list_action_items(feature_id=feature_id, status="pending", source=source, limit=10)
+        for item in items:
+            if item.get("title") == title:
+                return item
+        return None
+
+    def list_action_items(
+        self,
+        feature_id: str | None = None,
+        status: str | None = None,
+        source: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict]:
+        params: dict[str, Any] = {"limit": limit, "offset": offset}
+        if feature_id:
+            params["feature_id"] = feature_id
+        if status:
+            params["status"] = status
+        if source:
+            params["source"] = source
+        return self._request("GET", "/api/actions", params=params)
+
+    def get_action_item(self, item_id: str) -> dict | None:
+        try:
+            return self._request("GET", f"/api/actions/{item_id}")
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                return None
+            raise
+
+    def update_action_item_status(
+        self,
+        item_id: str,
+        status: str,
+        applied_by: str = "",
+        change_summary: str = "",
+    ) -> bool:
+        try:
+            self._request(
+                "PATCH",
+                f"/api/actions/{item_id}",
+                json={"status": status, "applied_by": applied_by, "change_summary": change_summary},
+            )
+            return True
+        except httpx.HTTPStatusError:
+            return False
+
+    def count_action_items(self, status: str | None = None) -> int:
+        params: dict[str, Any] = {"limit": 1, "offset": 0, "count_only": "true"}
+        if status:
+            params["status"] = status
+        result = self._request("GET", "/api/actions", params=params)
+        if isinstance(result, dict):
+            return int(result.get("count", 0))
+        return len(result) if isinstance(result, list) else 0
+
+    def save_monitoring_llm_analysis(self, feature_id: str, analysis: dict) -> None:
+        pass  # Server-side only
 
     # --- Server-side AI/plugin operations (used by CLI in remote mode) ---
 

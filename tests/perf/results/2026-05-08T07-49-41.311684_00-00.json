@@ -1,0 +1,28 @@
+{
+  "started_at": "2026-05-08T07:49:41.311684+00:00",
+  "bench_db_url": "postgresql+psycopg2://featcat:featcat@localhost:5433/featcat",
+  "embedding_dim": 384,
+  "entries": [
+    {
+      "name": "index_build",
+      "n": 10000,
+      "elapsed_seconds": 1.589125236030668
+    },
+    {
+      "name": "similarity_top_k",
+      "n": 10000,
+      "ef_search": 40,
+      "top_k": 10,
+      "reps": 100,
+      "median_seconds": 0.027627367991954088,
+      "p95_seconds": 0.03704963799100369
+    },
+    {
+      "name": "seq_scan_vs_hnsw",
+      "n": 10000,
+      "hnsw_seconds": 0.028672756976448,
+      "seq_scan_seconds": 13.186710600042716,
+      "speedup": 459.9038247655909
+    }
+  ]
+}

@@ -1,4 +1,11 @@
-"""LLM response caching with SQLite backend."""
+"""LLM response caching with SQLite backend.
+
+Intentionally NOT migrated to SQLAlchemy / PostgreSQL alongside the catalog DB:
+this is a local-only cache with no concurrency requirements, and the catalog
+migration's goals (concurrent writes, 10k+ feature scale) don't apply here.
+Keeping it on raw sqlite3 avoids dragging the cache into the same migration
+surface area for zero benefit.
+"""
 
 from __future__ import annotations
 
@@ -21,7 +28,13 @@ class ResponseCache:
     """SQLite-backed cache for LLM responses."""
 
     def __init__(self, db_path: str = "catalog.db") -> None:
-        self.conn = sqlite3.connect(db_path, detect_types=sqlite3.PARSE_DECLTYPES)
+        # `check_same_thread=False` because the server keeps a single long-lived
+        # ResponseCache on `app.state.llm_cache` and plugin calls land on
+        # thread-pool workers (`run_in_threadpool`). SQLite itself serializes
+        # writes at the OS file-lock layer, so concurrent access from threads
+        # is safe — we just need to opt out of the Python-side guard.
+        # Matches the pattern LocalBackend uses for the catalog DB.
+        self.conn = sqlite3.connect(db_path, detect_types=sqlite3.PARSE_DECLTYPES, check_same_thread=False)
         self.conn.execute(CACHE_SCHEMA)
         self.conn.commit()
 

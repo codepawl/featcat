@@ -1,0 +1,28 @@
+{
+  "page": {
+    "title": "Search"
+  },
+  "input": {
+    "placeholder": "Search features by name, description, tag..."
+  },
+  "header": {
+    "loading": "Searching...",
+    "count_one": "{{count}} result for \"{{query}}\"",
+    "count_other": "{{count}} results for \"{{query}}\""
+  },
+  "facets": {
+    "title": "Filters",
+    "source": "Source",
+    "dtype": "Data type",
+    "tag": "Tag",
+    "documentation": "Documentation",
+    "documented": "Documented",
+    "undocumented": "Undocumented",
+    "clear": "Clear all"
+  },
+  "empty": {
+    "prompt": "Type a query to search across features, tags, and documentation.",
+    "no_match": "No matches for \"{{query}}\".",
+    "suggest": "Try a broader query, or remove some filters."
+  }
+}

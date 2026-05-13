@@ -164,11 +164,14 @@ class TestNoVersioning:
     def test_stats_update_no_version(self, db_with_feature):
         """Stats changes should NOT create additional versions beyond initial."""
         db, feature = db_with_feature
-        db.conn.execute(
-            "UPDATE features SET stats = ? WHERE id = ?",
-            ('{"mean": 0.5}', feature.id),
-        )
-        db.conn.commit()
+        from sqlalchemy import text
+
+        with db.session() as s:
+            s.execute(
+                text("UPDATE features SET stats = :stats WHERE id = :id"),
+                {"stats": '{"mean": 0.5}', "id": feature.id},
+            )
+            s.commit()
 
         versions = db.list_feature_versions(feature.id)
         assert len(versions) == 1  # only the initial registration

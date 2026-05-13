@@ -79,7 +79,7 @@ export function DocDebtHeatmap({ data, loading }: DocDebtHeatmapProps) {
             <tr>
               <th className="text-left py-1.5 px-2 font-medium text-[var(--text-tertiary)] border-b border-[var(--border-default)]">{t('debt.owner')}</th>
               {sources.map(src => (
-                <th key={src} className="text-center py-1.5 px-2 font-medium text-[var(--text-tertiary)] border-b border-[var(--border-default)] max-w-[100px] truncate" title={src}>{src}</th>
+                <th key={src} className="text-center py-1.5 px-2 font-medium text-[var(--text-tertiary)] border-b border-[var(--border-default)] max-w truncate" title={src}>{src}</th>
               ))}
               <th className="text-center py-1.5 px-2 font-semibold text-[var(--text-secondary)] border-b border-[var(--border-default)]">{t('debt.total')}</th>
             </tr>
@@ -87,7 +87,7 @@ export function DocDebtHeatmap({ data, loading }: DocDebtHeatmapProps) {
           <tbody>
             {owners.map(owner => (
               <tr key={owner} className="border-b border-[var(--border-subtle)]">
-                <td className="py-1.5 px-2 font-medium text-[var(--text-secondary)] max-w-[120px] truncate" title={owner}>{owner}</td>
+                <td className="py-1.5 px-2 font-medium text-[var(--text-secondary)] max-w truncate" title={owner}>{owner}</td>
                 {sources.map(src => {
                   const entry = lookup.get(`${owner}::${src}`)
                   if (!entry) {

@@ -1,14 +1,25 @@
 {
   "nav": {
     "dashboard": "Dashboard",
+    "search": "Search",
     "features": "Features",
     "groups": "Groups",
+    "sources": "Sources",
     "similarity": "Similarity",
+    "lineage": "Lineage",
     "audit": "Audit",
     "monitoring": "Monitoring",
+    "actions": "Actions",
     "jobs": "Jobs",
     "chat": "AI Chat",
-    "settings": "Settings"
+    "settings": "Settings",
+    "help": "Help",
+    "sections": {
+      "catalog": "Catalog",
+      "quality": "Quality & Monitoring",
+      "system": "System",
+      "app": "App"
+    }
   },
   "status": {
     "server": "Server",
@@ -16,5 +27,9 @@
     "connected": "Connected",
     "disconnected": "Disconnected",
     "checking": "checking..."
+  },
+  "actions": {
+    "collapse": "Collapse sidebar",
+    "expand": "Expand sidebar"
   }
 }

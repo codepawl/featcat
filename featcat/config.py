@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from pydantic_settings import BaseSettings
 
 CONFIG_USER_DIR = Path.home() / ".config" / "featcat"
@@ -60,7 +60,10 @@ class Settings(BaseSettings):
     s3_endpoint_url: str | None = None
     s3_access_key: str | None = None
     s3_secret_key: str | None = None
+    s3_session_token: str | None = None  # For STS / role-assume credentials
     s3_region: str = "us-east-1"
+    s3_connect_timeout_ms: int = 10_000  # Passed to PyArrow S3FileSystem (converted to seconds)
+    s3_request_timeout_ms: int = 60_000
 
     # Server mode
     server_url: str | None = None  # If set, use RemoteBackend instead of local SQLite
@@ -93,6 +96,32 @@ class Settings(BaseSettings):
     job_doc_generate_cron: str = "0 2 * * *"
     job_source_scan_cron: str = "0 1 * * *"
     job_baseline_refresh_cron: str = "0 3 * * 0"
+
+    # Tasks backend: "apscheduler" (default, in-process) or "celery" (out-of-process via Redis broker).
+    # When "celery", the FeatcatScheduler still drives cron triggers but dispatches the actual job
+    # work to Celery workers via .delay(). The [tasks] extra must be installed for "celery" mode.
+    tasks_backend: str = "apscheduler"
+
+    @model_validator(mode="after")
+    def _validate_s3_paired_keys(self) -> Settings:
+        """Reject partial S3 credential config.
+
+        Historical bug: ``_get_s3_filesystem`` used ``if access and secret:``
+        which silently dropped both keys when only one was set, falling back
+        to PyArrow's default chain — surprising and hard to debug. Failing at
+        config load instead gives the operator the error before any S3 call.
+        Both keys must be set together, or both unset (then the default
+        credential chain handles things).
+        """
+        has_access = bool(self.s3_access_key)
+        has_secret = bool(self.s3_secret_key)
+        if has_access != has_secret:
+            raise ValueError(
+                "FEATCAT_S3_ACCESS_KEY and FEATCAT_S3_SECRET_KEY must be set together or both unset "
+                f"(currently: access_key={'set' if has_access else 'unset'}, "
+                f"secret_key={'set' if has_secret else 'unset'})"
+            )
+        return self
 
 
 # Keep a record of which keys came from which source for `config show`

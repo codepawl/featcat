@@ -28,7 +28,9 @@
     "edit": "Sửa",
     "create": "Tạo",
     "done": "Hoàn tất",
-    "add": "Thêm"
+    "add": "Thêm",
+    "clear_all_filters": "Xóa toàn bộ bộ lọc",
+    "dismiss": "Đóng"
   },
   "state": {
     "empty": "Không có dữ liệu",
@@ -58,5 +60,9 @@
   },
   "time": {
     "never": "chưa bao giờ"
+  },
+  "tooltip": {
+    "learn_more": "Tìm hiểu thêm →",
+    "definition_of": "Định nghĩa của {{label}}"
   }
 }

@@ -8,13 +8,8 @@
     "critical": "Critical"
   },
   "actions": {
-    "run_check_now": "Run Check Now",
-    "checking": "Checking...",
     "refresh_baseline": "Refresh Baseline",
     "export_report": "Export Report"
-  },
-  "hints": {
-    "run_baseline_first": "Run 'Refresh Baseline' first"
   },
   "drift_table": {
     "title": "Feature Drift Status",
@@ -64,6 +59,20 @@
       "warning": "Warning",
       "critical": "Critical"
     }
+  },
+  "multi_metric": {
+    "title": "Metric history",
+    "not_enough_history": "Not enough monitoring history yet",
+    "range_days_one": "{{count}} day",
+    "range_days_other": "{{count}} days",
+    "metric_null_ratio": "Null ratio",
+    "metric_z_score": "Z-score",
+    "metric_sample_size": "Sample size",
+    "threshold_psi_warning": "PSI {{value}} ≥ 0.10 (warning)",
+    "threshold_psi_critical": "PSI {{value}} ≥ 0.25 (critical)",
+    "threshold_zscore": "|Z-score| {{value}} > 3",
+    "anomaly_count_one": "{{count}} anomaly marker — hover the data point for the threshold crossed",
+    "anomaly_count_other": "{{count}} anomaly markers — hover the data points for the threshold crossed"
   },
   "distribution": {
     "title": "Distribution Comparison",

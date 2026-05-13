@@ -56,5 +56,8 @@ ENV FEATCAT_LLM_BACKEND=llamacpp
 ENV FEATCAT_LLAMACPP_URL=http://llm:8080
 ENV FEATCAT_LLM_MODEL=gemma-4-E2B-it
 
-# Init catalog on first run, then start server
-CMD ["sh", "-c", "featcat init 2>/dev/null; featcat serve --host 0.0.0.0 --port 8000"]
+# Apply migrations (Alembic — works for both sqlite and postgres backends via
+# FEATCAT_DB_BACKEND/FEATCAT_DB_URL), seed defaults, then start server.
+# `featcat init` is kept after `alembic upgrade head` so the legacy ALTER TABLE
+# shims still run for older sqlite catalogs; on a fresh DB it's a fast no-op.
+CMD ["sh", "-c", "alembic upgrade head && (featcat init 2>/dev/null || true) && featcat serve --host 0.0.0.0 --port 8000"]

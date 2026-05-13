@@ -7,7 +7,9 @@ import viSidebar from '../locales/vi/sidebar.json'
 import viDashboard from '../locales/vi/dashboard.json'
 import viFeatures from '../locales/vi/features.json'
 import viGroups from '../locales/vi/groups.json'
+import viSources from '../locales/vi/sources.json'
 import viSimilarity from '../locales/vi/similarity.json'
+import viLineage from '../locales/vi/lineage.json'
 import viAudit from '../locales/vi/audit.json'
 import viMonitoring from '../locales/vi/monitoring.json'
 import viJobs from '../locales/vi/jobs.json'
@@ -15,13 +17,19 @@ import viChat from '../locales/vi/chat.json'
 import viSettings from '../locales/vi/settings.json'
 import viModals from '../locales/vi/modals.json'
 import viErrors from '../locales/vi/errors.json'
+import viActions from '../locales/vi/actions.json'
+import viHelp from '../locales/vi/help.json'
+import viGlossary from '../locales/vi/glossary.json'
+import viSearch from '../locales/vi/search.json'
 
 import enCommon from '../locales/en/common.json'
 import enSidebar from '../locales/en/sidebar.json'
 import enDashboard from '../locales/en/dashboard.json'
 import enFeatures from '../locales/en/features.json'
 import enGroups from '../locales/en/groups.json'
+import enSources from '../locales/en/sources.json'
 import enSimilarity from '../locales/en/similarity.json'
+import enLineage from '../locales/en/lineage.json'
 import enAudit from '../locales/en/audit.json'
 import enMonitoring from '../locales/en/monitoring.json'
 import enJobs from '../locales/en/jobs.json'
@@ -29,6 +37,10 @@ import enChat from '../locales/en/chat.json'
 import enSettings from '../locales/en/settings.json'
 import enModals from '../locales/en/modals.json'
 import enErrors from '../locales/en/errors.json'
+import enActions from '../locales/en/actions.json'
+import enHelp from '../locales/en/help.json'
+import enGlossary from '../locales/en/glossary.json'
+import enSearch from '../locales/en/search.json'
 
 export const SUPPORTED_LANGS = ['vi', 'en'] as const
 export type SupportedLang = typeof SUPPORTED_LANGS[number]
@@ -45,7 +57,9 @@ const resources = {
     dashboard: viDashboard,
     features: viFeatures,
     groups: viGroups,
+    sources: viSources,
     similarity: viSimilarity,
+    lineage: viLineage,
     audit: viAudit,
     monitoring: viMonitoring,
     jobs: viJobs,
@@ -53,6 +67,10 @@ const resources = {
     settings: viSettings,
     modals: viModals,
     errors: viErrors,
+    actions: viActions,
+    help: viHelp,
+    glossary: viGlossary,
+    search: viSearch,
   },
   en: {
     common: enCommon,
@@ -60,7 +78,9 @@ const resources = {
     dashboard: enDashboard,
     features: enFeatures,
     groups: enGroups,
+    sources: enSources,
     similarity: enSimilarity,
+    lineage: enLineage,
     audit: enAudit,
     monitoring: enMonitoring,
     jobs: enJobs,
@@ -68,6 +88,10 @@ const resources = {
     settings: enSettings,
     modals: enModals,
     errors: enErrors,
+    actions: enActions,
+    help: enHelp,
+    glossary: enGlossary,
+    search: enSearch,
   },
 }
 

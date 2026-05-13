@@ -1,3 +1,14 @@
+export type ToolState = 'input-streaming' | 'input-available' | 'output-available' | 'output-error'
+
+export interface ToolCall {
+  id: string
+  name: string
+  state: ToolState
+  input?: any
+  output?: any
+  error?: string
+}
+
 export interface ChatMessage {
   id: string
   role: 'user' | 'ai'
@@ -7,12 +18,14 @@ export interface ChatMessage {
   isStreaming?: boolean
   result?: any
   html?: string
+  tools?: ToolCall[]
+  /** Marks the message as an error (LLM failure, network drop, etc.). Renders
+   *  the styled error bubble + retry affordance instead of plain text. */
+  error?: boolean
   timestamp: number
 }
 
-let messages: ChatMessage[] = [
-  { id: 'welcome', role: 'ai', content: 'Welcome to featcat AI Chat! Ask anything about your features.', timestamp: Date.now() },
-]
+let messages: ChatMessage[] = []
 const listeners = new Set<() => void>()
 
 function notify() {
@@ -40,10 +53,30 @@ export const chatStore = {
     notify()
   },
 
+  upsertToolCall: (id: string, patch: Partial<ToolCall> & { name?: string }) => {
+    if (messages.length === 0) return
+    const last = messages[messages.length - 1]
+    const tools = last.tools ? [...last.tools] : []
+    const idx = tools.findIndex((t) => t.id === id)
+    if (idx >= 0) {
+      tools[idx] = { ...tools[idx], ...patch }
+    } else {
+      tools.push({ id, name: patch.name || 'tool', state: 'input-available', ...patch })
+    }
+    messages = [...messages.slice(0, -1), { ...last, tools }]
+    notify()
+  },
+
   clear: () => {
-    messages = [
-      { id: 'welcome', role: 'ai', content: 'Welcome to featcat AI Chat! Ask anything about your features.', timestamp: Date.now() },
-    ]
+    messages = []
+    notify()
+  },
+
+  /** Drop the most recent message. Used by retry to remove a failed AI
+   *  message before replaying the originating user query. */
+  popLastMessage: () => {
+    if (messages.length === 0) return
+    messages = messages.slice(0, -1)
     notify()
   },
 

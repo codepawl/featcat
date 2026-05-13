@@ -16,7 +16,13 @@
     "title": "Lịch sử chạy",
     "filters": {
       "all_jobs": "Tất cả Job",
-      "all_statuses": "Tất cả trạng thái"
+      "all_statuses": "Tất cả trạng thái",
+      "sort": {
+        "started_desc": "Mới nhất trước",
+        "started_asc": "Cũ nhất trước",
+        "duration_desc": "Thời lượng dài nhất",
+        "duration_asc": "Thời lượng ngắn nhất"
+      }
     },
     "table": {
       "job": "Job",
@@ -47,5 +53,44 @@
       "Saturday": "Thứ bảy"
     }
   },
-  "confirm_run": "Chạy \"{{name}}\" ngay bây giờ? Có thể mất 30-60 giây."
+  "confirm_run": "Chạy \"{{name}}\" ngay bây giờ? Có thể mất 30-60 giây.",
+  "scheduler": {
+    "title": "Bộ lập lịch",
+    "subtitle": "Tổng quan trạng thái job (API T1.5c)",
+    "status": {
+      "success": "thành công",
+      "failed": "thất bại",
+      "error": "lỗi",
+      "running": "đang chạy",
+      "queued": "đang xếp hàng",
+      "never": "chưa chạy"
+    },
+    "card": {
+      "last_run": "Lần chạy cuối",
+      "next_run": "Lần chạy tiếp",
+      "duration": "Thời lượng",
+      "details": "Chi tiết"
+    },
+    "trigger": {
+      "running": "Đang chạy…",
+      "success": "{{name}} chạy xong trong {{duration}}",
+      "failed": "{{name}} thất bại: {{error}}",
+      "queued": "{{name}} đã xếp hàng",
+      "dismiss": "Đóng"
+    },
+    "detail": {
+      "title": "Chi tiết job",
+      "cron": "Lịch chạy",
+      "active_tasks": "Task Celery đang chạy",
+      "live": "Trực tiếp",
+      "recent_runs": "Lần chạy gần đây",
+      "no_runs": "Chưa có lần chạy nào.",
+      "started_at": "Bắt đầu",
+      "finished_at": "Kết thúc",
+      "duration": "Thời lượng",
+      "status": "Trạng thái",
+      "error": "Lỗi",
+      "expand_error": "Bấm vào hàng để mở rộng lỗi"
+    }
+  }
 }

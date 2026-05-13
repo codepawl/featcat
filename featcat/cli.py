@@ -2,19 +2,24 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
+import os
 import sys
 from pathlib import Path
 
 import typer
+from pydantic import BaseModel
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
+from sqlalchemy import text
 
 from .catalog.factory import get_backend
 from .catalog.local import DEFAULT_DB, LocalBackend
 from .catalog.models import DataSource, Feature, FeatureGroup
 from .catalog.scanner import discover_parquet_files, scan_source
+from .catalog.storage import is_s3_uri
 from .catalog.usage import log_feature_usage
 from .config import load_settings
 
@@ -28,6 +33,8 @@ config_app = typer.Typer(help="Configuration management")
 job_app = typer.Typer(help="Scheduled job management")
 group_app = typer.Typer(help="Feature groups management")
 usage_app = typer.Typer(help="Feature usage analytics")
+actions_app = typer.Typer(help="Recommended actions (lifecycle loop)")
+lineage_app = typer.Typer(help="Lineage management (T1.1)")
 app.add_typer(source_app, name="source")
 app.add_typer(feature_app, name="feature")
 app.add_typer(doc_app, name="doc")
@@ -37,6 +44,8 @@ app.add_typer(config_app, name="config")
 app.add_typer(job_app, name="job")
 app.add_typer(group_app, name="group")
 app.add_typer(usage_app, name="usage")
+app.add_typer(actions_app, name="actions")
+app.add_typer(lineage_app, name="lineage")
 
 console = Console()
 
@@ -104,7 +113,7 @@ def add(
         name = Path(path).stem
 
     # 2. Resolve path and storage type
-    storage_type = "s3" if path.startswith("s3://") else "local"
+    storage_type = "s3" if is_s3_uri(path) else "local"
     if storage_type == "local":
         resolved = Path(path).resolve()
         if not resolved.exists():
@@ -599,28 +608,99 @@ def source_scan(
 @feature_app.command("list")
 def feature_list(
     source: str | None = typer.Option(None, "--source", "-s", help="Filter by source name"),
+    health_grade: str | None = typer.Option(None, "--health-grade", help="Filter by health grade (A/B/C/D)"),
+    drift_status: str | None = typer.Option(
+        None, "--drift-status", help="Filter by drift status (healthy/warning/critical)"
+    ),
+    has_doc: bool | None = typer.Option(None, "--has-doc/--no-doc", help="Only show features with/without docs"),
+    owner: str | None = typer.Option(None, "--owner", help="Filter by owner"),
+    tag: str | None = typer.Option(None, "--tag", help="Filter by tag"),
+    dtype: str | None = typer.Option(None, "--dtype", help="Filter by dtype"),
 ) -> None:
-    """List all features."""
+    """List features with rich filtering matching the API."""
+    from .catalog.health import compute_health_score
+    from .server.routes.features import _bulk_health_data
+
     db = _get_db()
     features = db.list_features(source_name=source)
+
+    enriched: list[dict] = []
+    needs_health = any([health_grade, drift_status, has_doc is not None])
+    if needs_health:
+        all_docs, drift_map, usage_map = _bulk_health_data(db)
+    else:
+        all_docs, drift_map, usage_map = {}, {}, {}
+
+    for f in features:
+        d: dict = {
+            "name": f.name,
+            "column": f.column_name,
+            "dtype": f.dtype,
+            "tags": f.tags or [],
+            "owner": f.owner or "",
+            "stats": f.stats or {},
+        }
+        if needs_health:
+            usage = usage_map.get(f.id, {"views": 0, "queries": 0})
+            h = compute_health_score(
+                has_doc=f.id in all_docs,
+                has_hints=bool(f.generation_hints),
+                drift_status=drift_map.get(f.id),
+                views_30d=usage["views"],
+                queries_30d=usage["queries"],
+            )
+            d["health_grade"] = h["grade"]
+            d["health_score"] = h["score"]
+            d["has_doc"] = f.id in all_docs
+            d["drift_status"] = drift_map.get(f.id, "healthy")
+        enriched.append(d)
     db.close()
 
-    if not features:
-        console.print("[dim]No features found. Use 'featcat source scan' first.[/dim]")
+    if owner:
+        enriched = [d for d in enriched if d["owner"] == owner]
+    if tag:
+        enriched = [d for d in enriched if tag in (d["tags"] or [])]
+    if dtype:
+        enriched = [d for d in enriched if d["dtype"] == dtype]
+    if health_grade:
+        enriched = [d for d in enriched if d.get("health_grade") == health_grade]
+    if drift_status:
+        enriched = [d for d in enriched if d.get("drift_status") == drift_status]
+    if has_doc is True:
+        enriched = [d for d in enriched if d.get("has_doc")]
+    elif has_doc is False:
+        enriched = [d for d in enriched if not d.get("has_doc")]
+
+    if not enriched:
+        console.print("[dim]No features match these filters[/dim]")
         return
 
-    table = Table(title="Features")
+    table = Table(title=f"Features ({len(enriched)})")
     table.add_column("Name", style="cyan")
     table.add_column("Column")
     table.add_column("Dtype")
+    show_health = "health_grade" in enriched[0]
+    if show_health:
+        table.add_column("Grade")
+        table.add_column("Drift")
+        table.add_column("Doc", justify="center")
+    table.add_column("Owner")
     table.add_column("Tags")
     table.add_column("Nulls", justify="right")
 
-    for f in features:
-        null_ratio = f.stats.get("null_ratio", "")
+    for d in enriched:
+        null_ratio = d["stats"].get("null_ratio", "")
         null_str = f"{null_ratio:.1%}" if isinstance(null_ratio, (int, float)) else str(null_ratio)
-        tags_str = ", ".join(f.tags) if f.tags else ""
-        table.add_row(f.name, f.column_name, f.dtype, tags_str, null_str)
+        tags_str = ", ".join(d["tags"]) if d["tags"] else ""
+        row = [d["name"], d["column"], d["dtype"]]
+        if show_health:
+            row += [
+                d.get("health_grade", "-"),
+                d.get("drift_status", "-"),
+                "yes" if d.get("has_doc") else "-",
+            ]
+        row += [d["owner"] or "-", tags_str, null_str]
+        table.add_row(*row)
 
     console.print(table)
 
@@ -971,6 +1051,79 @@ def ask(
         console.print(f"[dim]Try also: {follow_up}[/dim]")
 
 
+@app.command()
+def chat(
+    server_url: str = typer.Option("", "--server", help="Server URL (defaults to FEATCAT_SERVER_URL or :8000)"),
+) -> None:
+    """Interactive chat with the catalog AI agent (streams via SSE)."""
+    import httpx
+
+    base = server_url or os.environ.get("FEATCAT_SERVER_URL", "http://localhost:8000")
+    history: list[dict[str, str]] = []
+    console.print(f"[dim]Connected to {base}. Type your question (or 'exit' to quit).[/dim]")
+
+    while True:
+        try:
+            query = typer.prompt(">", prompt_suffix=" ")
+        except (EOFError, KeyboardInterrupt):
+            console.print()
+            break
+        if not query.strip():
+            continue
+        if query.strip().lower() in {"exit", "quit", ":q"}:
+            break
+
+        history.append({"role": "user", "content": query})
+        console.print()  # blank line before response
+        full_response = ""
+        try:
+            with httpx.stream(
+                "POST",
+                f"{base}/api/ai/chat",
+                json={"messages": history},
+                timeout=180,
+            ) as response:
+                response.raise_for_status()
+                event_name: str | None = None
+                for line in response.iter_lines():
+                    if not line:
+                        event_name = None
+                        continue
+                    if line.startswith("event:"):
+                        event_name = line[6:].strip()
+                        continue
+                    if not line.startswith("data:"):
+                        continue
+                    data_payload = line[5:].strip()
+                    if not data_payload:
+                        continue
+                    try:
+                        evt = json.loads(data_payload)
+                    except json.JSONDecodeError:
+                        continue
+                    kind = evt.get("type") or event_name
+                    if kind == "token":
+                        token = evt.get("content") or evt.get("token") or ""
+                        console.print(token, end="", soft_wrap=True)
+                        full_response += token
+                    elif kind == "tool_call":
+                        console.print(f"\n[dim italic]→ tool: {evt.get('name', '?')}[/dim italic]")
+                    elif kind == "thinking_start":
+                        console.print("[dim]thinking…[/dim] ", end="")
+                    elif kind == "thinking_end":
+                        console.print()
+                    elif kind == "done":
+                        break
+        except httpx.HTTPError as e:  # noqa: BLE001
+            console.print(f"\n[red]Stream error:[/red] {e}")
+            history.pop()  # don't keep failed turn
+            continue
+
+        console.print()  # newline after stream
+        if full_response:
+            history.append({"role": "assistant", "content": full_response})
+
+
 # =========================================================================
 # Doc commands
 # =========================================================================
@@ -1200,6 +1353,31 @@ def monitor_check(
     else:
         console.print("\n  [dim]No baselines found. Run 'featcat monitor baseline' first.[/dim]")
     console.print()
+
+
+@monitor_app.command("history")
+def monitor_history(
+    feature: str = typer.Argument(help="Feature name (e.g. source.column)"),
+    days: int = typer.Option(30, "--days", "-d", help="History window in days"),
+) -> None:
+    """Show drift check history for a feature."""
+    db = _get_db()
+    rows = db.get_monitoring_history(feature, days=days)
+    db.close()
+    if not rows:
+        console.print(f"[dim]No monitoring history for {feature} in last {days} days[/dim]")
+        return
+
+    table = Table(title=f"Drift history — {feature} (last {days} days)")
+    table.add_column("Checked at")
+    table.add_column("Severity")
+    table.add_column("PSI", justify="right")
+    for r in rows:
+        psi = r.get("psi")
+        psi_str = f"{psi:.4f}" if isinstance(psi, (int, float)) else "-"
+        ts = str(r.get("checked_at", ""))[:19]
+        table.add_row(ts, r.get("severity", "-"), psi_str)
+    console.print(table)
 
 
 @monitor_app.command("report")
@@ -1592,17 +1770,23 @@ def serve(
 
 @app.command(name="scan-bulk")
 def scan_bulk(
-    path: str = typer.Argument(help="Directory to scan for .parquet files"),
+    path: str = typer.Argument(help="Directory or S3 prefix (s3://bucket/prefix) to scan for .parquet files"),
     recursive: bool = typer.Option(False, "--recursive", "-r", help="Search subdirectories"),
     owner: str = typer.Option("", "--owner", "-o", help="Owner for all discovered features"),
     tag: list[str] = typer.Option([], "--tag", "-t", help="Tags to apply to all features"),  # noqa: B008
     dry_run: bool = typer.Option(False, "--dry-run", help="Show what would happen without writing to DB"),
 ) -> None:
-    """Scan a directory for Parquet files and register them as sources + features."""
+    """Scan a directory or S3 prefix for Parquet files and register them as sources + features."""
     try:
         files = discover_parquet_files(path, recursive=recursive)
     except NotADirectoryError:
         console.print(f"[red]Not a directory:[/red] {path}")
+        raise typer.Exit(1) from None
+    except FileNotFoundError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1) from None
+    except ValueError as e:
+        console.print(f"[red]Invalid path:[/red] {e}")
         raise typer.Exit(1) from None
 
     if not files:
@@ -1615,8 +1799,9 @@ def scan_bulk(
     skipped = 0
 
     for f in files:
-        abs_path = str(f.resolve())
-        source_name = f.stem
+        # ``f`` is a string in both branches: absolute local path or s3:// URI.
+        abs_path = f
+        source_name = Path(f).stem
 
         # Check if already registered by path
         existing = db.get_source_by_path(abs_path)
@@ -1839,6 +2024,313 @@ def group_delete(
     console.print(f"[green]Group deleted:[/green] {name}")
 
 
+@group_app.command("health")
+def group_health(name: str = typer.Argument(help="Group name")) -> None:
+    """Aggregate health score and grade distribution for a group."""
+    from .catalog.health import compute_health_score
+    from .server.routes.features import _bulk_health_data
+
+    db = _get_db()
+    group = db.get_group_by_name(name)
+    if group is None:
+        db.close()
+        console.print(f"[red]Group not found:[/red] {name}")
+        raise typer.Exit(1)
+
+    members = db.list_group_members(group.id)
+    if not members:
+        db.close()
+        console.print(f"[dim]Group '{name}' has no members[/dim]")
+        return
+
+    all_docs, drift_map, usage_map = _bulk_health_data(db)
+    grades: dict[str, int] = {"A": 0, "B": 0, "C": 0, "D": 0}
+    rows: list[dict] = []
+    for f in members:
+        usage = usage_map.get(f.id, {"views": 0, "queries": 0})
+        h = compute_health_score(
+            has_doc=f.id in all_docs,
+            has_hints=bool(f.generation_hints),
+            drift_status=drift_map.get(f.id),
+            views_30d=usage["views"],
+            queries_30d=usage["queries"],
+        )
+        grades[h["grade"]] = grades.get(h["grade"], 0) + 1
+        rows.append({"spec": f.name, "score": h["score"], "grade": h["grade"]})
+    db.close()
+
+    rows.sort(key=lambda x: x["score"])
+    avg = round(sum(r["score"] for r in rows) / len(rows))
+
+    console.print(f"\n[bold cyan]Group health: {name}[/bold cyan]")
+    console.print(f"  Members:        {len(members)}")
+    console.print(f"  Average score:  {avg}/100")
+    grade_str = "  ".join(f"{g}: {c}" for g, c in grades.items())
+    console.print(f"  Grades:         {grade_str}\n")
+
+    table = Table(title="Lowest scoring members")
+    table.add_column("Feature", style="cyan")
+    table.add_column("Score", justify="right")
+    table.add_column("Grade")
+    for r in rows[:10]:
+        table.add_row(r["spec"], str(r["score"]), r["grade"])
+    console.print(table)
+
+
+@group_app.command("monitoring")
+def group_monitoring(name: str = typer.Argument(help="Group name")) -> None:
+    """Aggregate latest drift status across group members."""
+    db = _get_db()
+    group = db.get_group_by_name(name)
+    if group is None:
+        db.close()
+        console.print(f"[red]Group not found:[/red] {name}")
+        raise typer.Exit(1)
+
+    members = db.list_group_members(group.id)
+    severity_counts: dict[str, int] = {"healthy": 0, "warning": 0, "critical": 0, "unknown": 0}
+    rows: list[dict] = []
+    for f in members:
+        history = []
+        try:
+            history = db.get_monitoring_history(f.name, days=365)
+        except Exception:  # noqa: BLE001
+            history = []
+        latest = history[0] if history else {}
+        sev = (latest or {}).get("severity") or "unknown"
+        severity_counts[sev] = severity_counts.get(sev, 0) + 1
+        rows.append(
+            {
+                "spec": f.name,
+                "severity": sev,
+                "psi": (latest or {}).get("psi"),
+                "checked_at": str((latest or {}).get("checked_at") or ""),
+            }
+        )
+    db.close()
+
+    console.print(f"\n[bold cyan]Group monitoring: {name}[/bold cyan]")
+    console.print(f"  Members: {len(members)}")
+    summary = "  ".join(f"{k}: {v}" for k, v in severity_counts.items())
+    console.print(f"  Severity: {summary}\n")
+
+    drift = [r for r in rows if r["severity"] in ("warning", "critical")]
+    if not drift:
+        console.print("[green]No drift detected in this group[/green]")
+        return
+
+    table = Table(title="Members with drift")
+    table.add_column("Feature", style="cyan")
+    table.add_column("Severity")
+    table.add_column("PSI", justify="right")
+    table.add_column("Checked at")
+    for r in drift:
+        psi_str = f"{r['psi']:.4f}" if isinstance(r["psi"], (int, float)) else "-"
+        table.add_row(r["spec"], r["severity"], psi_str, r["checked_at"][:19])
+    console.print(table)
+
+
+@group_app.command("regenerate-docs")
+def group_regenerate_docs(
+    name: str = typer.Argument(help="Group name"),
+    regenerate_existing: bool = typer.Option(False, "--regenerate", help="Overwrite existing docs"),
+    global_hint: str = typer.Option("", "--hint", help="Global hint applied to features without an individual hint"),
+) -> None:
+    """Trigger batch doc regeneration scoped to this group via the server."""
+    import os as _os
+    import time as _time
+
+    import httpx
+
+    server_url = _os.environ.get("FEATCAT_SERVER_URL", "http://localhost:8000")
+    try:
+        post = httpx.post(
+            f"{server_url}/api/groups/{name}/regenerate-docs",
+            json={"regenerate_existing": regenerate_existing, "global_hint": global_hint or None},
+            timeout=30,
+        )
+        post.raise_for_status()
+    except httpx.HTTPError as e:  # noqa: BLE001
+        console.print(f"[red]Server error:[/red] {e}")
+        raise typer.Exit(1) from None
+
+    payload = post.json()
+    job_id = payload.get("job_id")
+    total = payload.get("total", 0)
+    console.print(f"[green]Started job {job_id}[/green] for {total} feature(s) in group '{name}'.")
+
+    while True:
+        try:
+            resp = httpx.get(f"{server_url}/api/docs/generate-batch/{job_id}/status", timeout=15)
+            resp.raise_for_status()
+        except httpx.HTTPError:
+            _time.sleep(2)
+            continue
+        st = resp.json()
+        line = (
+            f"  status={st.get('status')} completed={st.get('completed')} failed={st.get('failed')} / {st.get('total')}"
+        )
+        console.print(line, end="\r")
+        if st.get("status") in ("done", "error", "completed"):
+            console.print()
+            break
+        _time.sleep(2)
+
+
+@group_app.command("freeze")
+def group_freeze(
+    name: str = typer.Argument(help="Group name"),
+    note: str = typer.Option("", "--note", "-n", help="Freeze note (e.g. 'before holiday traffic')"),
+    by: str = typer.Option("", "--by", help="Owner attribution; defaults to $USER"),
+) -> None:
+    """Snapshot the group's current members as a new immutable version."""
+    import os as _os
+
+    db = _get_db()
+    group = db.get_group_by_name(name)
+    if group is None:
+        db.close()
+        console.print(f"[red]Group not found:[/red] {name}")
+        raise typer.Exit(1)
+    if db.count_group_members(group.id) == 0:
+        db.close()
+        console.print(f"[red]Group is empty:[/red] {name}")
+        raise typer.Exit(1)
+
+    frozen_by = by or _os.environ.get("USER", "")
+    version = db.freeze_group(group.id, note=note, frozen_by=frozen_by)
+    db.close()
+
+    member_count = len(json.loads(version.snapshot_json).get("features", []))
+    console.print(
+        f"[green]Frozen[/green] group [cyan]{name}[/cyan] as v{version.version_number} with {member_count} feature(s)"
+    )
+    if note:
+        console.print(f"  Note: {note}")
+
+
+@group_app.command("versions")
+def group_versions(
+    name: str = typer.Argument(help="Group name"),
+) -> None:
+    """List frozen versions for a group."""
+    db = _get_db()
+    group = db.get_group_by_name(name)
+    if group is None:
+        db.close()
+        console.print(f"[red]Group not found:[/red] {name}")
+        raise typer.Exit(1)
+    versions = db.list_group_versions(group.id)
+    db.close()
+
+    if not versions:
+        console.print(f"[dim]No versions for group '{name}' — run 'featcat group freeze {name}' first[/dim]")
+        return
+
+    table = Table(title=f"Versions of {name}")
+    table.add_column("Version", justify="right", style="cyan")
+    table.add_column("Frozen at")
+    table.add_column("By")
+    table.add_column("Members", justify="right")
+    table.add_column("Note")
+    for v in versions:
+        member_count = len(json.loads(v.snapshot_json).get("features", []))
+        table.add_row(
+            f"v{v.version_number}",
+            v.frozen_at.isoformat(timespec="seconds"),
+            v.frozen_by or "-",
+            str(member_count),
+            v.note or "-",
+        )
+    console.print(table)
+
+
+@group_app.command("export")
+def group_export(
+    name: str = typer.Argument(help="Group name"),
+    version: int = typer.Option(..., "--version", "-v", help="Version number to export"),
+    format: str = typer.Option(  # noqa: A002 — keeps --format flag as the obvious name
+        "json", "--format", "-f", help="Output format: json | csv | parquet"
+    ),
+    output: str = typer.Option("", "--output", "-o", help="Output file path; defaults to <name>-v<n>.<format>"),
+) -> None:
+    """Export a frozen group version as a feature manifest.
+
+    The manifest captures name, dtype, definition, and source path/format
+    for every feature in the version — not the underlying data values.
+    Reproducibility contract: re-running the pipeline against the same
+    sources should yield matching columns.
+    """
+    if format not in ("json", "csv", "parquet"):
+        console.print(f"[red]Invalid format:[/red] {format}")
+        raise typer.Exit(1)
+
+    db = _get_db()
+    group = db.get_group_by_name(name)
+    if group is None:
+        db.close()
+        console.print(f"[red]Group not found:[/red] {name}")
+        raise typer.Exit(1)
+    snapshot_version = db.get_group_version(group.id, version)
+    if snapshot_version is None:
+        db.close()
+        console.print(f"[red]Version not found:[/red] {name} v{version}")
+        raise typer.Exit(1)
+
+    snapshot = json.loads(snapshot_version.snapshot_json)
+    warnings: list[str] = []
+    for feature in snapshot.get("features", []):
+        current = db.get_feature_by_name(feature.get("name", ""))
+        if current is None:
+            feature["deleted_after_freeze"] = True
+            warnings.append(f"Feature '{feature.get('name')}' was deleted after this version was frozen.")
+        else:
+            feature["deleted_after_freeze"] = False
+    snapshot["warnings"] = warnings
+    db.close()
+
+    out_path = output or f"{name}-v{version}.{format}"
+
+    if format == "json":
+        with open(out_path, "w", encoding="utf-8") as fh:
+            json.dump(snapshot, fh, indent=2, ensure_ascii=False)
+    else:
+        columns = [
+            "name",
+            "dtype",
+            "definition",
+            "definition_type",
+            "column_name",
+            "source_name",
+            "source_path",
+            "source_format",
+            "owner",
+            "deleted_after_freeze",
+        ]
+        rows = [{c: f.get(c, "") for c in columns} for f in snapshot.get("features", [])]
+        if format == "csv":
+            import csv as _csv
+
+            with open(out_path, "w", encoding="utf-8", newline="") as fh:
+                writer = _csv.DictWriter(fh, fieldnames=columns)
+                writer.writeheader()
+                for row in rows:
+                    writer.writerow(row)
+        else:  # parquet
+            try:
+                import pyarrow as pa
+                import pyarrow.parquet as pq
+            except ImportError:
+                console.print("[red]pyarrow is not installed[/red]")
+                raise typer.Exit(1) from None
+            table = pa.Table.from_pylist([{c: str(r[c]) if r[c] is not None else "" for c in columns} for r in rows])
+            pq.write_table(table, out_path)
+
+    console.print(f"[green]Exported[/green] {name} v{version} → {out_path}")
+    for w in warnings:
+        typer.echo(f"warning: {w}", err=True)
+
+
 # =========================================================================
 # Feature Definitions
 # =========================================================================
@@ -1942,6 +2434,43 @@ def feature_show_hint(
         console.print(Panel(hint, title=f"{spec} hint", border_style="cyan"))
 
 
+@feature_app.command("similar")
+def feature_similar(
+    name: str = typer.Argument(help="Feature name (e.g. source.column)"),
+    threshold: float = typer.Option(0.3, "--threshold", "-t", help="Similarity threshold (0.1-0.9)"),
+) -> None:
+    """Find features similar to the given one via the server's similarity graph."""
+    import httpx
+
+    server_url = os.environ.get("FEATCAT_SERVER_URL", "http://localhost:8000")
+    try:
+        resp = httpx.get(f"{server_url}/api/features/similarity-graph", params={"threshold": threshold}, timeout=60)
+        resp.raise_for_status()
+    except httpx.HTTPError as e:  # noqa: BLE001
+        console.print(f"[red]Server error:[/red] {e}")
+        raise typer.Exit(1) from None
+
+    data = resp.json()
+    edges = data.get("edges", [])
+    neighbors: list[tuple[str, float]] = []
+    for edge in edges:
+        if edge["source"] == name:
+            neighbors.append((edge["target"], edge["similarity"]))
+        elif edge["target"] == name:
+            neighbors.append((edge["source"], edge["similarity"]))
+    if not neighbors:
+        console.print(f"[dim]No similar features found for {name} at threshold {threshold}[/dim]")
+        return
+
+    neighbors.sort(key=lambda x: -x[1])
+    table = Table(title=f"Similar to {name} (threshold {threshold})")
+    table.add_column("Feature", style="cyan")
+    table.add_column("Similarity", justify="right")
+    for spec, sim in neighbors:
+        table.add_row(spec, f"{sim:.3f}")
+    console.print(table)
+
+
 @feature_app.command("clear-hint")
 def feature_clear_hint(
     spec: str = typer.Argument(help="Feature name"),
@@ -1972,15 +2501,8 @@ def _get_health_inputs(db, feature):
     has_hints = bool(feature.generation_hints)
 
     drift_status = None
-    try:
-        row = db.conn.execute(
-            "SELECT severity FROM monitoring_checks WHERE feature_id = ? ORDER BY checked_at DESC LIMIT 1",
-            (feature.id,),
-        ).fetchone()
-        if row:
-            drift_status = row["severity"]
-    except Exception:  # noqa: BLE001
-        pass
+    with contextlib.suppress(Exception):
+        drift_status = db.get_latest_severity(feature.id)
 
     views_30d = 0
     queries_30d = 0
@@ -2082,15 +2604,8 @@ def feature_health_report(
         has_hints = bool(f.generation_hints)
 
         drift_status = None
-        try:
-            row = db.conn.execute(
-                "SELECT severity FROM monitoring_checks WHERE feature_id = ? ORDER BY checked_at DESC LIMIT 1",
-                (f.id,),
-            ).fetchone()
-            if row:
-                drift_status = row["severity"]
-        except Exception:  # noqa: BLE001
-            pass
+        with contextlib.suppress(Exception):
+            drift_status = db.get_latest_severity(f.id)
 
         views_30d = 0
         queries_30d = 0
@@ -2236,6 +2751,925 @@ def usage_activity(
         )
 
     console.print(table)
+
+
+# =========================================================================
+# Action items (lifecycle loop)
+# =========================================================================
+
+
+@actions_app.command("list")
+def actions_list(
+    feature: str = typer.Option("", "--feature", "-f", help="Filter by feature name"),
+    status: str = typer.Option("pending", "--status", "-s", help="pending|applied|dismissed|snoozed|all"),
+    source: str = typer.Option("", "--source", help="Filter by source: drift_alert|chat|autodoc|manual"),
+    limit: int = typer.Option(50, "--limit", "-n", help="Max rows"),
+) -> None:
+    """List action items pending or completed."""
+    db = _get_db()
+    feature_id = None
+    if feature:
+        feat = db.get_feature_by_name(feature)
+        if feat is None:
+            db.close()
+            console.print(f"[red]Feature not found:[/red] {feature}")
+            raise typer.Exit(1)
+        feature_id = feat.id
+
+    items = db.list_action_items(
+        feature_id=feature_id,
+        status=None if status == "all" else status,
+        source=source or None,
+        limit=limit,
+    )
+    db.close()
+
+    if not items:
+        console.print("[dim]No action items[/dim]")
+        return
+
+    table = Table(title=f"Action Items ({status})")
+    table.add_column("ID", style="dim", overflow="fold")
+    table.add_column("Feature", style="cyan")
+    table.add_column("Source")
+    table.add_column("Title")
+    table.add_column("Status")
+    table.add_column("Created")
+    for it in items:
+        table.add_row(
+            str(it.get("id", ""))[:8],
+            it.get("feature_name", ""),
+            it.get("source", ""),
+            (it.get("title") or "")[:60],
+            it.get("status", ""),
+            (it.get("created_at") or "")[:19],
+        )
+    console.print(table)
+
+
+@actions_app.command("show")
+def actions_show(
+    item_id: str = typer.Argument(help="Action item id (full or 8-char prefix)"),
+) -> None:
+    """Show full detail of an action item."""
+    db = _get_db()
+    item = _resolve_action(db, item_id)
+    db.close()
+    if item is None:
+        console.print(f"[red]Action item not found:[/red] {item_id}")
+        raise typer.Exit(1)
+    console.print(f"\n[bold cyan]Action {item['id']}[/bold cyan]")
+    console.print(f"  Feature:        {item.get('feature_name', '')}")
+    console.print(f"  Source:         {item.get('source', '')}")
+    console.print(f"  Status:         {item.get('status', '')}")
+    console.print(f"  Title:          {item.get('title', '')}")
+    console.print(f"  Recommendation: {item.get('recommendation', '')}")
+    if item.get("change_summary"):
+        console.print(f"  Change summary: {item['change_summary']}")
+    if item.get("applied_by"):
+        console.print(f"  Applied by:     {item['applied_by']}  at  {item.get('applied_at', '')}")
+    ctx = item.get("context") or {}
+    if ctx:
+        console.print(f"  Context:        {json.dumps(ctx, indent=2)}")
+
+
+@actions_app.command("apply")
+def actions_apply(
+    item_id: str = typer.Argument(help="Action item id"),
+    summary: str = typer.Option("", "--summary", "-m", help="Change summary describing what was done"),
+    user: str = typer.Option("", "--user", "-u", help="Actor name (defaults to $USER)"),
+) -> None:
+    """Mark an action item as applied."""
+    _set_action_status(item_id, "applied", summary=summary, user=user)
+
+
+@actions_app.command("dismiss")
+def actions_dismiss(
+    item_id: str = typer.Argument(help="Action item id"),
+    reason: str = typer.Option("", "--reason", "-m", help="Why dismissed"),
+    user: str = typer.Option("", "--user", "-u", help="Actor name (defaults to $USER)"),
+) -> None:
+    """Dismiss an action item."""
+    _set_action_status(item_id, "dismissed", summary=reason, user=user)
+
+
+def _resolve_action(db, item_id: str) -> dict | None:
+    item = db.get_action_item(item_id)
+    if item is not None:
+        return item
+    # Allow 8-char prefix lookup (purely a convenience for CLI)
+    matches = [it for it in db.list_action_items(status=None, limit=500) if str(it.get("id", "")).startswith(item_id)]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _set_action_status(item_id: str, status: str, summary: str, user: str) -> None:
+    import os as _os
+
+    db = _get_db()
+    item = _resolve_action(db, item_id)
+    if item is None:
+        db.close()
+        console.print(f"[red]Action item not found:[/red] {item_id}")
+        raise typer.Exit(1)
+    actor = user or _os.environ.get("USER", "")
+    db.update_action_item_status(item["id"], status=status, applied_by=actor, change_summary=summary)
+    db.close()
+    console.print(f"[green]Action {item['id'][:8]} -> {status}[/green]")
+
+
+# =========================================================================
+# Embeddings (T1.2)
+# =========================================================================
+
+
+@app.command()
+def embed(
+    all_: bool = typer.Option(False, "--all", help="Re-embed every feature, including ones already embedded"),
+    feature: str | None = typer.Option(None, "--feature", help="Embed only this feature (by name)"),
+) -> None:
+    """Generate vector embeddings for features (T1.2).
+
+    Default: embed only features missing an embedding or whose ``updated_at``
+    is newer than ``embedding_updated_at``. ``--all`` forces a full re-embed;
+    ``--feature NAME`` targets a single one.
+
+    Requires ``sentence-transformers`` — install with::
+
+        uv pip install -e '.[embeddings]'
+    """
+    from .ai.embeddings import (
+        embeddings_available,
+        update_feature_embedding,
+        update_missing_embeddings,
+    )
+
+    if not embeddings_available():
+        console.print(
+            "[red]sentence-transformers is not installed.[/red] Run: [cyan]uv pip install -e '.[embeddings]'[/cyan]"
+        )
+        raise typer.Exit(1)
+
+    db = _get_db()
+
+    if feature:
+        f = db.get_feature_by_name(feature)
+        if f is None:
+            console.print(f"[red]Feature not found:[/red] {feature}")
+            raise typer.Exit(1)
+        console.print(f"Embedding [cyan]{feature}[/cyan]...")
+        update_feature_embedding(db, f)
+        console.print("[green]Done.[/green]")
+        return
+
+    if all_:
+        # Force re-embed: clear all embeddings so the "stale" check fires for every row.
+        from sqlalchemy import text as _text
+
+        with db.session() as s:
+            s.execute(_text("UPDATE features SET embedding = NULL"))
+            s.commit()
+        console.print("[dim]Cleared all embeddings; re-embedding...[/dim]")
+
+    import time
+
+    start = time.monotonic()
+    result = update_missing_embeddings(db, batch_size=32)
+    elapsed = time.monotonic() - start
+    console.print(
+        f"[green]Embedded[/green] {result['embedded']} feature(s) "
+        f"([dim]{result['failed']} failed[/dim]) in {elapsed:.1f}s"
+    )
+
+
+# =========================================================================
+# Feature lifecycle status (T3.1)
+# =========================================================================
+
+
+_status_app = typer.Typer(help="Feature lifecycle status: draft → reviewed → certified → deprecated.")
+app.add_typer(_status_app, name="status")
+
+
+@_status_app.command("show")
+def status_show(name: str = typer.Argument(..., help="Feature name")) -> None:
+    """Show a feature's current status + last-change timestamp + notes."""
+    db = _get_db()
+    feat = db.get_feature_by_name(name)
+    if feat is None:
+        console.print(f"[red]Feature not found:[/red] {name}")
+        raise typer.Exit(1)
+    when = feat.status_changed_at.isoformat() if feat.status_changed_at else "-"
+    console.print(
+        f"[bold]{feat.name}[/bold]  status=[cyan]{feat.status}[/cyan]  changed={when}\n"
+        f"  notes: {feat.status_notes or '[dim]—[/dim]'}"
+    )
+
+
+@_status_app.command("set")
+def status_set(
+    name: str = typer.Argument(...),
+    status: str = typer.Argument(..., help="One of draft, reviewed, certified, deprecated"),
+    notes: str | None = typer.Option(None, "--notes", "-n"),
+) -> None:
+    """Set a feature's status. Certified target gates on the readiness checklist."""
+    db = _get_db()
+    feat = db.get_feature_by_name(name)
+    if feat is None:
+        console.print(f"[red]Feature not found:[/red] {name}")
+        raise typer.Exit(1)
+    try:
+        result = db.set_feature_status(feat.id, status, notes)
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1) from e
+    if not result["ok"]:
+        console.print(f"[yellow]Cannot mark [bold]{name}[/bold] as certified — missing:[/yellow]")
+        for m in result["missing"]:
+            console.print(f"  • {m}")
+        raise typer.Exit(2)
+    console.print(f"[green]{name} → {result['status']}[/green]")
+
+
+@_status_app.command("check")
+def status_check(name: str = typer.Argument(...)) -> None:
+    """Check whether a feature meets the certification checklist."""
+    db = _get_db()
+    feat = db.get_feature_by_name(name)
+    if feat is None:
+        console.print(f"[red]Feature not found:[/red] {name}")
+        raise typer.Exit(1)
+    readiness = db.check_certification_readiness(feat.id)
+    if readiness["ready"]:
+        console.print(f"[green]{name} is ready for certification.[/green]")
+    else:
+        console.print(f"[yellow]{name} is not ready. Missing:[/yellow]")
+        for m in readiness["missing"]:
+            console.print(f"  • {m}")
+
+
+@_status_app.command("list")
+def status_list(
+    status: str = typer.Option(..., "--status", "-s", help="Filter by status"),
+) -> None:
+    """List features in a given status."""
+    db = _get_db()
+    try:
+        feats = db.list_features_by_status(status)
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1) from e
+    if not feats:
+        console.print(f"[dim]No features in status={status}.[/dim]")
+        return
+    console.print(f"[bold]{len(feats)} feature(s) in status={status}[/bold]")
+    for f in feats:
+        when = f.status_changed_at.isoformat() if f.status_changed_at else "-"
+        console.print(f"  [cyan]{f.name}[/cyan]  changed={when}")
+
+
+# =========================================================================
+# Lineage / impact analysis (T1.1)
+# =========================================================================
+
+
+@app.command()
+def impact(
+    target: str = typer.Argument(..., help="Source name or 'source.column' to analyze"),
+    depth: int = typer.Option(5, "--depth", "-d", help="Max BFS depth through feature→feature edges"),
+) -> None:
+    """Show features impacted by changes to a source or source.column.
+
+    Output is grouped by depth: direct children first, then transitive
+    downstreams. ``via`` shows the immediate parent in the propagation chain
+    so you can trace how the impact reaches each feature.
+
+    Examples:
+
+        featcat impact user_behavior
+        featcat impact user_behavior.session_count
+        featcat impact user_behavior.session_count --depth 3
+    """
+    db = _get_db()
+    if "." in target:
+        source_name, column = target.split(".", 1)
+    else:
+        source_name, column = target, None
+
+    rows = db.get_impact(source_name=source_name, column=column, max_depth=depth)
+    if not rows:
+        console.print(f"[yellow]No features depend on {target}.[/yellow]")
+        return
+
+    console.print(f"[bold]Impact of {target}[/bold] — [cyan]{len(rows)}[/cyan] downstream feature(s)")
+    current_depth = -1
+    for r in rows:
+        if r["depth"] != current_depth:
+            current_depth = r["depth"]
+            label = "direct" if current_depth == 1 else f"depth {current_depth}"
+            console.print(f"\n[dim]{label}[/dim]")
+        console.print(f"  [cyan]{r['name']}[/cyan]  [dim]({r['dtype']})[/dim]  via [magenta]{r['via']}[/magenta]")
+
+
+# =========================================================================
+# Lineage subcommands (T1.1b — sqlglot auto-detect)
+# =========================================================================
+
+
+@lineage_app.command("detect")
+def lineage_detect(
+    from_: list[str] = typer.Option(  # noqa: B008
+        ...,
+        "--from",
+        "-f",
+        help="SQL file(s) or glob(s) to scan. Repeat the flag or pass shell-expanded paths.",
+    ),
+    dialect: str = typer.Option(
+        "postgres",
+        "--dialect",
+        "-d",
+        help="sqlglot dialect (postgres|snowflake|bigquery|mysql|sqlite|...). Default: postgres.",
+    ),
+    apply: bool = typer.Option(
+        False,
+        "--apply",
+        help="Write proposed edges to the catalog. Without this flag, just print a summary.",
+    ),
+    confirm: bool = typer.Option(
+        False,
+        "--confirm",
+        help="With --apply, skip the interactive confirmation prompt (for scripts / CI).",
+    ),
+) -> None:
+    """Auto-detect feature lineage from SQL transformation files.
+
+    Parses each file with sqlglot, extracts ``output_table.column ←
+    input_table.column`` edges, and either prints a summary or writes them
+    to the catalog. Unmatched parents (columns whose table isn't in the
+    catalog as either a feature or a data source) are skipped with a
+    warning instead of erroring.
+
+    Requires the optional ``[lineage-sql]`` extra:
+
+        uv pip install 'featcat[lineage-sql]'
+
+    Examples:
+
+        featcat lineage detect --from sql/transforms/*.sql
+        featcat lineage detect --from sql/sessions.sql --dialect snowflake
+        featcat lineage detect --from sql/*.sql --apply --confirm
+    """
+    try:
+        from .lineage import detect_lineage_from_file
+    except ImportError:
+        console.print(
+            r"[red]sqlglot is required.[/red] Install with: [cyan]uv pip install 'featcat\[lineage-sql]'[/cyan]"
+        )
+        raise typer.Exit(1) from None
+
+    paths = _expand_sql_globs(from_)
+    if not paths:
+        console.print("[yellow]No SQL files matched the --from patterns.[/yellow]")
+        raise typer.Exit(1)
+
+    all_edges = []
+    for p in paths:
+        try:
+            edges = detect_lineage_from_file(p, dialect=dialect)
+        except ImportError:
+            console.print(
+                r"[red]sqlglot is required.[/red] Install with: [cyan]uv pip install 'featcat\[lineage-sql]'[/cyan]"
+            )
+            raise typer.Exit(1) from None
+        except OSError as e:
+            console.print(f"[yellow]Skipping {p}: {e}[/yellow]")
+            continue
+        all_edges.extend(edges)
+
+    if not all_edges:
+        console.print("[yellow]No lineage edges detected.[/yellow]")
+        return
+
+    # Print summary table.
+    table = Table(title=f"Proposed lineage edges ({len(all_edges)})")
+    table.add_column("Child", style="cyan")
+    table.add_column("Parent", style="magenta")
+    table.add_column("Transform", style="dim", overflow="fold")
+    table.add_column("Source")
+    for edge in all_edges:
+        loc = ""
+        if edge.source_file:
+            loc = f"{Path(edge.source_file).name}"
+            if edge.source_line is not None:
+                loc += f":{edge.source_line}"
+        table.add_row(edge.child, edge.parent, edge.transform, loc)
+    console.print(table)
+
+    if not apply:
+        console.print("\n[dim]Preview only. Run with [cyan]--apply --confirm[/cyan] to write edges.[/dim]")
+        return
+
+    if not confirm and not typer.confirm(
+        f"Write {len(all_edges)} lineage edges to the catalog?",
+        default=False,
+    ):
+        console.print("[yellow]Aborted.[/yellow]")
+        raise typer.Exit(0)
+
+    db = _get_db()
+    written, skipped = _apply_proposed_edges(db, all_edges)
+    console.print(f"[green]Wrote {written} edge(s).[/green] [dim]Skipped {skipped} (unknown child or parent).[/dim]")
+
+
+def _expand_sql_globs(patterns: list[str]) -> list[Path]:
+    """Expand a list of SQL paths/globs into a sorted, deduplicated list of
+    files. Plain non-glob paths pass through; missing paths are dropped
+    silently (typer prints the original ``--from`` value if everything
+    misses).
+    """
+    import glob as _glob
+
+    seen: set[Path] = set()
+    out: list[Path] = []
+    for pat in patterns:
+        # Shells (zsh/bash with glob) usually expand globs before they
+        # reach us, but pass-through globs still work for users who quote
+        # the pattern.
+        matches = _glob.glob(pat, recursive=True)
+        if matches:
+            for m in matches:
+                p = Path(m)
+                if p.is_file() and p not in seen:
+                    seen.add(p)
+                    out.append(p)
+        else:
+            p = Path(pat)
+            if p.is_file() and p not in seen:
+                seen.add(p)
+                out.append(p)
+    return sorted(out)
+
+
+def _apply_proposed_edges(db, edges) -> tuple[int, int]:
+    """Resolve each ProposedEdge against the catalog and write it.
+
+    Returns ``(written, skipped)``. We try, in order:
+
+    1. Look up the child by name. If it doesn't exist in the catalog, skip
+       (we can't dangle an edge off a missing feature).
+    2. Look up the parent by feature name → ``add_lineage``.
+    3. If parent isn't a feature, split on the first dot and look up the
+       source name → ``add_source_lineage``.
+    4. Otherwise skip with a warning.
+    """
+    written = 0
+    skipped = 0
+    for edge in edges:
+        child = db.get_feature_by_name(edge.child)
+        if child is None:
+            console.print(f"[yellow]  skip:[/yellow] child not in catalog: {edge.child}")
+            skipped += 1
+            continue
+
+        parent_feature = db.get_feature_by_name(edge.parent)
+        if parent_feature is not None:
+            # detected_method is a LocalBackend-only kwarg (T1.1a). Pass it
+            # via kwargs so RemoteBackend's narrower signature still works.
+            try:
+                db.add_lineage(child.id, parent_feature.id, edge.transform, detected_method="sql_parse")
+            except TypeError:
+                db.add_lineage(child.id, parent_feature.id, edge.transform)
+            written += 1
+            continue
+
+        # Fall back to source-column lookup.
+        if "." in edge.parent:
+            src_name, col_name = edge.parent.split(".", 1)
+            src = db.get_source_by_name(src_name)
+            if src is not None and hasattr(db, "add_source_lineage"):
+                db.add_source_lineage(
+                    child.id,
+                    src.id,
+                    col_name,
+                    transform=edge.transform,
+                    detected_method="sql_parse",
+                )
+                written += 1
+                continue
+
+        console.print(f"[yellow]  skip:[/yellow] parent not in catalog: {edge.parent}")
+        skipped += 1
+    return written, skipped
+
+
+# =========================================================================
+# Lineage demo fixture seeding (lineage seed / lineage clear --demo-only)
+# =========================================================================
+
+# Marker values used to identify lineage rows + features created by the demo
+# seeder. The `detected_method` column on feature_lineage already accepts
+# free-form strings ('manual', 'sql_parse', 'imported'); 'demo' fits the same
+# pattern without a schema change. For features we tag them so the existing
+# `tag` filter on list_features can find them later.
+DEMO_DETECTED_METHOD = "demo"
+DEMO_FEATURE_TAG = "demo"
+_DEMO_FEATURE_DESC = "Demo feature (auto-created from lineage fixture)"
+_DEMO_SOURCE_DESC = "Auto-created by `featcat lineage seed` for demo lineage"
+
+
+class _LineageFixtureEdge(BaseModel):
+    """One edge in a lineage fixture file."""
+
+    child: str
+    parent: str
+    transformation: str = ""
+
+
+class _LineageFixture(BaseModel):
+    """Top-level schema for `tests/fixtures/lineage-demo.json` and friends."""
+
+    description: str = ""
+    version: str = "1.0"
+    edges: list[_LineageFixtureEdge]
+
+
+def _infer_demo_dtype(feature_name: str) -> str:
+    """Guess a sensible dtype from the feature-name suffix.
+
+    Demo features have no real data, so the dtype is purely cosmetic — it
+    shows up in the lineage graph node label. Aiming for plausible types
+    that match what each feature would be in reality.
+    """
+    col = feature_name.rsplit(".", 1)[-1].lower()
+    if col.endswith("_flag") or col.endswith("_anomaly"):
+        return "bool"
+    if col.endswith("_count") or col.endswith("_id"):
+        return "int64"
+    return "float64"
+
+
+def _split_feature_name(name: str) -> tuple[str, str]:
+    """Split `source.column` into `(source_name, column_name)`.
+
+    Feature names without a dot are rejected — every feature in a fixture
+    must belong to a registered (or auto-creatable) source so the lineage
+    graph can colour nodes by source.
+    """
+    if "." not in name:
+        raise ValueError(
+            f"Fixture feature name must be 'source.column', got: {name!r}. "
+            "Lineage seeding needs a source prefix to bucket the feature."
+        )
+    src, col = name.split(".", 1)
+    if not src or not col:
+        raise ValueError(f"Empty source or column in feature name: {name!r}")
+    return src, col
+
+
+def _ensure_demo_source(db, name: str, *, dry_run: bool):
+    """Return the source for `name`, creating a placeholder if missing.
+
+    The placeholder path is `/demo/<name>.parquet` — it doesn't have to
+    exist on disk; lineage doesn't read source data, only joins by ID. We
+    skip path uniqueness collisions by checking name first.
+    """
+    existing = db.get_source_by_name(name)
+    if existing is not None:
+        return existing, False
+    if dry_run:
+        return None, True
+    source = db.add_source(
+        DataSource(
+            name=name,
+            path=f"/demo/{name}.parquet",
+            description=_DEMO_SOURCE_DESC,
+        )
+    )
+    return source, True
+
+
+def _ensure_demo_feature(db, full_name: str, *, dry_run: bool):
+    """Return the feature for `full_name`, creating a tagged stub if missing.
+
+    Returns ``(feature_or_none, was_created)``. In dry-run mode we return
+    ``(None, True)`` for features that would be created; callers should
+    only consume the feature object outside dry-run.
+    """
+    existing = db.get_feature_by_name(full_name)
+    if existing is not None:
+        return existing, False
+
+    src_name, col_name = _split_feature_name(full_name)
+    source, _ = _ensure_demo_source(db, src_name, dry_run=dry_run)
+    if dry_run:
+        return None, True
+    assert source is not None, "non-dry-run must always return a source"
+    feature = Feature(
+        name=full_name,
+        data_source_id=source.id,
+        column_name=col_name,
+        dtype=_infer_demo_dtype(full_name),
+        description=_DEMO_FEATURE_DESC,
+        tags=[DEMO_FEATURE_TAG],
+    )
+    db.upsert_feature(feature)
+    # upsert_feature returns the same model we passed in, but re-read so
+    # we're sure we have the persisted row (with the source_id resolved).
+    persisted = db.get_feature_by_name(full_name)
+    return persisted, True
+
+
+def _load_lineage_fixture(path: Path) -> _LineageFixture:
+    """Read a JSON file and validate it against ``_LineageFixture``.
+
+    Raises ``typer.Exit(1)`` with a clear console message on parse or
+    schema errors — callers shouldn't need to handle JSONDecodeError or
+    pydantic.ValidationError directly.
+    """
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except OSError as e:
+        console.print(f"[red]Could not read fixture {path}:[/red] {e}")
+        raise typer.Exit(1) from None
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as e:
+        console.print(f"[red]Invalid JSON in {path}:[/red] {e}")
+        raise typer.Exit(1) from None
+    try:
+        return _LineageFixture.model_validate(data)
+    except Exception as e:  # pydantic.ValidationError, but kept loose to avoid the import.
+        console.print(f"[red]Fixture schema validation failed:[/red] {e}")
+        raise typer.Exit(1) from None
+
+
+@lineage_app.command("seed")
+def lineage_seed(
+    fixture_file: Path = typer.Argument(  # noqa: B008
+        ...,
+        exists=True,
+        readable=True,
+        help="Path to a lineage fixture JSON file (see tests/fixtures/lineage-demo.json).",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Print what would be created without writing to the catalog.",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Re-create lineage edges that already exist (transforms get updated).",
+    ),
+) -> None:
+    """Import lineage edges from a JSON fixture, auto-creating any missing
+    features and sources as demo stubs.
+
+    Stub features get tag ``demo`` and edges get ``detected_method='demo'``
+    so ``featcat lineage clear --demo-only`` can roll the whole thing back.
+    Existing features and edges (created by real workflows) are never
+    touched.
+
+    Examples:
+
+        featcat lineage seed tests/fixtures/lineage-demo.json --dry-run
+        featcat lineage seed tests/fixtures/lineage-demo.json
+    """
+    fixture = _load_lineage_fixture(fixture_file)
+    if not fixture.edges:
+        console.print("[yellow]Fixture has no edges. Nothing to do.[/yellow]")
+        return
+
+    db = _get_db()
+
+    # Plan phase — compute, before touching the DB, what's new vs. existing.
+    # We resolve every feature name once (set), then walk edges to count
+    # new/duplicate. In dry-run we stop here and print; otherwise we proceed
+    # to the apply phase below.
+    unique_features: list[str] = []
+    seen: set[str] = set()
+    for edge in fixture.edges:
+        for name in (edge.child, edge.parent):
+            if name not in seen:
+                seen.add(name)
+                unique_features.append(name)
+
+    sources_to_create: list[str] = []
+    features_to_create: list[str] = []
+    for fname in unique_features:
+        src_name, _ = _split_feature_name(fname)
+        if db.get_source_by_name(src_name) is None and src_name not in sources_to_create:
+            sources_to_create.append(src_name)
+        if db.get_feature_by_name(fname) is None:
+            features_to_create.append(fname)
+
+    console.print(f"[bold]Loading fixture:[/bold] {fixture_file}")
+    console.print(
+        f"Found [cyan]{len(fixture.edges)}[/cyan] edge(s) across [cyan]{len(unique_features)}[/cyan] feature(s)."
+    )
+
+    if sources_to_create:
+        console.print(f"\n[bold]Sources to auto-create ({len(sources_to_create)}):[/bold]")
+        for s in sources_to_create:
+            console.print(f"  - [magenta]{s}[/magenta] (path: /demo/{s}.parquet)")
+
+    if features_to_create:
+        console.print(f"\n[bold]Features to auto-create ({len(features_to_create)}):[/bold]")
+        for fname in features_to_create:
+            console.print(f"  - [cyan]{fname}[/cyan] ({_infer_demo_dtype(fname)})")
+
+    if dry_run:
+        console.print(f"\n[bold]Edges to seed ({len(fixture.edges)}):[/bold]")
+        for edge in fixture.edges:
+            console.print(f"  - [cyan]{edge.child}[/cyan] <- [magenta]{edge.parent}[/magenta]")
+        console.print("\n[dim]Dry run — no changes written. Re-run without --dry-run to apply.[/dim]")
+        return
+
+    # Apply phase — ensure sources and features first so we can resolve IDs
+    # for each edge.
+    sources_created = 0
+    for src_name in sources_to_create:
+        _, was_new = _ensure_demo_source(db, src_name, dry_run=False)
+        if was_new:
+            sources_created += 1
+
+    features_created = 0
+    for fname in features_to_create:
+        _, was_new = _ensure_demo_feature(db, fname, dry_run=False)
+        if was_new:
+            features_created += 1
+
+    edges_created = 0
+    edges_skipped = 0
+    edges_replaced = 0
+    for edge in fixture.edges:
+        child = db.get_feature_by_name(edge.child)
+        parent = db.get_feature_by_name(edge.parent)
+        # Should never happen — we just ensured both above.
+        assert child is not None and parent is not None
+        if _lineage_edge_exists(db, child.id, parent.id):
+            if force:
+                db.remove_lineage(child.id, parent.id)
+                _insert_demo_lineage_edge(db, child.id, parent.id, edge.transformation)
+                edges_replaced += 1
+            else:
+                edges_skipped += 1
+            continue
+        _insert_demo_lineage_edge(db, child.id, parent.id, edge.transformation)
+        edges_created += 1
+
+    console.print(
+        f"\n[green]Created {sources_created} source(s), {features_created} feature(s), {edges_created} edge(s).[/green]"
+    )
+    if edges_replaced:
+        console.print(f"[yellow]Replaced {edges_replaced} existing edge(s) (--force).[/yellow]")
+    if edges_skipped:
+        console.print(f"[dim]Skipped {edges_skipped} duplicate edge(s). Use --force to re-create.[/dim]")
+    console.print("\n[dim]View the lineage graph at http://localhost:8000/lineage[/dim]")
+
+
+def _lineage_edge_exists(db, child_feature_id: str, parent_feature_id: str) -> bool:
+    """Return True iff a feature→feature lineage row exists for this pair.
+
+    The seeder uses this to count duplicates (without --force) and decide
+    whether to replace (with --force). Source-column edges live in the
+    same table but are keyed differently — the demo fixture doesn't emit
+    them, so we only check the feature→feature case.
+    """
+    with db.session() as s:
+        row = s.execute(
+            text(
+                "SELECT 1 FROM feature_lineage "
+                "WHERE parent_type = 'feature' "
+                "  AND child_feature_id = :cid AND parent_feature_id = :pid"
+            ),
+            {"cid": child_feature_id, "pid": parent_feature_id},
+        ).first()
+        return row is not None
+
+
+def _insert_demo_lineage_edge(db, child_feature_id: str, parent_feature_id: str, transform: str) -> None:
+    """Insert a demo feature→feature lineage row directly.
+
+    Why not just call ``db.add_lineage``? That method's ON CONFLICT clause
+    targets the widened 5-column unique constraint that landed in the T1.1
+    SQLAlchemy model (``uq_feature_lineage_pair``). Catalogs created before
+    T1.1 keep the old 2-column ``UNIQUE(child_feature_id, parent_feature_id)``
+    constraint — ``init_db`` adds the new columns via ALTER TABLE but doesn't
+    rebuild the constraint, so the ON CONFLICT clause fails to resolve.
+
+    The seeder already pre-checks duplicates via ``_lineage_edge_exists``
+    so we don't need conflict resolution here — a plain INSERT works on
+    both legacy and current schemas.
+    """
+    import uuid
+    from datetime import datetime, timezone
+
+    with db.session() as s:
+        s.execute(
+            text(
+                "INSERT INTO feature_lineage "
+                "(id, child_feature_id, parent_type, parent_feature_id, "
+                " parent_source_id, parent_column, transform, "
+                " detected_method, created_at) "
+                "VALUES (:id, :cid, 'feature', :pid, NULL, NULL, :transform, "
+                "        :method, :now)"
+            ),
+            {
+                "id": str(uuid.uuid4()),
+                "cid": child_feature_id,
+                "pid": parent_feature_id,
+                "transform": transform,
+                "method": DEMO_DETECTED_METHOD,
+                "now": datetime.now(timezone.utc),
+            },
+        )
+        s.commit()
+
+
+@lineage_app.command("clear")
+def lineage_clear(
+    demo_only: bool = typer.Option(
+        False,
+        "--demo-only",
+        help=(
+            "Remove only the rows created by `lineage seed` "
+            "(detected_method='demo' edges + 'demo'-tagged stub features)."
+        ),
+    ),
+    yes: bool = typer.Option(
+        False,
+        "--yes",
+        "-y",
+        help="Skip the confirmation prompt.",
+    ),
+) -> None:
+    """Remove demo lineage seeded by `featcat lineage seed`.
+
+    Currently only ``--demo-only`` is supported — clearing real lineage
+    needs a different UX and isn't part of this command. Pass ``--yes`` to
+    skip the prompt (useful from scripts).
+    """
+    if not demo_only:
+        console.print(
+            "[red]Refusing to clear without --demo-only.[/red] "
+            "Mass lineage deletion is not supported via this command yet."
+        )
+        raise typer.Exit(2)
+
+    db = _get_db()
+
+    # Count first so we can report exactly what we'll touch (and skip the
+    # confirmation entirely when there's nothing to do).
+    with db.session() as s:
+        edge_count = int(
+            s.execute(
+                text("SELECT COUNT(*) FROM feature_lineage WHERE detected_method = :m"),
+                {"m": DEMO_DETECTED_METHOD},
+            ).scalar()
+            or 0
+        )
+    demo_features = db.list_features(tag=DEMO_FEATURE_TAG)
+    if edge_count == 0 and not demo_features:
+        console.print("[yellow]No demo lineage or features found. Nothing to clear.[/yellow]")
+        return
+
+    console.print(
+        f"Will remove [cyan]{edge_count}[/cyan] demo edge(s) and [cyan]{len(demo_features)}[/cyan] demo feature(s)."
+    )
+    if not yes and not typer.confirm("Proceed?", default=False):
+        console.print("[yellow]Aborted.[/yellow]")
+        raise typer.Exit(0)
+
+    # Delete demo edges first so the feature delete doesn't have to cascade
+    # them (it would, via FK ON DELETE CASCADE, but explicit is clearer for
+    # the user-visible counters).
+    with db.session() as s:
+        s.execute(
+            text("DELETE FROM feature_lineage WHERE detected_method = :m"),
+            {"m": DEMO_DETECTED_METHOD},
+        )
+        s.commit()
+
+    removed_features = db.bulk_delete_features([f.id for f in demo_features]) if demo_features else 0
+
+    # Identify and drop demo sources that are now empty (no remaining
+    # features). Real sources that happened to share a name with the
+    # fixture are untouched because they were created with a different
+    # description; we filter on that.
+    demo_sources = [
+        s for s in db.list_sources() if s.description == _DEMO_SOURCE_DESC and not db.list_features(source_name=s.name)
+    ]
+    removed_sources = 0
+    for src in demo_sources:
+        try:
+            db.delete_source(src.name)
+            removed_sources += 1
+        except KeyError:
+            pass  # Race with another caller — fine.
+
+    console.print(
+        f"[green]Removed {edge_count} edge(s), {removed_features} feature(s), {removed_sources} source(s).[/green]"
+    )
 
 
 # =========================================================================

@@ -28,7 +28,9 @@
     "edit": "Edit",
     "create": "Create",
     "done": "Done",
-    "add": "Add"
+    "add": "Add",
+    "clear_all_filters": "Clear all filters",
+    "dismiss": "Dismiss"
   },
   "state": {
     "empty": "No data",
@@ -58,5 +60,9 @@
   },
   "time": {
     "never": "never"
+  },
+  "tooltip": {
+    "learn_more": "Learn more →",
+    "definition_of": "Definition of {{label}}"
   }
 }

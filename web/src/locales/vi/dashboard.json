@@ -20,6 +20,23 @@
     "title": "Sức khỏe Catalog",
     "of_100": "/100"
   },
+  "certification_card": {
+    "title": "Chứng nhận",
+    "certified_suffix": "đã chứng nhận",
+    "empty": "Chưa có feature nào",
+    "status": {
+      "draft": "Nháp",
+      "reviewed": "Đã xem xét",
+      "certified": "Đã chứng nhận",
+      "deprecated": "Đã ngừng dùng"
+    },
+    "status_tooltip": {
+      "draft": "Nháp: {{count}}",
+      "reviewed": "Đã xem xét: {{count}}",
+      "certified": "Đã chứng nhận: {{count}}",
+      "deprecated": "Đã ngừng dùng: {{count}}"
+    }
+  },
   "drift_panel": {
     "title": "Cảnh báo Drift gần đây",
     "empty_no_baseline": "Chưa tính baseline. Hãy chạy baseline trước.",
@@ -29,6 +46,19 @@
       "feature": "Feature",
       "psi": "PSI"
     }
+  },
+  "drift_trend": {
+    "title": "Xu hướng tỷ lệ Drift",
+    "subtitle": "% features trong catalog ở trạng thái critical / warning theo ngày",
+    "show_warning": "Hiện warning",
+    "range_days_one": "{{count}} ngày",
+    "range_days_other": "{{count}} ngày",
+    "alert_threshold": "Cảnh báo: {{pct}}%",
+    "critical": "Critical",
+    "warning": "Warning",
+    "tracked_features_one": "{{count}} feature được theo dõi",
+    "tracked_features_other": "{{count}} features được theo dõi",
+    "empty": "Chưa có lịch sử drift — chạy /monitor/check để bắt đầu theo dõi."
   },
   "top_features": {
     "title": "Features dùng nhiều",

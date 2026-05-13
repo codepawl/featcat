@@ -1,13 +1,44 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Trash2, UserPlus, X, Download } from 'lucide-react'
+import { Plus, Trash2, UserPlus, X, Download, Activity, HeartPulse, FileText, RefreshCw, Sparkles, History, Snowflake, AlertTriangle, Clock } from 'lucide-react'
+import { GroupDriftHeatmap } from '../components/charts/GroupDriftHeatmap'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import { api, invalidateCache } from '../api'
 import { Badge } from '../components/Badge'
+import { ConfirmDialog } from '../components/ConfirmDialog'
 import { DataTable } from '../components/DataTable'
 import { ExportModal } from '../components/ExportModal'
 import { FeatureSelector, toFeatureItems } from '../components/FeatureSelector'
 import { Modal } from '../components/Modal'
+import { PageHeader } from '../components/PageHeader'
+import { SegmentedBar } from '../components/SegmentedBar'
 import { Skeleton } from '../components/Skeleton'
+import { Tabs, type TabDefinition } from '../components/Tabs'
+
+type GroupTab = 'members' | 'health' | 'monitoring' | 'docs' | 'versions'
+
+const GRADE_COLORS: Record<string, string> = {
+  A: 'bg-green-500',
+  B: 'bg-emerald-400',
+  C: 'bg-amber-400',
+  D: 'bg-red-400',
+}
+
+const SEVERITY_COLORS: Record<string, string> = {
+  healthy: 'bg-green-500',
+  warning: 'bg-amber-500',
+  critical: 'bg-red-500',
+  unknown: 'bg-[var(--border-default)]',
+}
+
+// Hex equivalents for Recharts (which can't read Tailwind classes).
+// Matches the SEVERITY_COLORS palette in components/charts/PsiTimeline.tsx.
+const SEVERITY_HEX: Record<string, string> = {
+  healthy: '#1D9E75',
+  warning: '#F59E0B',
+  critical: '#EF4444',
+  unknown: '#94A3B8',
+}
 
 export function Groups() {
   const { t } = useTranslation('groups')
@@ -19,6 +50,8 @@ export function Groups() {
   const [createOpen, setCreateOpen] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
+  const [tab, setTab] = useState<GroupTab>('members')
 
   const load = () => {
     setLoading(true)
@@ -32,6 +65,7 @@ export function Groups() {
 
   const selectGroup = (g: any) => {
     setSelected(g)
+    setTab('members')
     setDetailLoading(true)
     invalidateCache('/groups')
     api.groups.get(g.name)
@@ -39,10 +73,11 @@ export function Groups() {
       .finally(() => setDetailLoading(false))
   }
 
-  const deleteGroup = async (name: string) => {
-    if (!window.confirm(t('confirm_delete', { name }))) return
-    await api.groups.delete(name)
+  const confirmDeleteGroup = async () => {
+    if (!deleteTarget) return
+    await api.groups.delete(deleteTarget)
     invalidateCache('/groups')
+    setDeleteTarget(null)
     setSelected(null)
     setDetail(null)
     load()
@@ -56,7 +91,7 @@ export function Groups() {
   }
 
   const memberColumns = [
-    { key: 'name', label: t('member_table.feature'), render: (r: any) => <span className="font-medium text-accent">{r.name}</span> },
+    { key: 'name', label: t('member_table.feature'), render: (r: any) => <span className="font-medium text-brand">{r.name}</span> },
     { key: 'dtype', label: t('member_table.dtype'), render: (r: any) => <span className="font-mono text-xs">{r.dtype}</span> },
     { key: 'has_doc', label: t('member_table.docs'), sortable: false, render: (r: any) => r.has_doc ? <Badge variant="success">{t('member_table.has_docs_yes')}</Badge> : <span className="text-[var(--text-tertiary)]">-</span> },
     { key: '_remove', label: '', sortable: false, render: (r: any) => (
@@ -68,12 +103,14 @@ export function Groups() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-semibold">{t('page.title')}</h1>
-        <button onClick={() => setCreateOpen(true)} className="flex items-center gap-1.5 px-4 py-2 bg-accent text-white rounded-lg text-[13px] font-medium hover:bg-accent-emphasis transition-colors">
-          <Plus size={16} /> {t('actions.new_group')}
-        </button>
-      </div>
+      <PageHeader
+        title={t('page.title')}
+        actions={
+          <button onClick={() => setCreateOpen(true)} className="flex items-center gap-1.5 px-4 py-2 bg-brand text-white rounded-lg text-[13px] font-medium hover:bg-brand-emphasis transition-colors">
+            <Plus size={16} /> {t('actions.new_group')}
+          </button>
+        }
+      />
 
       <div className="flex flex-col md:flex-row gap-4" style={{ minHeight: '500px' }}>
         {/* Left: group list */}
@@ -87,10 +124,11 @@ export function Groups() {
               groups.map((g) => (
                 <div
                   key={g.name}
+                  data-testid="group-row"
                   onClick={() => selectGroup(g)}
                   className={`p-3 rounded-lg border cursor-pointer transition-all ${
                     selected?.name === g.name
-                      ? 'border-accent bg-accent-muted'
+                      ? 'border-brand bg-brand-muted'
                       : 'border-[var(--border-subtle)] bg-[var(--bg-primary)] hover:border-[var(--border-default)]'
                   }`}
                 >
@@ -116,7 +154,7 @@ export function Groups() {
           ) : detailLoading ? (
             <Skeleton className="h-48 flex-1" />
           ) : detail ? (
-            <div className="bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-xl p-5 flex-1 flex flex-col">
+            <div data-testid="group-detail" className="bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-xl p-5 flex-1 flex flex-col">
               <div className="flex items-start justify-between mb-4">
                 <div>
                   <h2 className="text-lg font-semibold">{detail.name}</h2>
@@ -135,27 +173,55 @@ export function Groups() {
                       <Download size={14} /> {t('actions.export')}
                     </button>
                   )}
-                  <button onClick={() => deleteGroup(detail.name)} className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium border border-[var(--danger-subtle-bg)] text-[var(--danger)] rounded-lg hover:bg-[var(--danger-subtle-bg)]">
+                  <button onClick={() => setDeleteTarget(detail.name)} className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium border border-[var(--danger-subtle-bg)] text-[var(--danger)] rounded-lg hover:bg-[var(--danger-subtle-bg)]">
                     <Trash2 size={14} /> {t('actions.delete')}
                   </button>
                 </div>
               </div>
 
-              <h3 className="text-xs font-semibold uppercase text-[var(--text-tertiary)] tracking-wide mb-2">
-                {t('detail.members_heading', { count: detail.members?.length || 0 })}
-              </h3>
-              {detail.members?.length > 0 ? (
-                <DataTable columns={memberColumns} data={detail.members} pageSize={20} />
-              ) : (
-                <p className="text-sm text-[var(--text-tertiary)] py-4 text-center">{t('detail.members_empty')}</p>
+              <div className="mb-3">
+                <Tabs<GroupTab>
+                  value={tab}
+                  onChange={setTab}
+                  size="compact"
+                  tabs={([
+                    { id: 'members', label: `${t('tabs.members', { defaultValue: 'Members' })} (${detail.members?.length || 0})`, icon: UserPlus },
+                    { id: 'health', label: t('tabs.health', { defaultValue: 'health' }), icon: HeartPulse },
+                    { id: 'monitoring', label: t('tabs.monitoring', { defaultValue: 'monitoring' }), icon: Activity },
+                    { id: 'versions', label: t('tabs.versions', { defaultValue: 'versions' }), icon: History },
+                    { id: 'docs', label: t('tabs.docs', { defaultValue: 'docs' }), icon: FileText },
+                  ] satisfies TabDefinition<GroupTab>[])}
+                />
+              </div>
+
+              {tab === 'members' && (
+                detail.members?.length > 0 ? (
+                  <DataTable columns={memberColumns} data={detail.members} pageSize={20} />
+                ) : (
+                  <p className="text-sm text-[var(--text-tertiary)] py-4 text-center">{t('detail.members_empty')}</p>
+                )
               )}
+
+              {tab === 'health' && <GroupHealthTab groupName={detail.name} />}
+              {tab === 'monitoring' && <GroupMonitoringTab groupName={detail.name} />}
+              {tab === 'versions' && <GroupVersionsTab groupName={detail.name} memberCount={detail.members?.length || 0} />}
+              {tab === 'docs' && <GroupDocsTab groupName={detail.name} memberCount={detail.members?.length || 0} />}
             </div>
           ) : null}
         </div>
       </div>
 
       <CreateGroupModal open={createOpen} onClose={() => setCreateOpen(false)} onCreated={() => { setCreateOpen(false); load() }} />
-      {selected && <AddFeaturesModal open={addOpen} onClose={() => setAddOpen(false)} groupName={selected.name} onAdded={() => { setAddOpen(false); load(); selectGroup(selected) }} />}
+      {selected && (
+        <AddFeaturesModal
+          open={addOpen}
+          onClose={() => setAddOpen(false)}
+          groupName={selected.name}
+          description={detail?.description ?? selected.description ?? ''}
+          existingMemberIds={(detail?.members ?? []).map((m: { id: string }) => m.id).filter(Boolean)}
+          onAdded={() => { setAddOpen(false); load(); selectGroup(selected) }}
+        />
+      )}
       {detail && (
         <ExportModal
           open={exportOpen}
@@ -165,6 +231,13 @@ export function Groups() {
           groupName={detail.name}
         />
       )}
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        title={t('confirm_delete', { name: deleteTarget ?? '' })}
+        confirmLabel={t('actions.delete')}
+        onConfirm={confirmDeleteGroup}
+      />
     </div>
   )
 }
@@ -186,7 +259,7 @@ function CreateGroupModal({ open, onClose, onCreated }: { open: boolean; onClose
     <Modal open={open} onClose={onClose} title={t('create_modal.title')} actions={
       <>
         <button onClick={onClose} className="px-4 py-2 text-sm border border-[var(--border-default)] rounded-lg">{t('actions.cancel', { ns: 'common' })}</button>
-        <button onClick={submit} disabled={!form.name} className="px-4 py-2 text-sm bg-accent text-white rounded-lg disabled:opacity-50">{t('actions.create')}</button>
+        <button onClick={submit} disabled={!form.name} className="px-4 py-2 text-sm bg-brand text-white rounded-lg disabled:opacity-50">{t('actions.create')}</button>
       </>
     }>
       <div className="space-y-3">
@@ -202,7 +275,7 @@ function CreateGroupModal({ open, onClose, onCreated }: { open: boolean; onClose
               value={(form as any)[k]}
               onChange={(e) => set(k, e.target.value)}
               placeholder={placeholder}
-              className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px] focus:border-accent outline-none"
+              className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px] focus:border-brand outline-none"
             />
           </div>
         ))}
@@ -212,7 +285,21 @@ function CreateGroupModal({ open, onClose, onCreated }: { open: boolean; onClose
 }
 
 
-function AddFeaturesModal({ open, onClose, groupName, onAdded }: { open: boolean; onClose: () => void; groupName: string; onAdded: () => void }) {
+function AddFeaturesModal({
+  open,
+  onClose,
+  groupName,
+  description,
+  existingMemberIds,
+  onAdded,
+}: {
+  open: boolean
+  onClose: () => void
+  groupName: string
+  description: string
+  existingMemberIds: string[]
+  onAdded: () => void
+}) {
   const { t } = useTranslation('groups')
   const [features, setFeatures] = useState<ReturnType<typeof toFeatureItems>>([])
   const [selectedSpecs, setSelectedSpecs] = useState<Set<string>>(new Set())
@@ -241,7 +328,7 @@ function AddFeaturesModal({ open, onClose, groupName, onAdded }: { open: boolean
     <Modal open={open} onClose={onClose} title={t('add_modal.title', { group: groupName })} maxWidth="max-w-xl" actions={
       <>
         <button onClick={onClose} className="px-4 py-2 text-sm border border-[var(--border-default)] rounded-lg">{t('actions.cancel', { ns: 'common' })}</button>
-        <button onClick={submit} disabled={selectedSpecs.size === 0 || adding} className="px-4 py-2 text-sm bg-accent text-white rounded-lg disabled:opacity-50">
+        <button onClick={submit} disabled={selectedSpecs.size === 0 || adding} className="px-4 py-2 text-sm bg-brand text-white rounded-lg disabled:opacity-50">
           {t('actions.add')} {selectedSpecs.size > 0 ? `(${selectedSpecs.size})` : ''}
         </button>
       </>
@@ -251,8 +338,472 @@ function AddFeaturesModal({ open, onClose, groupName, onAdded }: { open: boolean
         selected={selectedSpecs}
         onChange={setSelectedSpecs}
         groupName={groupName}
+        useCase={description || groupName}
+        excludeIds={existingMemberIds}
         showAISuggest
       />
     </Modal>
+  )
+}
+
+
+function GroupHealthTab({ groupName }: { groupName: string }) {
+  const { t } = useTranslation('groups')
+  const [data, setData] = useState<Awaited<ReturnType<typeof api.groups.health>> | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  const load = () => {
+    setLoading(true)
+    invalidateCache(`/groups/${encodeURIComponent(groupName)}/health`)
+    api.groups.health(groupName).then(setData).finally(() => setLoading(false))
+  }
+  useEffect(() => { load() }, [groupName]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (loading) return <Skeleton className="h-32" />
+  if (!data || data.member_count === 0) {
+    return <p className="text-sm text-[var(--text-tertiary)] py-4 text-center">{t('health.empty', { defaultValue: 'No members to score yet' })}</p>
+  }
+
+  const total = Object.values(data.grade_distribution).reduce((a, b) => a + b, 0) || 1
+  const documentedCount = data.members.filter(m => m.has_doc).length
+  const docPct = data.member_count > 0 ? Math.round((documentedCount / data.member_count) * 100) : 0
+  const criticalMembers = data.members.filter(m => m.drift_status === 'critical')
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="border border-[var(--border-subtle)] rounded-xl p-3">
+          <div className="text-[11px] uppercase text-[var(--text-tertiary)] tracking-wide">{t('health.average', { defaultValue: 'Average score' })}</div>
+          <div className="text-2xl font-semibold mt-1">{data.average_score}<span className="text-sm text-[var(--text-tertiary)]">/100</span></div>
+        </div>
+        <div className="border border-[var(--border-subtle)] rounded-xl p-3">
+          <div className="text-[11px] uppercase text-[var(--text-tertiary)] tracking-wide">{t('health.doc_coverage', { defaultValue: 'Doc coverage' })}</div>
+          <div className="text-2xl font-semibold mt-1">{docPct}<span className="text-sm text-[var(--text-tertiary)]">%</span></div>
+          <div className="text-[11px] text-[var(--text-tertiary)] mt-0.5">
+            {t('health.doc_coverage_hint', { documented: documentedCount, total: data.member_count, defaultValue: '{{documented}} of {{total}} documented' })}
+          </div>
+        </div>
+        <div className="border border-[var(--border-subtle)] rounded-xl p-3">
+          <div className="text-[11px] uppercase text-[var(--text-tertiary)] tracking-wide mb-2">{t('health.distribution', { defaultValue: 'Grade distribution' })}</div>
+          <SegmentedBar
+            ariaLabel={t('health.distribution', { defaultValue: 'Grade distribution' })}
+            height={4}
+            rounded={false}
+            segments={(['A', 'B', 'C', 'D'] as const).map((g) => ({
+              value: data.grade_distribution[g] || 0,
+              color: GRADE_COLORS[g],
+              label: `${g}: ${data.grade_distribution[g] || 0}`,
+            }))}
+          />
+          <div className="flex gap-3 mt-2 text-[11px] text-[var(--text-secondary)] flex-wrap">
+            {(['A','B','C','D'] as const).map(g => (
+              <span key={g} className="flex items-center gap-1">
+                <span className={`size-2 rounded-sm ${GRADE_COLORS[g]}`} /> {g}: {data.grade_distribution[g] || 0}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {criticalMembers.length > 0 && (
+        <div className="border border-[var(--danger-subtle-bg)] bg-[var(--danger-subtle-bg)] rounded-xl p-3">
+          <div className="flex items-center gap-2 mb-2">
+            <AlertTriangle size={14} className="text-[var(--danger)]" />
+            <h4 className="text-xs font-semibold uppercase text-[var(--danger)] tracking-wide">
+              {t('health.currently_critical', { count: criticalMembers.length, defaultValue: 'Currently critical ({{count}})' })}
+            </h4>
+          </div>
+          <div className="divide-y divide-[var(--border-subtle)]">
+            {criticalMembers.map(m => (
+              <a
+                key={m.spec}
+                href={`/monitoring?feature=${encodeURIComponent(m.spec)}`}
+                className="flex items-center justify-between py-1.5 text-[13px] hover:underline"
+              >
+                <span className="font-mono text-[var(--danger)] truncate">{m.spec}</span>
+                <span className="flex items-center gap-2 shrink-0 text-[11px]">
+                  <Badge variant="critical">{m.grade}</Badge>
+                  <span className="font-mono">{m.score}/100</span>
+                </span>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <h4 className="text-xs font-semibold uppercase text-[var(--text-tertiary)] tracking-wide">{t('health.lowest', { defaultValue: 'Lowest scoring members' })}</h4>
+          <button onClick={load} className="flex items-center gap-1 text-[11px] text-[var(--text-tertiary)] hover:text-brand">
+            <RefreshCw size={11} /> {t('health.refresh', { defaultValue: 'Refresh' })}
+          </button>
+        </div>
+        <div className="border border-[var(--border-subtle)] rounded-xl divide-y divide-[var(--border-subtle)]">
+          {data.lowest_scored.length === 0 ? (
+            <p className="text-sm text-[var(--text-tertiary)] py-3 text-center">{t('health.all_healthy', { defaultValue: 'All members healthy' })}</p>
+          ) : data.lowest_scored.map(m => (
+            <div key={m.spec} className="flex items-center justify-between px-3 py-2 text-[13px]">
+              <span className="font-mono text-brand truncate">{m.spec}</span>
+              <span className="flex items-center gap-2 shrink-0">
+                <Badge variant={m.grade === 'A' ? 'success' : m.grade === 'B' ? 'info' : m.grade === 'C' ? 'warning' : 'critical'}>{m.grade}</Badge>
+                <span className="font-mono text-xs">{m.score}/100</span>
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
+function SeverityTooltip({ active, payload }: { active?: boolean; payload?: { payload: { severity: string; count: number } }[] }) {
+  const { t } = useTranslation('groups')
+  if (!active || !payload?.[0]) return null
+  const { severity, count } = payload[0].payload
+  return (
+    <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[12px] shadow-lg">
+      <p className="capitalize font-medium">{severity}</p>
+      <p className="text-[var(--text-tertiary)]">{count} {t('monitoring.severity_count', { defaultValue: 'Members' }).toLowerCase()}</p>
+    </div>
+  )
+}
+
+
+function GroupMonitoringTab({ groupName }: { groupName: string }) {
+  const { t } = useTranslation('groups')
+  const [data, setData] = useState<Awaited<ReturnType<typeof api.groups.monitoring>> | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  const load = () => {
+    setLoading(true)
+    invalidateCache(`/groups/${encodeURIComponent(groupName)}/monitoring`)
+    api.groups.monitoring(groupName).then(setData).finally(() => setLoading(false))
+  }
+  useEffect(() => { load() }, [groupName]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (loading) return <Skeleton className="h-32" />
+  if (!data || data.member_count === 0) {
+    return <p className="text-sm text-[var(--text-tertiary)] py-4 text-center">{t('monitoring.empty', { defaultValue: 'No members' })}</p>
+  }
+
+  const severityChartData = (['critical', 'warning', 'healthy', 'unknown'] as const)
+    .map(s => ({ severity: s, count: data.severity_counts[s] || 0 }))
+    .filter(d => d.count > 0)
+
+  return (
+    <div className="space-y-4">
+      {data.last_check_at && (
+        <div className="flex items-center gap-1.5 text-[12px] text-[var(--text-secondary)]">
+          <Clock size={12} className="text-[var(--text-tertiary)]" />
+          <span>{t('monitoring.last_check', { defaultValue: 'Last check' })}:</span>
+          <span className="font-mono">{new Date(data.last_check_at).toLocaleString()}</span>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="border border-[var(--border-subtle)] rounded-xl p-3">
+          <div className="text-[11px] uppercase text-[var(--text-tertiary)] tracking-wide mb-2">{t('monitoring.severity', { defaultValue: 'Severity distribution' })}</div>
+          {severityChartData.length === 0 ? (
+            <p className="text-[12px] text-[var(--text-tertiary)] py-4 text-center">
+              {t('monitoring.no_severity_data', { defaultValue: 'No severity data yet' })}
+            </p>
+          ) : (
+            <ResponsiveContainer width="100%" height={120}>
+              <BarChart data={severityChartData} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
+                <XAxis
+                  dataKey="severity"
+                  tick={{ fontSize: 10, fill: 'var(--text-tertiary)' }}
+                  axisLine={{ stroke: 'var(--border-default)' }}
+                  tickFormatter={(s: string) => s.charAt(0).toUpperCase() + s.slice(1)}
+                />
+                <YAxis
+                  allowDecimals={false}
+                  tick={{ fontSize: 10, fill: 'var(--text-tertiary)' }}
+                  axisLine={{ stroke: 'var(--border-default)' }}
+                  width={28}
+                />
+                <Tooltip cursor={{ fill: 'var(--bg-secondary)' }} content={<SeverityTooltip />} />
+                <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                  {severityChartData.map(entry => (
+                    <Cell key={entry.severity} fill={SEVERITY_HEX[entry.severity] || SEVERITY_HEX.unknown} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+        <div className="border border-[var(--border-subtle)] rounded-xl p-3 flex flex-col">
+          <div className="text-[11px] uppercase text-[var(--text-tertiary)] tracking-wide">{t('monitoring.psi_avg', { defaultValue: 'Avg PSI' })}</div>
+          <div className="text-2xl font-semibold mt-1 font-mono">
+            {data.psi_average === null ? '—' : data.psi_average.toFixed(4)}
+          </div>
+          <div className="text-[11px] text-[var(--text-tertiary)] mt-auto pt-2">
+            {t('monitoring.psi_thresholds', { defaultValue: '0.10 warning · 0.20 critical' })}
+          </div>
+        </div>
+      </div>
+
+      <GroupDriftHeatmap groupName={groupName} />
+
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <h4 className="text-xs font-semibold uppercase text-[var(--text-tertiary)] tracking-wide">{t('monitoring.with_drift', { defaultValue: 'Members with drift' })}</h4>
+          <button onClick={load} className="flex items-center gap-1 text-[11px] text-[var(--text-tertiary)] hover:text-brand">
+            <RefreshCw size={11} /> {t('health.refresh', { defaultValue: 'Refresh' })}
+          </button>
+        </div>
+        <div className="border border-[var(--border-subtle)] rounded-xl divide-y divide-[var(--border-subtle)]">
+          {data.members_with_drift.length === 0 ? (
+            <p className="text-sm text-[var(--text-tertiary)] py-3 text-center">{t('monitoring.no_drift', { defaultValue: 'No drifting members' })}</p>
+          ) : data.members_with_drift.map(m => (
+            <a key={m.spec} href={`/monitoring?feature=${encodeURIComponent(m.spec)}`} className="flex items-center justify-between px-3 py-2 text-[13px] hover:bg-[var(--bg-secondary)]">
+              <span className="font-mono text-brand truncate">{m.spec}</span>
+              <span className="flex items-center gap-2 shrink-0">
+                <Badge variant={m.severity === 'critical' ? 'critical' : 'warning'}>{m.severity}</Badge>
+                <span className="font-mono text-xs">{m.psi !== null ? m.psi.toFixed(4) : '-'}</span>
+              </span>
+            </a>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
+type VersionRow = Awaited<ReturnType<typeof api.groups.versions>>[number]
+
+function GroupVersionsTab({ groupName, memberCount }: { groupName: string; memberCount: number }) {
+  const { t } = useTranslation('groups')
+  const [versions, setVersions] = useState<VersionRow[] | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [freezeOpen, setFreezeOpen] = useState(false)
+  const [freezeNote, setFreezeNote] = useState('')
+  const [freezing, setFreezing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [openExportFor, setOpenExportFor] = useState<number | null>(null)
+
+  const load = () => {
+    setLoading(true)
+    invalidateCache(`/groups/${encodeURIComponent(groupName)}/versions`)
+    api.groups.versions(groupName).then(setVersions).catch(() => setVersions([])).finally(() => setLoading(false))
+  }
+  useEffect(() => { load() }, [groupName]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const submitFreeze = async () => {
+    setError(null)
+    setFreezing(true)
+    try {
+      await api.groups.freeze(groupName, { note: freezeNote })
+      setFreezeNote('')
+      setFreezeOpen(false)
+      load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Freeze failed')
+    } finally {
+      setFreezing(false)
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-[13px] text-[var(--text-secondary)] max-w-xl">
+          {t('versions.help', { defaultValue: 'A frozen version snapshots every member with its dtype, definition, and source path. Re-running the pipeline against the same sources reproduces the exact feature manifest.' })}
+        </p>
+        <button
+          onClick={() => setFreezeOpen(true)}
+          disabled={memberCount === 0}
+          className="flex items-center gap-1.5 px-4 py-2 bg-brand text-white rounded-lg text-[13px] font-medium hover:bg-brand-emphasis disabled:opacity-50"
+        >
+          <Snowflake size={14} /> {t('versions.freeze_button', { defaultValue: 'Freeze current state' })}
+        </button>
+      </div>
+
+      {memberCount === 0 ? (
+        <p className="text-sm text-[var(--text-tertiary)] py-4 text-center">
+          {t('versions.empty_group', { defaultValue: 'Add members before freezing a version' })}
+        </p>
+      ) : loading ? (
+        <Skeleton className="h-32" />
+      ) : !versions || versions.length === 0 ? (
+        <p className="text-sm text-[var(--text-tertiary)] py-4 text-center">
+          {t('versions.empty_state', { defaultValue: 'No versions yet — click “Freeze current state” to capture v1' })}
+        </p>
+      ) : (
+        <div className="border border-[var(--border-subtle)] rounded-xl divide-y divide-[var(--border-subtle)]">
+          {versions.map(v => (
+            <div key={v.version_number} className="px-3 py-2.5 flex items-center gap-3 text-[13px]">
+              <span className="font-mono font-semibold text-brand min-w-[40px]">v{v.version_number}</span>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 text-[var(--text-secondary)]">
+                  <span>{new Date(v.frozen_at).toLocaleString()}</span>
+                  {v.frozen_by && <span className="text-[var(--text-tertiary)]">· {v.frozen_by}</span>}
+                  <span className="text-[var(--text-tertiary)]">· {t('versions.member_count', { count: v.member_count, defaultValue: '{{count}} member(s)' })}</span>
+                </div>
+                {v.note && <p className="text-[12px] text-[var(--text-tertiary)] truncate mt-0.5">{v.note}</p>}
+              </div>
+              <div className="relative">
+                <button
+                  onClick={() => setOpenExportFor(openExportFor === v.version_number ? null : v.version_number)}
+                  className="flex items-center gap-1 px-2.5 py-1 text-[12px] border border-[var(--border-default)] rounded hover:bg-[var(--bg-secondary)]"
+                >
+                  <Download size={12} /> {t('versions.export', { defaultValue: 'Export' })}
+                </button>
+                {openExportFor === v.version_number && (
+                  <div className="absolute right-0 mt-1 z-10 bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg shadow-lg py-1 min-w-[140px]">
+                    {(['json', 'csv', 'parquet'] as const).map(fmt => (
+                      <a
+                        key={fmt}
+                        href={api.groups.exportUrl(groupName, v.version_number, fmt)}
+                        download
+                        onClick={() => setOpenExportFor(null)}
+                        className="block px-3 py-1.5 text-[12px] hover:bg-[var(--bg-secondary)]"
+                      >
+                        {t(`versions.export_${fmt}`, { defaultValue: fmt.toUpperCase() })}
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <Modal
+        open={freezeOpen}
+        onClose={() => { setFreezeOpen(false); setError(null) }}
+        title={t('versions.freeze_modal_title', { group: groupName, defaultValue: 'Freeze “{{group}}”' })}
+        actions={
+          <>
+            <button onClick={() => setFreezeOpen(false)} className="px-4 py-2 text-sm border border-[var(--border-default)] rounded-lg">
+              {t('actions.cancel', { ns: 'common' })}
+            </button>
+            <button onClick={submitFreeze} disabled={freezing} className="flex items-center gap-1.5 px-4 py-2 text-sm bg-brand text-white rounded-lg disabled:opacity-50">
+              <Snowflake size={14} /> {freezing ? t('versions.freezing', { defaultValue: 'Freezing…' }) : t('versions.freeze_confirm', { defaultValue: 'Freeze' })}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <p className="text-[13px] text-[var(--text-secondary)]">
+            {t('versions.freeze_modal_help', { count: memberCount, defaultValue: 'Snapshot {{count}} member(s) into a new version. Subsequent edits to the group do not affect this snapshot.' })}
+          </p>
+          <div>
+            <label className="block text-[12px] font-medium mb-1">{t('versions.note_label', { defaultValue: 'Note (optional)' })}</label>
+            <textarea
+              rows={2}
+              value={freezeNote}
+              onChange={e => setFreezeNote(e.target.value)}
+              placeholder={t('versions.note_placeholder', { defaultValue: 'e.g. baseline before holiday traffic' })}
+              className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px]"
+            />
+          </div>
+          {error && (
+            <p className="flex items-start gap-1.5 text-[12px] text-[var(--danger)]">
+              <AlertTriangle size={13} className="mt-0.5 shrink-0" /> {error}
+            </p>
+          )}
+        </div>
+      </Modal>
+    </div>
+  )
+}
+
+
+function GroupDocsTab({ groupName, memberCount }: { groupName: string; memberCount: number }) {
+  const { t } = useTranslation('groups')
+  const [regenerate, setRegenerate] = useState(false)
+  const [hint, setHint] = useState('')
+  const [job, setJob] = useState<{ job_id: string; total: number } | null>(null)
+  const [progress, setProgress] = useState<{ completed: number; failed: number; total: number; status: string } | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const start = async () => {
+    setError(null)
+    setProgress(null)
+    try {
+      const res = await api.groups.regenerateDocs(groupName, { regenerate_existing: regenerate, global_hint: hint || null })
+      setJob(res)
+      setProgress({ completed: 0, failed: 0, total: res.total, status: 'running' })
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to start job')
+    }
+  }
+
+  useEffect(() => {
+    if (!job) return
+    const id = setInterval(async () => {
+      try {
+        const st = await api.docs.batchStatus(job.job_id)
+        setProgress({ completed: st.completed, failed: st.failed, total: st.total, status: st.status })
+        if (st.status !== 'running') clearInterval(id)
+      } catch {
+        // ignore poll errors
+      }
+    }, 1500)
+    return () => clearInterval(id)
+  }, [job])
+
+  if (memberCount === 0) {
+    return <p className="text-sm text-[var(--text-tertiary)] py-4 text-center">{t('docs.empty', { defaultValue: 'Add members before regenerating docs' })}</p>
+  }
+
+  return (
+    <div className="space-y-4 max-w-xl">
+      <p className="text-[13px] text-[var(--text-secondary)]">
+        {t('docs.help', { defaultValue: 'Generate AI documentation for every member in this group. Existing docs are skipped unless regenerate is on.' })}
+      </p>
+
+      <label className="flex items-start gap-2 text-[13px] cursor-pointer">
+        <input type="checkbox" checked={regenerate} onChange={(e) => setRegenerate(e.target.checked)} className="mt-0.5" />
+        <span>
+          {t('docs.regenerate_label', { defaultValue: 'Regenerate existing docs' })}
+          <span className="block text-[11px] text-[var(--text-tertiary)]">{t('docs.regenerate_hint', { defaultValue: 'Overwrite docs for members that already have one.' })}</span>
+        </span>
+      </label>
+
+      <div>
+        <label className="block text-[12px] font-medium mb-1">{t('docs.hint_label', { defaultValue: 'Global hint (optional)' })}</label>
+        <textarea
+          rows={2}
+          value={hint}
+          onChange={(e) => setHint(e.target.value)}
+          placeholder={t('docs.hint_placeholder', { defaultValue: 'e.g. these features describe payment events' })}
+          className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px]"
+        />
+      </div>
+
+      <button
+        onClick={start}
+        disabled={!!progress && progress.status === 'running'}
+        className="flex items-center gap-1.5 px-4 py-2 bg-brand text-white rounded-lg text-[13px] font-medium hover:bg-brand-emphasis disabled:opacity-50"
+      >
+        <Sparkles size={14} />
+        {progress?.status === 'running' ? t('docs.running', { defaultValue: 'Running…' }) : t('docs.start', { defaultValue: 'Regenerate docs' })}
+      </button>
+
+      {error && <p className="text-[12px] text-[var(--danger)]">{error}</p>}
+
+      {progress && (
+        <div className="border border-[var(--border-subtle)] rounded-xl p-3">
+          <div className="flex items-center justify-between text-[12px] mb-2">
+            <span>{t('docs.status', { defaultValue: 'Status' })}: <span className="font-mono">{progress.status}</span></span>
+            <span className="font-mono">{progress.completed + progress.failed} / {progress.total}</span>
+          </div>
+          <div className="h-2 bg-[var(--bg-secondary)] rounded">
+            <div
+              className="h-full bg-brand rounded transition-all"
+              style={{ width: `${progress.total === 0 ? 0 : Math.round(((progress.completed + progress.failed) / progress.total) * 100)}%` }}
+            />
+          </div>
+          {progress.failed > 0 && (
+            <p className="text-[11px] text-amber-500 mt-2">{t('docs.failed_count', { count: progress.failed, defaultValue: '{{count}} failure(s)' })}</p>
+          )}
+        </div>
+      )}
+    </div>
   )
 }

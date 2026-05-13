@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import re
 import threading
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -14,7 +16,11 @@ from ..deps import get_db, get_llm, get_settings
 
 router = APIRouter()
 
-LLM_TIMEOUT = 180  # 3 minutes max for LLM calls
+LLM_TIMEOUT = 180  # 3 minutes max for /discover and /ask LLM calls
+# Chat is streamed and tool-calling, so it gets a tighter deadline by default —
+# B2 (audits/p0-3-verification-2026-05-13.md) ran 235s with no cutoff and blocked the worker.
+CHAT_TIMEOUT = int(os.getenv("FEATCAT_CHAT_TIMEOUT_SECONDS", "90"))
+_CHAT_TIMEOUT_MESSAGE_VI = "Phản hồi quá lâu, vui lòng thử query ngắn hơn."
 
 _THINKING_KEYWORDS = frozenset(
     ["discover", "analyze", "why", "explain", "compare", "recommend", "suggest", "strategy", "tại sao", "phân tích"]
@@ -24,6 +30,24 @@ _THINKING_KEYWORDS = frozenset(
 def _needs_thinking(query: str) -> bool:
     q = query.lower()
     return any(kw in q for kw in _THINKING_KEYWORDS)
+
+
+# Matches numbered list markers: "1)", "1.", " 2)", "\n3)" etc. We require
+# 3+ DISTINCT numbers to trigger so accidental "1)" in a single question
+# doesn't false-positive. The 80-char floor avoids tripping on short prompts.
+_NUMBERED_ITEM_RE = re.compile(r"(?:^|\s)(\d+)[\)\.](?=\s|$)", re.MULTILINE)
+
+_MULTIPART_DECLINE_VI = (
+    "Mình xử lý mỗi lần một câu hỏi thôi nhé. Bạn vui lòng hỏi từng yêu cầu riêng — bắt đầu với phần nào trước ạ?"
+)
+
+
+def _is_multipart(query: str) -> bool:
+    """True when the query has 3+ distinct numbered items (1) / 1.) — decline."""
+    if len(query) < 80:
+        return False
+    matches = _NUMBERED_ITEM_RE.findall(query)
+    return len(set(matches)) >= 3
 
 
 class DiscoverRequest(BaseModel):
@@ -256,24 +280,69 @@ async def agent_chat(body: ChatRequest, db=Depends(get_db), llm=Depends(get_llm)
     session = session_mgr.get_or_create(session_id)
 
     async def event_stream():
+        # Pre-flight: queries with 3+ numbered items are multi-part. The agent
+        # on a 2B model handles the first item and goes silent on the rest
+        # (see D4 in PR #59). Decline politely without burning an LLM call.
+        if _is_multipart(query):
+            chunk_size = 20
+            for i in range(0, len(_MULTIPART_DECLINE_VI), chunk_size):
+                yield {
+                    "event": "message",
+                    "data": json.dumps({"type": "token", "content": _MULTIPART_DECLINE_VI[i : i + chunk_size]}),
+                }
+            yield {"event": "message", "data": json.dumps({"type": "done"})}
+            session.add_message("user", query)
+            session.add_message("assistant", _MULTIPART_DECLINE_VI)
+            return
+
         llm_ok = False
         if llm is not None:
             with contextlib.suppress(Exception):
                 llm_ok = await run_in_threadpool(llm.health_check)
 
         full_response = ""
+        timed_out = False
         try:
             if llm_ok:
                 agent = CatalogAgent(llm, db)
-                gen = agent.chat(query, history=session.get_history())
+                gen = agent.chat(
+                    query,
+                    history=session.get_history(),
+                    context_summary=session.get_context_summary(),
+                )
             else:
                 agent = FallbackAgent(db)
                 gen = agent.chat(query)
 
-            async for event in gen:
+            # Deadline-aware loop: per-iteration wait_for with shrinking budget.
+            # Python 3.10 doesn't have asyncio.timeout() context manager, so we
+            # bound each anext() call instead of wrapping the whole generator.
+            loop = asyncio.get_event_loop()
+            deadline = loop.time() + CHAT_TIMEOUT
+            iterator = gen.__aiter__()
+            while True:
+                remaining = deadline - loop.time()
+                if remaining <= 0:
+                    timed_out = True
+                    break
+                try:
+                    event = await asyncio.wait_for(iterator.__anext__(), timeout=remaining)
+                except StopAsyncIteration:
+                    break
+                except asyncio.TimeoutError:
+                    timed_out = True
+                    break
                 if event.get("type") == "token":
                     full_response += event.get("content", "")
                 yield {"event": "message", "data": json.dumps(event)}
+
+            if timed_out:
+                yield {
+                    "event": "message",
+                    "data": json.dumps({"type": "error", "content": _CHAT_TIMEOUT_MESSAGE_VI}),
+                }
+                with contextlib.suppress(Exception):
+                    await iterator.aclose()  # type: ignore[attr-defined]
 
         except Exception as e:
             yield {"event": "message", "data": json.dumps({"type": "error", "content": str(e)})}
@@ -285,7 +354,9 @@ async def agent_chat(body: ChatRequest, db=Depends(get_db), llm=Depends(get_llm)
                 yield {"event": "message", "data": json.dumps(event)}
 
         session.add_message("user", query)
-        if full_response:
+        # Don't persist a half-streamed assistant turn on timeout — it would
+        # poison future context with a truncated answer.
+        if full_response and not timed_out:
             session.add_message("assistant", full_response)
 
     return EventSourceResponse(

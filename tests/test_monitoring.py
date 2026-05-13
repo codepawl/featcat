@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING
 
 import pytest
@@ -149,22 +148,11 @@ def db_with_baselines(tmp_path: Path) -> CatalogDB:
     db.upsert_feature(f2)
 
     # Compute baselines with original stats
-    from datetime import datetime, timezone
-
-    now = datetime.now(timezone.utc)
-
     baseline_stable = {"mean": 50.0, "std": 10.0, "min": 20, "max": 80, "null_ratio": 0.01}
     baseline_drifted = {"mean": 50.0, "std": 10.0, "min": 20, "max": 80, "null_ratio": 0.01}
 
-    db.conn.execute(
-        "INSERT INTO monitoring_baselines (feature_id, baseline_stats, computed_at) VALUES (?, ?, ?)",
-        (f1.id, json.dumps(baseline_stable), now),
-    )
-    db.conn.execute(
-        "INSERT INTO monitoring_baselines (feature_id, baseline_stats, computed_at) VALUES (?, ?, ?)",
-        (f2.id, json.dumps(baseline_drifted), now),
-    )
-    db.conn.commit()
+    db.save_baseline(f1.id, baseline_stable)
+    db.save_baseline(f2.id, baseline_drifted)
 
     return db
 

@@ -1,0 +1,97 @@
+site_name: featcat documentation
+site_description: AI-powered feature catalog for data science teams
+site_url: https://featcat.local/docs/
+repo_url: https://github.com/codepawl/featcat
+repo_name: codepawl/featcat
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    - scheme: slate
+      primary: deep orange
+      accent: amber
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+    - scheme: default
+      primary: deep orange
+      accent: amber
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.expand
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+    - toc.follow
+  font:
+    text: Inter
+    code: JetBrains Mono
+
+plugins:
+  - search
+  - mermaid2
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - footnotes
+  - tables
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:mermaid2.fence_mermaid_custom
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+# Site map. Pages marked "Coming soon" are stubs landed in T3.3a; T3.3b/c
+# fill them in. Listing them here keeps the nav stable across follow-up PRs.
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Installation: getting-started/installation.md
+    - First Feature: getting-started/first-feature.md
+    - Notebook Quickstart: getting-started/notebook-quickstart.md
+  - User Guide:
+    - Catalog Browser: user-guide/catalog.md
+    - Feature Groups: user-guide/groups.md
+    - Documentation: user-guide/docs.md
+    - Monitoring: user-guide/monitoring.md
+    - AI Features: user-guide/ai.md
+    - Bulk Operations: user-guide/bulk.md
+    - Lineage: user-guide/lineage.md
+    - Notifications: user-guide/notifications.md
+  - SDK:
+    - Quickstart: sdk/quickstart.md
+    - API Reference: sdk/reference.md
+    - Cookbook: sdk/cookbook.md
+  - Architecture:
+    - Overview: architecture/overview.md
+    - Data Layer: architecture/data.md
+    - AI Layer: architecture/ai.md
+    - Deployment: architecture/deployment.md
+  - Operations:
+    - Deployment Guide: ops/deployment.md
+    - Monitoring & Alerts: ops/monitoring.md
+    - Backup & Restore: ops/backup.md
+    - Troubleshooting: ops/troubleshooting.md
+  - Contributing:
+    - Setup: contributing/setup.md
+    - Code Style: contributing/style.md
+    - Testing: contributing/testing.md
+    - Benchmarks: contributing/benchmarks.md

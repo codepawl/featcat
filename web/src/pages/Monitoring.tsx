@@ -5,11 +5,15 @@ import type { TFunction } from 'i18next'
 import { motion, AnimatePresence } from 'motion/react'
 import { RefreshCw, FileDown } from 'lucide-react'
 import { api, invalidateCache } from '../api'
+import { Alert } from '../components/Alert'
 import { MetricCard } from '../components/MetricCard'
 import { Badge } from '../components/Badge'
 import { Modal } from '../components/Modal'
+import { PageHeader } from '../components/PageHeader'
 import { Skeleton } from '../components/Skeleton'
-import { PsiTimeline } from '../components/charts/PsiTimeline'
+import { ScoreTooltip } from '../components/ScoreTooltip'
+import { MultiMetricTimeline } from '../components/charts/MultiMetricTimeline'
+import type { MetricSeriesPoint } from '../api'
 import { DistributionShift } from '../components/charts/DistributionShift'
 
 export function Monitoring() {
@@ -17,27 +21,14 @@ export function Monitoring() {
   const navigate = useNavigate()
   const [data, setData] = useState<Record<string, unknown> | null>(null)
   const [loading, setLoading] = useState(true)
-  const [checking, setChecking] = useState(false)
   const [baselineModal, setBaselineModal] = useState(false)
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const load = () => {
+  const load = async () => {
     setLoading(true)
-    invalidateCache('/monitor')
-    api.monitor.check()
-      .then(setData)
-      .catch(() => setData(null))
-      .finally(() => setLoading(false))
-  }
-
-  useEffect(() => {
-    load()
-  }, [])
-
-  const runCheck = async () => {
-    setChecking(true)
     setError(null)
+    invalidateCache('/monitor')
     try {
       const d = await api.monitor.check()
       const details = (d as Record<string, unknown>)?.details as unknown[] | undefined
@@ -46,10 +37,16 @@ export function Monitoring() {
       }
       setData(d)
     } catch (e) {
+      setData(null)
       setError(e instanceof Error ? e.message : t('errors.check_failed'))
+    } finally {
+      setLoading(false)
     }
-    setChecking(false)
   }
+
+  useEffect(() => {
+    load()
+  }, [])
 
   const confirmBaseline = async () => {
     setError(null)
@@ -91,42 +88,28 @@ export function Monitoring() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-semibold">{t('page.title')}</h1>
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-[var(--text-tertiary)]">{data?.timestamp ? new Date(data.timestamp as string).toLocaleString() : ''}</span>
-          <button onClick={load} disabled={loading} className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium border border-[var(--border-default)] rounded-lg bg-[var(--bg-primary)] hover:bg-[var(--bg-secondary)] disabled:opacity-50">
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-            {t('actions.refresh', { ns: 'common' })}
-          </button>
-        </div>
-      </div>
+      <PageHeader title={t('page.title')} />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         {loading ? (
-          Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20" />)
+          Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-20" />)
         ) : (
           <>
             <MetricCard label={t('stats.healthy')} value={(data?.healthy as number) ?? 0} color="success" />
             <MetricCard label={t('stats.warnings')} value={(data?.warnings as number) ?? 0} color={(data?.warnings as number) > 0 ? 'warning' : 'default'} />
             <MetricCard label={t('stats.critical')} value={(data?.critical as number) ?? 0} color={(data?.critical as number) > 0 ? 'danger' : 'default'} />
-            <div className="bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-lg p-4 flex flex-col items-center justify-center gap-1.5">
-              <button onClick={runCheck} disabled={checking} className="px-4 py-2 bg-accent text-white rounded-lg text-[13px] font-medium disabled:opacity-50">
-                {checking ? t('actions.checking') : t('actions.run_check_now')}
-              </button>
-              {sorted.length === 0 && !loading && (
-                <p className="text-[10px] text-[var(--text-tertiary)] text-center">{t('hints.run_baseline_first')}</p>
-              )}
-            </div>
           </>
         )}
       </div>
 
       {error && (
-        <div className="bg-[var(--danger-subtle-bg)] border border-[var(--danger-subtle-bg)] rounded-lg p-3 text-[var(--danger)] text-sm mb-4 flex items-center justify-between">
-          <span>{error}</span>
-          <button onClick={() => setError(null)} className="text-[var(--danger)] hover:opacity-80 ml-2 shrink-0">&times;</button>
-        </div>
+        <Alert
+          severity="danger"
+          message={error}
+          dismissible
+          onDismiss={() => setError(null)}
+          className="mb-4"
+        />
       )}
 
       <div className="flex gap-3 mb-6">
@@ -157,9 +140,19 @@ export function Monitoring() {
               <table className="w-full text-[13px]">
                 <thead><tr className="text-xs text-[var(--text-tertiary)] border-b border-[var(--border-default)]">
                   <th className="text-left py-2 font-medium">{t('drift_table.columns.feature')}</th>
-                  <th className="text-left py-2 font-medium">{t('drift_table.columns.severity')}</th>
+                  <th className="text-left py-2 font-medium">
+                    <span className="inline-flex items-center gap-1">
+                      {t('drift_table.columns.severity')}
+                      <ScoreTooltip name="drift_severity" iconOnly />
+                    </span>
+                  </th>
                   <th className="text-left py-2 font-medium">{t('drift_table.columns.issue')}</th>
-                  <th className="text-right py-2 font-medium">{t('drift_table.columns.psi')}</th>
+                  <th className="text-right py-2 font-medium">
+                    <span className="inline-flex items-center gap-1">
+                      {t('drift_table.columns.psi')}
+                      <ScoreTooltip name="psi" iconOnly />
+                    </span>
+                  </th>
                 </tr></thead>
                 <tbody>
                   {sorted.map((d, i: number) => (
@@ -197,7 +190,7 @@ export function Monitoring() {
       <Modal open={baselineModal} onClose={() => setBaselineModal(false)} title={t('baseline_modal.title')} actions={
         <>
           <button onClick={() => setBaselineModal(false)} className="px-4 py-2 text-sm border border-[var(--border-default)] rounded-lg">{t('actions.cancel', { ns: 'common' })}</button>
-          <button onClick={confirmBaseline} className="px-4 py-2 text-sm bg-accent text-white rounded-lg">{t('actions.confirm', { ns: 'common' })}</button>
+          <button onClick={confirmBaseline} className="px-4 py-2 text-sm bg-brand text-white rounded-lg">{t('actions.confirm', { ns: 'common' })}</button>
         </>
       }>
         <p className="text-sm text-[var(--text-secondary)]">
@@ -234,18 +227,22 @@ interface MonitoringDetailItem {
 }
 
 function FeatureDetail({ item, onNavigate, onClose, t }: { item: MonitoringDetailItem; onNavigate: () => void; onClose: () => void; t: TFunction<'monitoring'> }) {
-  const [history, setHistory] = useState<{ checked_at: string; psi: number | null; severity: string }[]>([])
+  const [history, setHistory] = useState<MetricSeriesPoint[]>([])
+  const [historyDays, setHistoryDays] = useState(30)
   const [historyLoading, setHistoryLoading] = useState(true)
   const [baselineData, setBaselineData] = useState<Record<string, number> | null>(null)
   const [baselineLoading, setBaselineLoading] = useState(true)
 
   useEffect(() => {
     setHistoryLoading(true)
-    setBaselineLoading(true)
-    api.monitor.history(item.feature, 30)
+    api.monitor.metrics(item.feature, historyDays)
       .then(setHistory)
       .catch(() => setHistory([]))
       .finally(() => setHistoryLoading(false))
+  }, [item.feature, historyDays])
+
+  useEffect(() => {
+    setBaselineLoading(true)
     api.monitor.baselineStats(item.feature)
       .then(r => setBaselineData(r.baseline_stats))
       .catch(() => setBaselineData(null))
@@ -266,8 +263,15 @@ function FeatureDetail({ item, onNavigate, onClose, t }: { item: MonitoringDetai
         <span className="text-[var(--text-tertiary)]">{psiLabel(item.psi, t)}</span>
       </div>
 
-      {/* PSI Timeline Chart */}
-      <PsiTimeline data={history} loading={historyLoading} />
+      {/* Multi-metric history (PSI + null ratio + Z-score on left axis,
+          sample size on right axis). Legacy rows render PSI-only since
+          the auxiliary metrics weren't persisted before the schema migration. */}
+      <MultiMetricTimeline
+        data={history}
+        loading={historyLoading}
+        days={historyDays}
+        onRangeChange={setHistoryDays}
+      />
 
       {/* Distribution Shift Comparison */}
       <DistributionShift
@@ -297,7 +301,7 @@ function FeatureDetail({ item, onNavigate, onClose, t }: { item: MonitoringDetai
         </div>
       )}
 
-      <button onClick={onNavigate} className="text-accent hover:underline text-xs font-medium mt-1">{t('detail.view_feature')}</button>
+      <button onClick={onNavigate} className="text-brand hover:underline text-xs font-medium mt-1">{t('detail.view_feature')}</button>
     </div>
   )
 }

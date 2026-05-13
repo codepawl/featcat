@@ -31,19 +31,31 @@ async def lifespan(app: FastAPI):
     if STATIC_DIR.is_dir():
         logger.info("Static contents: %s", [p.name for p in STATIC_DIR.iterdir()])
 
-    # Try to create LLM (may fail if server not running)
+    # Try to create LLM (may fail if server not running).
+    # Wrapped in CachedLLM so plugin `generate_json` calls (Discovery,
+    # Auto-doc, NL Query, Monitoring LLM analysis) populate the shared
+    # `llm_cache` SQLite table — same wrapping the CLI does at
+    # `featcat/cli.py:_get_llm`. Streaming endpoints (AI Chat's
+    # `llm.chat(...)` and the SSE token stream) pass through unchanged,
+    # which is intentional: response freshness matters more than cache hits
+    # for interactive chat, and tool-call replies aren't deterministic on key.
     try:
         from ..llm import create_llm
+        from ..llm.cached import CachedLLM
+        from ..utils.cache import ResponseCache
 
-        llm = create_llm(
+        inner = create_llm(
             backend=settings.llm_backend,
             model=settings.llm_model,
             base_url=settings.llamacpp_url,
             timeout=settings.llm_timeout,
         )
-        app.state.llm = llm
+        cache = ResponseCache(settings.catalog_db_path)
+        app.state.llm = CachedLLM(inner, cache)
+        app.state.llm_cache = cache
     except Exception:
         app.state.llm = None
+        app.state.llm_cache = None
 
     # Start scheduler
     try:
@@ -97,15 +109,22 @@ def build_app() -> FastAPI:
             return await call_next(request)
 
     # Register API routes
+    from .routes.actions import router as actions_router
+    from .routes.admin import router as admin_router
     from .routes.ai import router as ai_router
+    from .routes.bulk import router as bulk_router
     from .routes.docs import router as docs_router
     from .routes.export import router as export_router
     from .routes.features import router as features_router
     from .routes.groups import router as groups_router
     from .routes.health import router as health_router
     from .routes.jobs import router as jobs_router
+    from .routes.lineage import router as lineage_router
     from .routes.monitor import router as monitor_router
+    from .routes.notifications import router as notifications_router
     from .routes.scan import router as scan_router
+    from .routes.scheduler import router as scheduler_router
+    from .routes.search import router as search_router
     from .routes.sources import router as sources_router
     from .routes.usage import router as usage_router
     from .routes.versions import router as versions_router
@@ -117,11 +136,18 @@ def build_app() -> FastAPI:
     app.include_router(monitor_router, prefix="/api/monitor", tags=["monitor"])
     app.include_router(ai_router, prefix="/api/ai", tags=["ai"])
     app.include_router(jobs_router, prefix="/api/jobs", tags=["jobs"])
+    app.include_router(scheduler_router, prefix="/api/scheduler", tags=["scheduler"])
     app.include_router(groups_router, prefix="/api/groups", tags=["groups"])
+    app.include_router(actions_router, prefix="/api/actions", tags=["actions"])
+    app.include_router(admin_router, prefix="/api/admin", tags=["admin"])
     app.include_router(usage_router, prefix="/api/usage", tags=["usage"])
     app.include_router(scan_router, prefix="/api/scan-bulk", tags=["scan"])
     app.include_router(export_router, prefix="/api/export", tags=["export"])
     app.include_router(versions_router, prefix="/api/versions", tags=["versions"])
+    app.include_router(lineage_router, prefix="/api/lineage", tags=["lineage"])
+    app.include_router(bulk_router, prefix="/api/features/bulk", tags=["bulk"])
+    app.include_router(search_router, prefix="/api/search", tags=["search"])
+    app.include_router(notifications_router, prefix="/api/notifications", tags=["notifications"])
 
     # Mount static assets (js, css) under /assets if present
     assets_dir = STATIC_DIR / "assets"

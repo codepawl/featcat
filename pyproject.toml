@@ -32,13 +32,48 @@ dependencies = [
     "numpy>=1.24",
     "scikit-learn>=1.3",
     "pyyaml>=6.0",
+    "sqlalchemy>=2.0",
+    "alembic>=1.13",
+    "psycopg2-binary>=2.9",
+    "cachetools>=5.3",
+    "pgvector>=0.3",
 ]
 
 [project.optional-dependencies]
 tui = ["textual>=0.50"]
-s3 = ["s3fs>=2024.0"]
+# S3 / MinIO support is built into the default install via PyArrow's bundled
+# S3FileSystem (no extra dependencies needed). This extra is kept as an empty
+# placeholder so existing ``uv pip install -e ".[s3,...]"`` commands don't
+# break; ``s3fs`` was previously declared here but never imported anywhere
+# in the codebase (vestigial). Set ``FEATCAT_S3_*`` env vars to use S3.
+s3 = []
 server = ["fastapi>=0.110", "uvicorn[standard]>=0.27", "sse-starlette>=1.6", "apscheduler>=3.10"]
-all = ["featcat[tui,s3,server]"]
+# T1.2 — sentence-transformers is heavy (pulls torch ~1GB). Keeping it in an
+# optional extra so default installs stay lean. Feature embedding + similarity
+# search degrade to the existing TF-IDF path when this isn't installed.
+embeddings = ["sentence-transformers>=2.2"]
+# T1.5 — Celery + Redis broker + Flower (web UI for queue inspection).
+# Operators install on the worker / beat / flower nodes; the API server
+# itself doesn't need them unless it enqueues tasks (T1.5c+).
+tasks = ["celery[redis]>=5.3", "redis>=5.0", "flower>=2.0"]
+# T3.3 — MkDocs site. Operators install when building docs locally or in CI;
+# the runtime container doesn't need them.
+docs = [
+    "mkdocs-material>=9.5",
+    "mkdocstrings[python]>=0.24",
+    "mkdocs-mermaid2-plugin>=1.1",
+]
+# T1.1b — sqlglot-based lineage auto-detect from SQL transformation files.
+# Optional because most users record lineage manually; only ops that run the
+# scanner / scheduled detect job need the parser. Keeping the default install
+# lean (sqlglot pulls a small but non-trivial parser tree).
+lineage-sql = ["sqlglot>=20.0"]
+# Live-Postgres pgvector benches (tests/perf/test_pgvector_bench.py). Kept
+# separate from [dev] so ``make check`` runs don't pull pytest-benchmark and
+# so opting into bench infra is an explicit choice. See
+# docs/contributing/benchmarks.md for the live-DB setup.
+bench = ["pytest-benchmark>=4"]
+all = ["featcat[tui,s3,server,embeddings,tasks,docs,lineage-sql,bench]"]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
@@ -46,6 +81,7 @@ dev = [
     "pytest-tmp-files>=0.0.2",
     "moto[s3]>=5.0",
     "boto3>=1.28",
+    "testcontainers[minio]>=4.0",
     "ruff>=0.4",
     "mypy>=1.8",
     "pre-commit>=3.0",
@@ -68,7 +104,7 @@ path = "featcat/__init__.py"
 [tool.ruff]
 target-version = "py310"
 line-length = 120
-extend-exclude = ["docs"]
+extend-exclude = ["docs", "featcat/db/migrations/versions"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "A", "SIM", "TCH"]
@@ -78,8 +114,16 @@ select = ["E", "F", "W", "I", "N", "UP", "B", "A", "SIM", "TCH"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--cov=featcat --cov-report=term-missing --cov-report=xml"
+# ``-m "not s3_real"`` excludes the opt-in real-endpoint suite from the
+# default run; opt in with ``pytest -m s3_real`` (CLI ``-m`` replaces the
+# expression from addopts, so this works).
+addopts = "--cov=featcat --cov-report=term-missing --cov-report=xml -m 'not s3_real'"
 timeout = 10
+markers = [
+    "perf: opt-in performance bench (tests/perf/); requires --bench flag and live Postgres",
+    "s3: requires a running Docker daemon; uses a MinIO testcontainer for end-to-end S3 reads",
+    "s3_real: opt-in; requires FEATCAT_S3_TEST_* env vars pointing at a real S3 / MinIO endpoint",
+]
 
 [tool.mypy]
 python_version = "3.10"
@@ -104,3 +148,10 @@ ignore_errors = true
 [[tool.mypy.overrides]]
 module = ["featcat.cli", "featcat.plugins.*"]
 disable_error_code = ["arg-type", "union-attr", "assignment", "return-value"]
+
+# pyarrow.compute attributes (count_distinct, min, max, mean, stddev, ...) are
+# registered dynamically and may not be visible to the bundled stubs depending
+# on the pyarrow version installed. Runtime is unaffected.
+[[tool.mypy.overrides]]
+module = "featcat.catalog.scanner"
+disable_error_code = ["attr-defined"]

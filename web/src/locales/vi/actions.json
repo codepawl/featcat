@@ -1,0 +1,49 @@
+{
+  "page": {
+    "title": "Mục hành động",
+    "subtitle": "Các đề xuất từ giám sát, AI và mục thủ công — đóng vòng lặp bằng cách áp dụng hoặc bỏ qua."
+  },
+  "filters": {
+    "status": {
+      "pending": "Đang chờ",
+      "applied": "Đã áp dụng",
+      "dismissed": "Đã bỏ qua",
+      "snoozed": "Tạm hoãn",
+      "all": "Tất cả"
+    },
+    "all_sources": "Tất cả nguồn",
+    "items_count_one": "{{count}} mục",
+    "items_count_other": "{{count}} mục"
+  },
+  "sources": {
+    "drift_alert": "Cảnh báo drift",
+    "chat": "Chat",
+    "autodoc": "Tự sinh tài liệu",
+    "manual": "Thủ công"
+  },
+  "actions_buttons": {
+    "refresh": "Làm mới",
+    "apply": "Áp dụng",
+    "dismiss": "Bỏ qua",
+    "cancel": "Hủy",
+    "confirm": "Xác nhận",
+    "saving": "Đang lưu…"
+  },
+  "empty": "Không có mục hành động nào khớp với các bộ lọc này.",
+  "history": {
+    "applied": "Đã áp dụng {{when}}{{by}}",
+    "by_suffix": " bởi {{user}}",
+    "other_status": "{{status}}{{summary}}",
+    "summary_suffix": ": {{summary}}"
+  },
+  "modal": {
+    "title_apply": "Áp dụng hành động",
+    "title_dismiss": "Bỏ qua hành động",
+    "feature_label": "Feature",
+    "title_label": "Tiêu đề",
+    "summary_label_apply": "Tóm tắt thay đổi (bạn đã làm gì?)",
+    "summary_label_dismiss": "Lý do",
+    "summary_placeholder_apply": "vd: đã cập nhật transformation trong dbt model X, đã re-baseline feature",
+    "summary_placeholder_dismiss": "vd: drift kỳ vọng do tính mùa vụ"
+  }
+}

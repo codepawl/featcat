@@ -6,8 +6,18 @@
     "all_sources": "All Sources",
     "all_types": "All Types",
     "all_grades": "All Grades",
+    "all_statuses": "All Statuses",
     "grade_only": "Grade {{grade}} Only",
     "needs_attention": "Needs Attention (C or D)"
+  },
+  "columns": {
+    "status": "Status"
+  },
+  "status": {
+    "draft": "Draft",
+    "reviewed": "Reviewed",
+    "certified": "Certified",
+    "deprecated": "Deprecated"
   },
   "tabs": {
     "overview": "Overview",
@@ -102,9 +112,6 @@
     },
     "edit_hint_title": "Edit hint"
   },
-  "add_source_modal": {
-    "title": "Add Source"
-  },
   "bulk_scan_modal": {
     "title": "Bulk Scan",
     "directory_path": "Directory Path",
@@ -130,9 +137,50 @@
     "generate_docs_running": "Generating... ({{done}}/{{total}})",
     "bulk_scan": "Bulk Scan",
     "export_selected": "Export Selected ({{count}})",
-    "add_source": "Add Source",
     "history_tab": "History ({{count}})",
     "compute_baseline": "Compute Baseline",
     "computing": "Computing..."
+  },
+  "bulk": {
+    "select_all_on_page": "Select all on this page",
+    "n_selected_one": "{{count}} feature selected",
+    "n_selected_other": "{{count}} features selected",
+    "add_tag": "Add tag…",
+    "add_to_group": "Add to group…",
+    "delete": "Delete…",
+    "clear_selection": "Clear selection",
+    "add_tag_modal": {
+      "title_one": "Add tag to {{count}} feature",
+      "title_other": "Add tag to {{count}} features",
+      "label": "Tag",
+      "placeholder": "e.g. team=ds",
+      "hint_one": "The tag will be added to {{count}} feature.",
+      "hint_other": "The tag will be added to {{count}} features."
+    },
+    "add_to_group_modal": {
+      "title_one": "Add {{count}} feature to group",
+      "title_other": "Add {{count}} features to group",
+      "label": "Group",
+      "placeholder": "Select a group…",
+      "empty": "No groups exist yet. Create one from the Groups page first.",
+      "hint_one": "The selected feature will be added to the chosen group.",
+      "hint_other": "The {{count}} selected features will be added to the chosen group."
+    },
+    "delete_modal": {
+      "title_one": "Delete {{count}} feature",
+      "title_other": "Delete {{count}} features",
+      "warning_one": "This will permanently delete {{count}} feature. This action cannot be undone.",
+      "warning_other": "This will permanently delete {{count}} features. This action cannot be undone.",
+      "cleanup_note": "Associated docs, monitoring baselines, and usage logs will also be removed.",
+      "and_more": "…and {{count}} more",
+      "acknowledge": "I understand this is permanent.",
+      "confirm_button_one": "Delete {{count}} feature",
+      "confirm_button_other": "Delete {{count}} features"
+    },
+    "banner": {
+      "tag_success": "Tag \"{{tag}}\" added — updated {{updated}} of {{requested}}.",
+      "group_success": "Added {{changed}} of {{requested}} features to group \"{{group}}\".",
+      "delete_success": "Deleted {{deleted}} of {{requested}} features."
+    }
   }
 }

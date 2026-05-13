@@ -3,7 +3,7 @@ import type { LucideIcon } from 'lucide-react'
 const SUCCESS = 'bg-[var(--success-subtle-bg)] text-[var(--success)] border border-[var(--success-subtle-bg)]'
 const WARNING = 'bg-[var(--warning-subtle-bg)] text-[var(--warning)] border border-[var(--warning-subtle-bg)]'
 const DANGER = 'bg-[var(--danger-subtle-bg)] text-[var(--danger)] border border-[var(--danger-subtle-bg)]'
-const INFO = 'bg-[var(--accent-subtle-bg)] text-[var(--accent)] border border-[var(--accent-subtle-bg)]'
+const INFO = 'bg-[var(--brand-subtle-bg)] text-[var(--brand)] border border-[var(--brand-subtle-bg)]'
 const DEFAULT = 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] border border-transparent'
 
 const styles: Record<string, string> = {

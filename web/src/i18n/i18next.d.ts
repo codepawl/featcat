@@ -4,7 +4,9 @@ import sidebar from '../locales/en/sidebar.json'
 import dashboard from '../locales/en/dashboard.json'
 import features from '../locales/en/features.json'
 import groups from '../locales/en/groups.json'
+import sources from '../locales/en/sources.json'
 import similarity from '../locales/en/similarity.json'
+import lineage from '../locales/en/lineage.json'
 import audit from '../locales/en/audit.json'
 import monitoring from '../locales/en/monitoring.json'
 import jobs from '../locales/en/jobs.json'
@@ -12,6 +14,10 @@ import chat from '../locales/en/chat.json'
 import settings from '../locales/en/settings.json'
 import modals from '../locales/en/modals.json'
 import errors from '../locales/en/errors.json'
+import actions from '../locales/en/actions.json'
+import help from '../locales/en/help.json'
+import glossary from '../locales/en/glossary.json'
+import search from '../locales/en/search.json'
 
 declare module 'i18next' {
   interface CustomTypeOptions {
@@ -22,7 +28,9 @@ declare module 'i18next' {
       dashboard: typeof dashboard
       features: typeof features
       groups: typeof groups
+      sources: typeof sources
       similarity: typeof similarity
+      lineage: typeof lineage
       audit: typeof audit
       monitoring: typeof monitoring
       jobs: typeof jobs
@@ -30,6 +38,10 @@ declare module 'i18next' {
       settings: typeof settings
       modals: typeof modals
       errors: typeof errors
+      actions: typeof actions
+      help: typeof help
+      glossary: typeof glossary
+      search: typeof search
     }
   }
 }

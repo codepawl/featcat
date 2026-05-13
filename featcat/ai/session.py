@@ -2,8 +2,17 @@
 
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import dataclass, field
+
+# Feature names follow `source.column` (e.g. device_performance.cpu_usage).
+# Word boundary keeps the dot-segment match from gluing to surrounding text.
+_FEATURE_NAME_RE = re.compile(r"\b\w+\.\w+\b")
+
+# Cap how many entities we keep in the context summary so the system message
+# stays well under llama.cpp's 4096 ctx budget. 8 names ≈ 50 tokens.
+_CONTEXT_ENTITY_CAP = 8
 
 
 @dataclass
@@ -31,6 +40,33 @@ class ChatSession:
         """Return last 6 user/assistant messages for context."""
         hist = [m for m in self.messages if m["role"] in ("user", "assistant")]
         return hist[-6:]
+
+    def get_context_summary(self, window: int = 6) -> str | None:
+        """Extract feature-name entities from messages older than the live window.
+
+        Returns a comma-separated list of distinct feature names mentioned in
+        the dropped portion of history, or ``None`` if nothing carryover-worthy
+        remains. Used to seed a system message so multi-turn dialogues don't
+        forget the feature(s) the user was investigating earlier (C5 in
+        audits/ai-chat-mvp-failure-analysis-2026-05-12.md).
+        """
+        pairs = [m for m in self.messages if m["role"] in ("user", "assistant")]
+        if len(pairs) <= window:
+            return None
+        dropped = pairs[:-window]
+        features: list[str] = []
+        seen: set[str] = set()
+        for msg in dropped:
+            content = msg.get("content", "")
+            if not isinstance(content, str):
+                continue
+            for match in _FEATURE_NAME_RE.findall(content):
+                if match not in seen:
+                    seen.add(match)
+                    features.append(match)
+        if not features:
+            return None
+        return ", ".join(features[:_CONTEXT_ENTITY_CAP])
 
 
 class SessionManager:

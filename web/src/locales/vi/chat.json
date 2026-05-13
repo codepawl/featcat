@@ -1,7 +1,7 @@
 {
   "empty": {
-    "greeting": "Chào bạn — hãy hỏi về features của bạn",
-    "subtitle": "featcat AI giúp bạn tìm, phân tích, và hiểu dữ liệu catalog"
+    "greeting": "Xin Chào",
+    "subtitle": "featcat AI giúp tìm, phân tích, và hiểu dữ liệu"
   },
   "suggestions": {
     "discover": {
@@ -29,7 +29,9 @@
     "placeholder": "Hỏi về features...",
     "send": "Gửi",
     "clear": "Xóa",
-    "clear_title": "Xóa cuộc trò chuyện"
+    "clear_title": "Xóa cuộc trò chuyện",
+    "clear_chat": "Xóa cuộc trò chuyện",
+    "hint_enter_send": "Enter để gửi, Shift+Enter để xuống dòng"
   },
   "status": {
     "generating": "Đang tạo phản hồi...",
@@ -50,10 +52,16 @@
     "try_follow_up": "Thử: {{text}}"
   },
   "errors": {
-    "prefix": "Lỗi: {{message}}"
+    "prefix": "Lỗi: {{message}}",
+    "label": "Lỗi",
+    "retry": "Thử lại"
   },
   "thinking_stream": {
     "using_tool": "Đang dùng công cụ: {{tool}}...",
     "looking_up": "Đang tra cứu: {{tool}}..."
+  },
+  "reasoning": {
+    "thinking": "Đang suy nghĩ...",
+    "thought": "Đã suy nghĩ"
   }
 }

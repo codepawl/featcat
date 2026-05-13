@@ -6,8 +6,18 @@
     "all_sources": "Tất cả nguồn",
     "all_types": "Tất cả loại",
     "all_grades": "Tất cả điểm",
+    "all_statuses": "Tất cả trạng thái",
     "grade_only": "Chỉ điểm {{grade}}",
     "needs_attention": "Cần lưu ý (C hoặc D)"
+  },
+  "columns": {
+    "status": "Trạng thái"
+  },
+  "status": {
+    "draft": "Nháp",
+    "reviewed": "Đã xem xét",
+    "certified": "Đã chứng nhận",
+    "deprecated": "Đã ngừng dùng"
   },
   "tabs": {
     "overview": "Tổng quan",
@@ -102,9 +112,6 @@
     },
     "edit_hint_title": "Sửa gợi ý"
   },
-  "add_source_modal": {
-    "title": "Thêm nguồn"
-  },
   "bulk_scan_modal": {
     "title": "Quét hàng loạt",
     "directory_path": "Đường dẫn thư mục",
@@ -130,9 +137,50 @@
     "generate_docs_running": "Đang tạo... ({{done}}/{{total}})",
     "bulk_scan": "Quét hàng loạt",
     "export_selected": "Xuất đã chọn ({{count}})",
-    "add_source": "Thêm nguồn",
     "history_tab": "Lịch sử ({{count}})",
     "compute_baseline": "Tính Baseline",
     "computing": "Đang tính..."
+  },
+  "bulk": {
+    "select_all_on_page": "Chọn tất cả trên trang này",
+    "n_selected_one": "Đã chọn {{count}} feature",
+    "n_selected_other": "Đã chọn {{count}} features",
+    "add_tag": "Thêm tag…",
+    "add_to_group": "Thêm vào nhóm…",
+    "delete": "Xóa…",
+    "clear_selection": "Bỏ chọn",
+    "add_tag_modal": {
+      "title_one": "Thêm tag cho {{count}} feature",
+      "title_other": "Thêm tag cho {{count}} features",
+      "label": "Tag",
+      "placeholder": "vd. team=ds",
+      "hint_one": "Tag sẽ được thêm vào {{count}} feature.",
+      "hint_other": "Tag sẽ được thêm vào {{count}} features."
+    },
+    "add_to_group_modal": {
+      "title_one": "Thêm {{count}} feature vào nhóm",
+      "title_other": "Thêm {{count}} features vào nhóm",
+      "label": "Nhóm",
+      "placeholder": "Chọn nhóm…",
+      "empty": "Chưa có nhóm nào. Hãy tạo nhóm từ trang Groups trước.",
+      "hint_one": "Feature đã chọn sẽ được thêm vào nhóm.",
+      "hint_other": "{{count}} features đã chọn sẽ được thêm vào nhóm."
+    },
+    "delete_modal": {
+      "title_one": "Xóa {{count}} feature",
+      "title_other": "Xóa {{count}} features",
+      "warning_one": "Sẽ xóa vĩnh viễn {{count}} feature. Hành động này không thể hoàn tác.",
+      "warning_other": "Sẽ xóa vĩnh viễn {{count}} features. Hành động này không thể hoàn tác.",
+      "cleanup_note": "Tài liệu, baseline giám sát và log sử dụng liên quan cũng sẽ bị xóa.",
+      "and_more": "…và {{count}} cái nữa",
+      "acknowledge": "Tôi hiểu rằng hành động này là vĩnh viễn.",
+      "confirm_button_one": "Xóa {{count}} feature",
+      "confirm_button_other": "Xóa {{count}} features"
+    },
+    "banner": {
+      "tag_success": "Đã thêm tag \"{{tag}}\" — cập nhật {{updated}} / {{requested}}.",
+      "group_success": "Đã thêm {{changed}} / {{requested}} features vào nhóm \"{{group}}\".",
+      "delete_success": "Đã xóa {{deleted}} / {{requested}} features."
+    }
   }
 }

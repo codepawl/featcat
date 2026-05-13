@@ -40,6 +40,7 @@ class LlamaCppLLM(BaseLLM):
         messages: list[dict],
         temperature: float = 0.3,
         tools: list[dict] | None = None,
+        max_tokens: int | None = None,
     ) -> dict:
         """Send chat completion with optional tool calling.
 
@@ -50,7 +51,7 @@ class LlamaCppLLM(BaseLLM):
             "messages": messages,
             "temperature": temperature,
             "stream": False,
-            "max_tokens": 2048,
+            "max_tokens": max_tokens if max_tokens is not None else 2048,
         }
         if tools:
             payload["tools"] = tools
@@ -85,6 +86,7 @@ class LlamaCppLLM(BaseLLM):
         self,
         messages: list[dict],
         temperature: float = 0.3,
+        max_tokens: int | None = None,
     ) -> Iterator[str]:
         """Stream chat completion tokens from message history."""
         payload: dict = {
@@ -92,7 +94,7 @@ class LlamaCppLLM(BaseLLM):
             "messages": messages,
             "temperature": temperature,
             "stream": True,
-            "max_tokens": 2048,
+            "max_tokens": max_tokens if max_tokens is not None else 2048,
         }
 
         body = json.dumps(payload).encode("utf-8")

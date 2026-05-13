@@ -1,13 +1,39 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Layers, FileText, AlertTriangle, HardDrive, RefreshCw, HeartPulse } from 'lucide-react'
+import { Layers, FileText, AlertTriangle, HardDrive, HeartPulse, ShieldCheck } from 'lucide-react'
 import { api, invalidateCache, timeAgo } from '../api'
 import { MetricCard } from '../components/MetricCard'
 import { Badge } from '../components/Badge'
 import { Skeleton } from '../components/Skeleton'
+import { PageHeader } from '../components/PageHeader'
+import { RefreshButton } from '../components/RefreshButton'
+import { EmptyState } from '../components/EmptyState'
+import { SegmentedBar } from '../components/SegmentedBar'
 import { DocDebtHeatmap } from '../components/charts/DocDebtHeatmap'
 import { DataSourceNodes } from '../components/charts/DataSourceNodes'
+import { DriftRateTrend } from '../components/charts/DriftRateTrend'
+
+type FeatureStatus = 'draft' | 'reviewed' | 'certified' | 'deprecated'
+type StatusCounts = Record<FeatureStatus, number>
+
+const STATUS_ORDER: readonly FeatureStatus[] = ['draft', 'reviewed', 'certified', 'deprecated'] as const
+
+// Each segment uses a semantic CSS var so dark/light themes pick up the
+// right contrast — same colors the Features list pill uses.
+const STATUS_BAR_BG: Record<FeatureStatus, string> = {
+  draft: 'bg-[var(--text-tertiary)]',
+  reviewed: 'bg-[var(--brand)]',
+  certified: 'bg-[var(--success)]',
+  deprecated: 'bg-[var(--danger)]',
+}
+
+const STATUS_TEXT: Record<FeatureStatus, string> = {
+  draft: 'text-[var(--text-tertiary)]',
+  reviewed: 'text-[var(--brand)]',
+  certified: 'text-[var(--success)]',
+  deprecated: 'text-[var(--danger)]',
+}
 
 export function Dashboard() {
   const { t } = useTranslation('dashboard')
@@ -21,6 +47,7 @@ export function Dashboard() {
   const [orphaned, setOrphaned] = useState<{ name: string; last_seen: string | null }[]>([])
   const [docDebt, setDocDebt] = useState<{ owner: string; source: string; total: number; undocumented: number; pct_undocumented: number }[]>([])
   const [sourceStats, setSourceStats] = useState<{ source_name: string; path: string; feature_count: number; documented_count: number; drift_alerts: number; critical_alerts: number; last_scanned: string | null; top_drifting_feature: string | null }[]>([])
+  const [statusCounts, setStatusCounts] = useState<StatusCounts | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -38,8 +65,12 @@ export function Dashboard() {
       api.docDebt().catch(() => []),
       api.statsBySource().catch(() => []),
       api.features.healthSummary().catch(() => null),
+      // Aggregate status counts come from a dedicated GROUP BY endpoint —
+      // O(1) on the wire vs. fetching the full feature list and counting
+      // client-side (mattered at 5k+ features). Cached for 10s by api.ts.
+      api.features.statusCounts().catch(() => null),
     ])
-      .then(([s, m, l, j, tf, o, dd, ss, hs]) => {
+      .then(([s, m, l, j, tf, o, dd, ss, hs, sc]) => {
         setStats(s)
         setMonitor(m)
         setLogs(Array.isArray(l) ? l : [])
@@ -49,6 +80,16 @@ export function Dashboard() {
         setDocDebt(Array.isArray(dd) ? dd : [])
         setSourceStats(Array.isArray(ss) ? ss : [])
         setHealthSummary(hs)
+        if (sc) {
+          setStatusCounts({
+            draft: sc.draft,
+            reviewed: sc.reviewed,
+            certified: sc.certified,
+            deprecated: sc.deprecated,
+          })
+        } else {
+          setStatusCounts({ draft: 0, reviewed: 0, certified: 0, deprecated: 0 })
+        }
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
@@ -60,10 +101,11 @@ export function Dashboard() {
 
   if (error) {
     return (
-      <div className="text-center py-20">
-        <p className="text-[var(--danger)] mb-4">{t('fetch_failed', { ns: 'errors' })}</p>
-        <button onClick={load} className="px-4 py-2 bg-accent text-white rounded-lg text-sm">{t('actions.retry', { ns: 'common' })}</button>
-      </div>
+      <EmptyState
+        variant="error"
+        title={t('fetch_failed', { ns: 'errors' })}
+        action={{ label: t('actions.retry', { ns: 'common' }), onClick: load }}
+      />
     )
   }
 
@@ -80,16 +122,10 @@ export function Dashboard() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-semibold">{t('page.title')}</h1>
-        <button onClick={load} disabled={loading} className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium border border-[var(--border-default)] rounded-lg bg-[var(--bg-primary)] hover:bg-[var(--bg-secondary)] disabled:opacity-50">
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          {t('actions.refresh', { ns: 'common' })}
-        </button>
-      </div>
+      <PageHeader title={t('page.title')} actions={<RefreshButton onClick={load} loading={loading} />} />
 
       {/* Section 1: Catalog Overview */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div data-testid="stats-cards" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {loading ? (
           Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20" />)
         ) : (
@@ -122,19 +158,20 @@ export function Dashboard() {
           onClick={() => navigate('/features?sort=health&order=asc')}
         >
           <div className="flex items-center gap-2 mb-3">
-            <HeartPulse size={16} className="text-accent" />
+            <HeartPulse size={16} className="text-brand" />
             <h3 className="text-sm font-semibold">{t('health_card.title')}</h3>
             <span className="ml-auto text-2xl font-semibold">{healthSummary.average_score}<span className="text-sm font-normal text-[var(--text-tertiary)]">{t('health_card.of_100')}</span></span>
           </div>
-          <div className="flex items-center gap-1 h-4 rounded-full overflow-hidden mb-2">
-            {(['A', 'B', 'C', 'D'] as const).map(g => {
-              const count = healthSummary.grade_distribution[g] || 0
-              const total = Object.values(healthSummary.grade_distribution).reduce((a, b) => a + b, 0)
-              const pct = total > 0 ? (count / total) * 100 : 0
-              if (pct === 0) return null
-              const bg = { A: 'bg-green-500', B: 'bg-teal-500', C: 'bg-amber-500', D: 'bg-red-500' }[g]
-              return <div key={g} className={`h-full ${bg}`} style={{ width: `${pct}%` }} />
-            })}
+          <div className="mb-2">
+            <SegmentedBar
+              ariaLabel={t('health_card.title')}
+              height={16}
+              segments={(['A', 'B', 'C', 'D'] as const).map((g) => ({
+                value: healthSummary.grade_distribution[g] || 0,
+                color: { A: 'bg-green-500', B: 'bg-teal-500', C: 'bg-amber-500', D: 'bg-red-500' }[g],
+                label: `${g}: ${healthSummary.grade_distribution[g] || 0}`,
+              }))}
+            />
           </div>
           <div className="flex gap-4 text-xs text-[var(--text-secondary)]">
             {(['A', 'B', 'C', 'D'] as const).map(g => {
@@ -143,6 +180,56 @@ export function Dashboard() {
               return <span key={g} className="flex items-center gap-1"><span className={`font-bold ${color}`}>{g}</span> {count}</span>
             })}
           </div>
+        </div>
+      )}
+
+      {/* Certification distribution (T3.1b) — clickable segments deep-link
+         to the Features list filtered by status. */}
+      {!loading && statusCounts && (
+        <div className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg p-5 mb-4">
+          <div className="flex items-center gap-2 mb-3">
+            <ShieldCheck size={16} className="text-[var(--success)]" />
+            <h3 className="text-sm font-semibold">{t('certification_card.title')}</h3>
+            <span className="ml-auto text-2xl font-semibold">
+              {statusCounts.certified}
+              <span className="text-sm font-normal text-[var(--text-tertiary)]"> {t('certification_card.certified_suffix')}</span>
+            </span>
+          </div>
+          {(() => {
+            const total = STATUS_ORDER.reduce((a, s) => a + statusCounts[s], 0)
+            return (
+              <>
+                <div className="mb-2">
+                  <SegmentedBar
+                    ariaLabel={t('certification_card.title')}
+                    height={16}
+                    segments={STATUS_ORDER.map((s) => ({
+                      value: statusCounts[s],
+                      color: STATUS_BAR_BG[s],
+                      label: t(`certification_card.status_tooltip.${s}`, { count: statusCounts[s] }),
+                      onClick: () => navigate(`/features?status=${s}`),
+                    }))}
+                  />
+                </div>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--text-secondary)]">
+                  {STATUS_ORDER.map(s => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => navigate(`/features?status=${s}`)}
+                      className="flex items-center gap-1 hover:underline"
+                    >
+                      <span className={`font-bold ${STATUS_TEXT[s]}`}>{t(`certification_card.status.${s}`)}</span>
+                      <span>{statusCounts[s]}</span>
+                    </button>
+                  ))}
+                  {total === 0 && (
+                    <span className="text-[var(--text-tertiary)]">{t('certification_card.empty')}</span>
+                  )}
+                </div>
+              </>
+            )
+          })()}
         </div>
       )}
 
@@ -173,6 +260,10 @@ export function Dashboard() {
             </table>
           )}
         </div>
+      </div>
+
+      <div className="mb-6">
+        <DriftRateTrend />
       </div>
 
       {/* Section 4: Activity & Usage */}
@@ -225,7 +316,7 @@ export function Dashboard() {
                   <div key={i} className="text-[13px] text-[var(--text-secondary)]">{f.name}</div>
                 ))}
                 {orphaned.length > 5 && (
-                  <a href="/features" className="text-xs text-accent hover:underline">{t('orphaned.view_all')}</a>
+                  <a href="/features" className="text-xs text-brand hover:underline">{t('orphaned.view_all')}</a>
                 )}
               </div>
             </div>

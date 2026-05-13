@@ -45,5 +45,72 @@
     "title": "Add features to {{group}}"
   },
   "export_title": "{{name}} ({{count}} features)",
-  "confirm_delete": "Delete group \"{{name}}\"?"
+  "confirm_delete": "Delete group \"{{name}}\"?",
+  "tabs": {
+    "members": "Members",
+    "health": "Health",
+    "monitoring": "Monitoring",
+    "versions": "Versions",
+    "docs": "Docs"
+  },
+  "versions": {
+    "help": "A frozen version snapshots every member with its dtype, definition, and source path. Re-running the pipeline against the same sources reproduces the exact feature manifest.",
+    "freeze_button": "Freeze current state",
+    "empty_group": "Add members before freezing a version",
+    "empty_state": "No versions yet — click \"Freeze current state\" to capture v1",
+    "member_count_one": "{{count}} member",
+    "member_count_other": "{{count}} members",
+    "export": "Export",
+    "export_json": "JSON",
+    "export_csv": "CSV",
+    "export_parquet": "Parquet",
+    "freeze_modal_title": "Freeze \"{{group}}\"",
+    "freeze_modal_help_one": "Snapshot {{count}} member into a new version. Subsequent edits to the group do not affect this snapshot.",
+    "freeze_modal_help_other": "Snapshot {{count}} members into a new version. Subsequent edits to the group do not affect this snapshot.",
+    "note_label": "Note (optional)",
+    "note_placeholder": "e.g. baseline before holiday traffic",
+    "freeze_confirm": "Freeze",
+    "freezing": "Freezing…"
+  },
+  "health": {
+    "empty": "No members to score yet",
+    "average": "Average score",
+    "distribution": "Grade distribution",
+    "doc_coverage": "Doc coverage",
+    "doc_coverage_hint": "{{documented}} of {{total}} documented",
+    "currently_critical_one": "Currently critical ({{count}})",
+    "currently_critical_other": "Currently critical ({{count}})",
+    "lowest": "Lowest scoring members",
+    "all_healthy": "All members healthy",
+    "refresh": "Refresh"
+  },
+  "monitoring": {
+    "empty": "No members",
+    "severity": "Severity distribution",
+    "severity_count": "Members",
+    "no_severity_data": "No severity data yet",
+    "psi_avg": "Avg PSI",
+    "psi_thresholds": "0.10 warning · 0.20 critical",
+    "last_check": "Last check",
+    "with_drift": "Members with drift",
+    "no_drift": "No drifting members"
+  },
+  "drift_heatmap": {
+    "title": "Drift heatmap (last {{days}} days)",
+    "feature_col": "Feature",
+    "empty": "No monitored features in this group yet",
+    "truncated": "Showing top {{shown}} of {{total}} features by latest severity. Filter the group or split it to see all members."
+  },
+  "docs": {
+    "empty": "Add members before regenerating docs",
+    "help": "Generate AI documentation for every member in this group. Existing docs are skipped unless regenerate is on.",
+    "regenerate_label": "Regenerate existing docs",
+    "regenerate_hint": "Overwrite docs for members that already have one.",
+    "hint_label": "Global hint (optional)",
+    "hint_placeholder": "e.g. these features describe payment events",
+    "start": "Regenerate docs",
+    "running": "Running…",
+    "status": "Status",
+    "failed_count": "{{count}} failure(s)"
+  }
 }

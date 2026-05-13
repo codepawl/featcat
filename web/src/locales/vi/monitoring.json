@@ -8,13 +8,8 @@
     "critical": "Nghiêm trọng"
   },
   "actions": {
-    "run_check_now": "Chạy kiểm tra",
-    "checking": "Đang kiểm tra...",
     "refresh_baseline": "Làm mới Baseline",
     "export_report": "Xuất báo cáo"
-  },
-  "hints": {
-    "run_baseline_first": "Chạy 'Làm mới Baseline' trước"
   },
   "drift_table": {
     "title": "Trạng thái Drift của Feature",
@@ -64,6 +59,20 @@
       "warning": "Cảnh báo",
       "critical": "Nghiêm trọng"
     }
+  },
+  "multi_metric": {
+    "title": "Lịch sử các chỉ số",
+    "not_enough_history": "Chưa đủ lịch sử giám sát",
+    "range_days_one": "{{count}} ngày",
+    "range_days_other": "{{count}} ngày",
+    "metric_null_ratio": "Tỷ lệ null",
+    "metric_z_score": "Z-score",
+    "metric_sample_size": "Sample size",
+    "threshold_psi_warning": "PSI {{value}} ≥ 0.10 (warning)",
+    "threshold_psi_critical": "PSI {{value}} ≥ 0.25 (critical)",
+    "threshold_zscore": "|Z-score| {{value}} > 3",
+    "anomaly_count_one": "{{count}} điểm bất thường — di chuột vào điểm dữ liệu để xem ngưỡng vượt",
+    "anomaly_count_other": "{{count}} điểm bất thường — di chuột vào điểm dữ liệu để xem ngưỡng vượt"
   },
   "distribution": {
     "title": "So sánh phân phối",

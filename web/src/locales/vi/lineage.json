@@ -1,0 +1,53 @@
+{
+  "page": {
+    "title": "Lineage Feature",
+    "subtitle": "Đồ thị phụ thuộc. Mũi tên đi từ feature cha đến feature con."
+  },
+  "filter_placeholder": "Tìm node...",
+  "actions": {
+    "fit": "Vừa khung hình",
+    "fit_title": "Vừa khung hình",
+    "reset_layout": "Khôi phục bố cục",
+    "reset_title": "Chạy lại bố cục",
+    "show_all": "Hiển thị tất cả ({{count}})"
+  },
+  "filters": {
+    "sources_label": "Nguồn",
+    "hide_isolated": "Ẩn node đơn lẻ",
+    "node_cap_notice": "Đang hiển thị {{shown}} / {{total}} node"
+  },
+  "render_mode": {
+    "label": "Bộ vẽ",
+    "auto": "Tự động",
+    "svg": "SVG",
+    "canvas": "Canvas",
+    "auto_title": "Chọn tự động (SVG ≤ 500 node, Canvas khi nhiều hơn)",
+    "svg_title": "Bắt buộc SVG — nét hơn, chậm khi nhiều node",
+    "canvas_title": "Bắt buộc Canvas — xử lý đồ thị lớn ({{count}} node)",
+    "active": "Đang dùng: {{mode}} ({{count}} node)"
+  },
+  "legend": {
+    "title": "Chú thích",
+    "edge_dir": "cha → con",
+    "manual": "Cạnh thủ công",
+    "sqlglot": "Tự nhận diện (sqlglot)"
+  },
+  "tooltip": {
+    "source": "Nguồn",
+    "dtype": "Kiểu",
+    "owner": "Phụ trách",
+    "owner_unset": "chưa đặt",
+    "transform": "Phép biến đổi",
+    "method": "Cách phát hiện",
+    "no_transform": "(không có mô tả)",
+    "upstream": "Cha",
+    "downstream": "Con"
+  },
+  "empty": {
+    "title": "Chưa có lineage nào được ghi nhận",
+    "subtitle": "Cạnh lineage liên kết Feature với Feature/cột/nguồn mà nó được dẫn xuất từ đó.",
+    "cta_detect": "Tự nhận diện từ file SQL:",
+    "cta_detect_cmd": "featcat lineage detect --from sql/*.sql",
+    "cta_apply_hint": "Thêm --apply --confirm sau khi xem preview để ghi các cạnh vào catalog."
+  }
+}

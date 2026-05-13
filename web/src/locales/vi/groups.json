@@ -17,7 +17,7 @@
   "detail": {
     "select_hint": "Chọn một nhóm để xem chi tiết",
     "owner_label": "Chủ sở hữu",
-    "members_heading": "Thành viên ({{count}})",
+    "members_heading": "Feature ({{count}})",
     "members_empty": "Chưa có Feature nào trong nhóm này",
     "project_label": "Dự án",
     "members_label": "features"
@@ -45,5 +45,72 @@
     "title": "Thêm Feature vào {{group}}"
   },
   "export_title": "{{name}} ({{count}} Feature)",
-  "confirm_delete": "Xóa nhóm \"{{name}}\"?"
+  "confirm_delete": "Xóa nhóm \"{{name}}\"?",
+  "tabs": {
+    "members": "Feature",
+    "health": "Sức khỏe",
+    "monitoring": "Giám sát",
+    "versions": "Phiên bản",
+    "docs": "Tài liệu"
+  },
+  "versions": {
+    "help": "Một phiên bản đã đóng băng (frozen) chụp lại từng thành viên với dtype, definition và source path. Chạy lại pipeline trên cùng nguồn dữ liệu sẽ tái tạo manifest feature giống hệt.",
+    "freeze_button": "Đóng băng trạng thái hiện tại",
+    "empty_group": "Hãy thêm thành viên trước khi đóng băng phiên bản",
+    "empty_state": "Chưa có phiên bản nào — bấm \"Đóng băng trạng thái hiện tại\" để tạo v1",
+    "member_count_one": "{{count}} thành viên",
+    "member_count_other": "{{count}} thành viên",
+    "export": "Xuất",
+    "export_json": "JSON",
+    "export_csv": "CSV",
+    "export_parquet": "Parquet",
+    "freeze_modal_title": "Đóng băng \"{{group}}\"",
+    "freeze_modal_help_one": "Chụp ảnh {{count}} thành viên thành phiên bản mới. Các thay đổi sau đó của nhóm không ảnh hưởng đến snapshot này.",
+    "freeze_modal_help_other": "Chụp ảnh {{count}} thành viên thành phiên bản mới. Các thay đổi sau đó của nhóm không ảnh hưởng đến snapshot này.",
+    "note_label": "Ghi chú (tùy chọn)",
+    "note_placeholder": "ví dụ: baseline trước mùa lễ",
+    "freeze_confirm": "Đóng băng",
+    "freezing": "Đang đóng băng…"
+  },
+  "health": {
+    "empty": "Chưa có feature để đánh giá",
+    "average": "Điểm trung bình",
+    "distribution": "Phân bố hạng",
+    "doc_coverage": "Độ phủ tài liệu",
+    "doc_coverage_hint": "{{documented}}/{{total}} đã có tài liệu",
+    "currently_critical_one": "Đang critical ({{count}})",
+    "currently_critical_other": "Đang critical ({{count}})",
+    "lowest": "Feature điểm thấp nhất",
+    "all_healthy": "Tất cả feature đều khỏe",
+    "refresh": "Làm mới"
+  },
+  "monitoring": {
+    "empty": "Không có feature",
+    "severity": "Phân bố mức độ nghiêm trọng",
+    "severity_count": "Feature",
+    "no_severity_data": "Chưa có dữ liệu severity",
+    "psi_avg": "PSI trung bình",
+    "psi_thresholds": "0.10 warning · 0.20 critical",
+    "last_check": "Kiểm tra gần nhất",
+    "with_drift": "Feature đang drift",
+    "no_drift": "Không có Feature drift"
+  },
+  "drift_heatmap": {
+    "title": "Heatmap drift ({{days}} ngày qua)",
+    "feature_col": "Feature",
+    "empty": "Nhóm này chưa có Feature nào được giám sát",
+    "truncated": "Hiển thị {{shown}} trên {{total}} Feature theo mức độ severity gần nhất. Hãy lọc hoặc tách nhóm để xem hết."
+  },
+  "docs": {
+    "empty": "Hãy thêm feature trước khi tạo lại tài liệu",
+    "help": "Sinh tài liệu AI cho mọi feature trong nhóm. Bỏ qua các tài liệu đã có trừ khi bật regenerate.",
+    "regenerate_label": "Tạo lại tài liệu đã có",
+    "regenerate_hint": "Ghi đè tài liệu của các feature đã có sẵn.",
+    "hint_label": "Hint chung (tùy chọn)",
+    "hint_placeholder": "ví dụ: các feature mô tả sự kiện thanh toán",
+    "start": "Tạo lại tài liệu",
+    "running": "Đang chạy…",
+    "status": "Trạng thái",
+    "failed_count": "{{count}} lỗi"
+  }
 }

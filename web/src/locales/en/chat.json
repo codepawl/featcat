@@ -29,7 +29,9 @@
     "placeholder": "Ask about features...",
     "send": "Send",
     "clear": "Clear",
-    "clear_title": "Clear chat"
+    "clear_title": "Clear chat",
+    "clear_chat": "Clear conversation",
+    "hint_enter_send": "Enter to send, Shift+Enter for newline"
   },
   "status": {
     "generating": "Generating response...",
@@ -50,10 +52,16 @@
     "try_follow_up": "Try: {{text}}"
   },
   "errors": {
-    "prefix": "Error: {{message}}"
+    "prefix": "Error: {{message}}",
+    "label": "Error",
+    "retry": "Try again"
   },
   "thinking_stream": {
     "using_tool": "Using tool: {{tool}}...",
     "looking_up": "Looking up: {{tool}}..."
+  },
+  "reasoning": {
+    "thinking": "Thinking...",
+    "thought": "Thought"
   }
 }

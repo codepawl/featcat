@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 from typing import TYPE_CHECKING, Any
 
 from starlette.concurrency import run_in_threadpool
 
+from featcat.utils.lang import detect_language
+
 from .executor import ToolExecutor
+from .intent import select_tool_schemas
 from .tools import CATALOG_TOOLS
 
 if TYPE_CHECKING:
@@ -22,32 +26,122 @@ logger = logging.getLogger(__name__)
 
 MAX_TOOL_ROUNDS = 2
 
+# Intent classifier filters CATALOG_TOOLS down to a focused subset per query
+# (~830 token savings on matched intents). Set FEATCAT_INTENT_FILTER=off to
+# bypass and send all 14 tools — escape hatch if a misclassification breaks
+# something in production.
+_INTENT_FILTER_ON = os.environ.get("FEATCAT_INTENT_FILTER", "on").lower() != "off"
+
 SYSTEM_PROMPT = """\
 You are featcat, a feature catalog assistant for FPT Telecom's Data Science team.
 
-IMPORTANT: When the user asks about features, data quality, or use cases, you MUST call \
-the appropriate tool immediately. Do NOT describe tools or ask what the user wants — just use them.
+IMPORTANT: When the user asks about features, data quality, groups, sources, or use cases, \
+you MUST call the appropriate tool immediately. Do NOT describe tools or ask what the user \
+wants — just use them.
 
-Examples:
-- "features liên quan đến churn" → call search_features(query="churn")
-- "chi tiết cpu_usage" → call get_feature_detail(feature_name="device_performance.cpu_usage")
-- "so sánh cpu và memory" → call compare_features(\
-feature_names="device_performance.cpu_usage,device_performance.memory_usage")
-- "data quality" → call get_drift_report()
-- "xin chào" → respond directly, no tool needed
+Tool picking guide:
+- Keyword/topic search ("features về churn"): search_features(query=...)
+- Structured filter ("chưa có doc", "trong source X", "dtype float64"): \
+list_features(has_doc=False, source=..., dtype=...)
+- Counting ("có bao nhiêu feature ..."): count_features(...)
+- Single feature deep dive ("chi tiết X", "stats của X"): get_feature_detail(feature_name=...)
+- Comparison: compare_features(feature_names="a,b")
+- Drift / quality alerts ("đang drift", "data quality"): get_drift_report()
+- Use-case recommendation ("gợi ý feature cho churn model"): suggest_features(use_case=...)
+- Sources list: list_sources()
+- Per-source breakdown ("source nào nhiều feature nhất"): features_by_source()
+- Catalog overview ("tổng quan catalog", "health summary"): catalog_summary()
+- Groups list: list_groups()
+- One group's members ("group X có gì"): get_group(name=...)
+- Similar features (per reference feature): find_similar_features(feature_name=..., top_k=5)
+- Catalog-wide duplicates ("có feature nào nghi ngờ duplicate", "tìm duplicate \
+trong source X", "duplicate với threshold N"): \
+find_duplicate_pairs(threshold=..., source=...)
+- Greeting ("xin chào"): respond directly, no tool needed
+
+Common workflows:
+- "Feature nào chưa có tài liệu?" → list_features(has_doc=False)
+- "Có bao nhiêu feature chưa có doc?" → count_features(has_doc=False)
+- "Tổng quan catalog" → catalog_summary()
+- "Group churn_features có gì" → get_group(name="churn_features")
+- "Source nào nhiều feature nhất" → features_by_source()
 
 Rules:
 - Act first, explain after. Call tools proactively.
-- Use the minimum number of tool calls needed. After search results, summarize them directly \
+- Use the minimum number of tool calls needed. After getting results, summarize them directly \
 unless the user asks for more detail. Do NOT chain all tools in one turn.
+- If a tool returns an empty list or "not found", say so plainly — do NOT invent features.
 - Match the user's language (Vietnamese or English).
 - Be concise. No filler.
 - After getting tool results, summarize with actionable insights."""
 
 _SUMMARY_PROMPT = (
     "Based on the tool results above, give a concise answer to my original question. "
-    "Do NOT call any tools. Do NOT output XML tags. Just answer in plain text."
+    "Do NOT call any tools. Do NOT output XML tags. Just answer in plain text. "
+    "Trả lời ngắn gọn, dưới 4 câu. Tập trung vào điểm chính."
 )
+
+# Hard cap for the forced-summary LLM call. The first agent-loop call keeps the
+# 2048 default so tool-arg generation isn't truncated; the summary doesn't need
+# more than a few sentences and caps the worst-case latency.
+_SUMMARY_MAX_TOKENS = 600
+
+# Tools whose executor output is already user-readable. When every tool call
+# in a round is in this set (or list_features below the size threshold), the
+# agent streams the tool result directly to the user and skips the second LLM
+# call. Cuts ~30-60s off fact-lookup queries on a 2B model. See audit
+# `audits/ai-chat-mvp-failure-analysis-2026-05-12.md`.
+SELF_EXPLANATORY_TOOLS: frozenset[str] = frozenset(
+    {
+        "list_sources",
+        "get_feature_detail",
+        "get_group",
+        "catalog_summary",
+        "features_by_source",
+        "list_groups",
+        "count_features",
+    }
+)
+
+# list_features is self-explanatory only when the result is short enough to be
+# meaningful without prose framing.
+_LIST_FEATURES_SHORT_THRESHOLD = 20
+
+# Vietnamese intros rotated for self-explanatory tool replies. Picked by
+# message count so consecutive queries vary without RNG (deterministic for
+# tests).
+_VI_RESULT_INTROS: tuple[str, ...] = (
+    "Đây là kết quả:",
+    "Đây là thông tin cho bạn:",
+    "Kết quả:",
+)
+
+
+def _list_features_short(result: str) -> bool:
+    """Parse the 'Showing N of M matching features:' line to gate self-explanation.
+
+    Returns True when list_features returned ≤ _LIST_FEATURES_SHORT_THRESHOLD
+    rows so the raw output is digestible without prose framing.
+    """
+    first_line = result.split("\n", 1)[0] if result else ""
+    m = re.match(r"Showing\s+(\d+)\s+of\s+\d+\s+matching features:", first_line)
+    if not m:
+        return False
+    return int(m.group(1)) <= _LIST_FEATURES_SHORT_THRESHOLD
+
+
+def _all_self_explanatory(executed: list[tuple[str, str]]) -> bool:
+    """True when every (tool_name, result) pair is in the self-explanatory set."""
+    if not executed:
+        return False
+    for name, result in executed:
+        if name in SELF_EXPLANATORY_TOOLS:
+            continue
+        if name == "list_features" and _list_features_short(result):
+            continue
+        return False
+    return True
+
 
 _TOOL_TAG_RE = re.compile(
     r"</?tool_call[^>]*>|</?function[^>]*>|</?parameter[^>]*>|\{\"name\":\s*\"[a-z_]+\"",
@@ -70,7 +164,12 @@ class CatalogAgent:
         self.llm = llm
         self.executor = ToolExecutor(backend, llm)
 
-    async def chat(self, user_message: str, history: list[dict] | None = None) -> AsyncIterator[dict[str, Any]]:
+    async def chat(
+        self,
+        user_message: str,
+        history: list[dict] | None = None,
+        context_summary: str | None = None,
+    ) -> AsyncIterator[dict[str, Any]]:
         """Process a user message through the agentic loop.
 
         Yields SSE-compatible event dicts:
@@ -79,17 +178,45 @@ class CatalogAgent:
             {"type": "tool_result", "name": "...", "result": "..."}
             {"type": "token", "content": "..."}
             {"type": "done"}
+
+        ``context_summary`` (optional) is a short string naming entities from
+        history older than the live window so the model can recall earlier
+        topics across long sessions (see ChatSession.get_context_summary).
         """
         messages: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
+        if context_summary:
+            label = (
+                "Bối cảnh trước đó (các feature đã đề cập)"
+                if detect_language(user_message) == "vi"
+                else "Earlier context (features mentioned)"
+            )
+            messages.append({"role": "system", "content": f"{label}: {context_summary}"})
         if history:
             messages.extend(history[-6:])
         messages.append({"role": "user", "content": user_message})
+
+        # Pick a focused tool subset based on the user's current turn. Done
+        # once before the loop so both agent rounds see the same subset.
+        if _INTENT_FILTER_ON:
+            tool_schemas, selection = select_tool_schemas(user_message)
+            logger.info(
+                "intent_classified",
+                extra={
+                    "labels": list(selection.labels),
+                    "tool_count": len(tool_schemas),
+                    "fallback": selection.fallback,
+                    # Privacy: log only the first 80 chars of the query.
+                    "query_prefix": user_message[:80],
+                },
+            )
+        else:
+            tool_schemas = CATALOG_TOOLS
 
         tool_call_history: set[str] = set()
 
         for _round in range(MAX_TOOL_ROUNDS):
             try:
-                result = await run_in_threadpool(self.llm.chat, messages, tools=CATALOG_TOOLS)
+                result = await run_in_threadpool(self.llm.chat, messages, tools=tool_schemas)
             except Exception as e:
                 logger.error("LLM chat failed: %s", e)
                 yield {"type": "token", "content": f"LLM error: {e}"}
@@ -99,6 +226,7 @@ class CatalogAgent:
             tool_calls = result.get("tool_calls")
             if tool_calls:
                 duplicate = False
+                executed: list[tuple[str, str]] = []
                 for tc in tool_calls:
                     func = tc.get("function", tc)
                     tool_name = func.get("name", "")
@@ -115,6 +243,7 @@ class CatalogAgent:
                     yield {"type": "tool_call", "name": tool_name, "params": tool_params}
 
                     tool_result = self.executor.execute(tool_name, tool_params)
+                    executed.append((tool_name, tool_result))
 
                     yield {"type": "tool_result", "name": tool_name, "result": tool_result}
 
@@ -129,6 +258,19 @@ class CatalogAgent:
 
                 if duplicate:
                     break  # Fall through to forced summary
+
+                # If every tool in this round is self-explanatory, stream the
+                # result directly with a VI intro and skip the second LLM call.
+                # Saves a full generation pass (~30-60s on Gemma 4 E2B CPU).
+                if _all_self_explanatory(executed):
+                    intro = _VI_RESULT_INTROS[len(messages) % len(_VI_RESULT_INTROS)]
+                    direct = intro + "\n\n" + "\n\n".join(r for _n, r in executed)
+                    chunk_size = 20
+                    for i in range(0, len(direct), chunk_size):
+                        yield {"type": "token", "content": direct[i : i + chunk_size]}
+                    yield {"type": "done"}
+                    return
+
                 continue  # Next round
 
             # No tool calls → final text response
@@ -149,7 +291,7 @@ class CatalogAgent:
         """Make a final LLM call without tools to summarize results."""
         messages.append({"role": "user", "content": _SUMMARY_PROMPT})
         try:
-            result = await run_in_threadpool(self.llm.chat, messages, temperature=0.3)
+            result = await run_in_threadpool(self.llm.chat, messages, temperature=0.3, max_tokens=_SUMMARY_MAX_TOKENS)
             content = _clean_content(result.get("content") or "")
             if content:
                 chunk_size = 20

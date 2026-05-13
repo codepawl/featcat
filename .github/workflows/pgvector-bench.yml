@@ -1,0 +1,92 @@
+name: pgvector bench
+
+# Weekly observation-only run of the live-Postgres pgvector benchmark suite
+# (tests/perf/test_pgvector_bench.py). Results are uploaded as a workflow
+# artifact for offline diffing — this job intentionally does NOT fail on
+# regressions. Operators read the JSON to spot trends.
+#
+# Triggers: scheduled Sunday 03:00 UTC, or manual via workflow_dispatch.
+# Deliberately NOT wired to push/PR: the bench takes minutes and would
+# burn a lot of CI minutes on every commit.
+
+on:
+  schedule:
+    # Sunday 03:00 UTC. Off-peak for both US and APAC operators.
+    - cron: "0 3 * * 0"
+  workflow_dispatch:
+
+concurrency:
+  group: pgvector-bench
+  cancel-in-progress: false
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: featcat
+          POSTGRES_PASSWORD: featcat
+          POSTGRES_DB: featcat
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U featcat -d featcat"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    env:
+      FEATCAT_BENCH_DB_URL: postgresql+psycopg2://featcat:featcat@localhost:5432/featcat
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: astral-sh/setup-uv@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install featcat with bench extras
+        # psycopg2 + pgvector python helpers ride along with [bench]/[embeddings]
+        # via the project's pyproject (see tests/perf/test_pgvector_bench.py
+        # imports). [dev] gives us pytest + the timeout plugin.
+        run: uv pip install --system -e ".[dev,bench,embeddings]" psycopg2-binary pgvector
+
+      - name: Wait for Postgres to accept connections
+        # The service container's healthcheck handles startup, but we double-tap
+        # because the GitHub-hosted runner occasionally races us to the first
+        # connection attempt.
+        run: |
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            if pg_isready -h localhost -p 5432 -U featcat -d featcat; then
+              echo "Postgres ready"
+              exit 0
+            fi
+            echo "Waiting for Postgres... ($i/10)"
+            sleep 3
+          done
+          echo "Postgres never became ready"
+          exit 1
+
+      - name: Run pgvector benchmark suite
+        # Observation-only: bench failures do NOT fail the workflow. We still
+        # want the artifact uploaded so operators can investigate.
+        continue-on-error: true
+        timeout-minutes: 30
+        run: make bench
+
+      - name: List bench results
+        run: ls -la tests/perf/results/ || echo "No results directory"
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: bench-results-${{ github.run_id }}
+          path: tests/perf/results/*.json
+          if-no-files-found: warn
+          retention-days: 90

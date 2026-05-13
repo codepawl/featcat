@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
 from ...catalog.models import DataSource, Feature
 from ...catalog.scanner import discover_parquet_files, scan_source
+from ...catalog.storage import validate_path_input
 from ..deps import get_db
 
 router = APIRouter()
@@ -38,31 +43,36 @@ class BulkScanResponse(BaseModel):
 
 @router.post("", response_model=BulkScanResponse)
 async def bulk_scan(body: BulkScanRequest, db=Depends(get_db)):  # noqa: B008
-    """Scan a directory for Parquet files and register them as sources + features."""
+    """Scan a directory or S3 prefix for Parquet files and register them as sources + features."""
+    try:
+        validated_path = validate_path_input(body.path)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
     def _scan():
-        files = discover_parquet_files(body.path, recursive=body.recursive)
+        files = discover_parquet_files(validated_path, recursive=body.recursive)
         registered_sources = 0
         registered_features = 0
         skipped = 0
         details: list[dict] = []
 
         for f in files:
-            abs_path = str(f.resolve())
-            source_name = f.stem
+            # ``f`` is a string in both branches: absolute local path or s3:// URI.
+            abs_path = f
+            source_name = Path(f).stem
 
             existing = db.get_source_by_path(abs_path)
             if existing:
                 skipped += 1
-                details.append({"file": str(f), "status": "skipped", "feature_count": 0})
+                details.append({"file": f, "status": "skipped", "feature_count": 0})
                 continue
 
             if body.dry_run:
                 try:
                     columns = scan_source(abs_path)
-                    details.append({"file": str(f), "status": "would_register", "feature_count": len(columns)})
+                    details.append({"file": f, "status": "would_register", "feature_count": len(columns)})
                 except Exception as e:  # noqa: BLE001
-                    details.append({"file": str(f), "status": "error", "feature_count": 0, "error": str(e)})
+                    details.append({"file": f, "status": "error", "feature_count": 0, "error": str(e)})
                 continue
 
             # Handle name collision
@@ -72,6 +82,9 @@ async def bulk_scan(body: BulkScanRequest, db=Depends(get_db)):  # noqa: B008
                 final_name = f"{source_name}_{suffix}"
                 suffix += 1
 
+            started = datetime.now(timezone.utc)
+            perf_start = time.perf_counter()
+            source: DataSource | None = None
             try:
                 source = DataSource(name=final_name, path=abs_path)
                 db.add_source(source)
@@ -91,9 +104,37 @@ async def bulk_scan(body: BulkScanRequest, db=Depends(get_db)):  # noqa: B008
                     db.upsert_feature(feature)
                     registered_features += 1
 
-                details.append({"file": str(f), "status": "registered", "feature_count": len(columns)})
+                # One scan-log row per registered source. Newly-registered
+                # sources start empty, so every column counts as `added`.
+                finished = datetime.now(timezone.utc)
+                db.record_scan_log(
+                    source.id,
+                    started_at=started,
+                    finished_at=finished,
+                    duration_seconds=time.perf_counter() - perf_start,
+                    status="success",
+                    files_scanned=1,
+                    features_added=len(columns),
+                    triggered_by="api",
+                )
+
+                details.append({"file": f, "status": "registered", "feature_count": len(columns)})
             except Exception as e:  # noqa: BLE001
-                details.append({"file": str(f), "status": "error", "feature_count": 0, "error": str(e)})
+                # Only audit when the source row was created — pre-add failures
+                # have no source_id to log against.
+                if source is not None and db.get_source_by_name(source.name) is not None:
+                    finished = datetime.now(timezone.utc)
+                    db.record_scan_log(
+                        source.id,
+                        started_at=started,
+                        finished_at=finished,
+                        duration_seconds=time.perf_counter() - perf_start,
+                        status="failed",
+                        files_scanned=0,
+                        error_message=str(e),
+                        triggered_by="api",
+                    )
+                details.append({"file": f, "status": "error", "feature_count": 0, "error": str(e)})
 
         return {
             "found": len(files),

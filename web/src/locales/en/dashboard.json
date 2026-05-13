@@ -20,6 +20,23 @@
     "title": "Catalog Health",
     "of_100": "/100"
   },
+  "certification_card": {
+    "title": "Certification",
+    "certified_suffix": "certified",
+    "empty": "No features yet",
+    "status": {
+      "draft": "Draft",
+      "reviewed": "Reviewed",
+      "certified": "Certified",
+      "deprecated": "Deprecated"
+    },
+    "status_tooltip": {
+      "draft": "Draft: {{count}}",
+      "reviewed": "Reviewed: {{count}}",
+      "certified": "Certified: {{count}}",
+      "deprecated": "Deprecated: {{count}}"
+    }
+  },
   "drift_panel": {
     "title": "Recent Drift Alerts",
     "empty_no_baseline": "No baselines computed yet. Run baseline first.",
@@ -29,6 +46,19 @@
       "feature": "Feature",
       "psi": "PSI"
     }
+  },
+  "drift_trend": {
+    "title": "Drift rate trend",
+    "subtitle": "% of catalog features in critical / warning status per day",
+    "show_warning": "Show warning",
+    "range_days_one": "{{count}} day",
+    "range_days_other": "{{count}} days",
+    "alert_threshold": "Alert: {{pct}}%",
+    "critical": "Critical",
+    "warning": "Warning",
+    "tracked_features_one": "{{count}} feature tracked",
+    "tracked_features_other": "{{count}} features tracked",
+    "empty": "No drift history yet — run a /monitor/check to start tracking."
   },
   "top_features": {
     "title": "Top Features",

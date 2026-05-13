@@ -115,9 +115,52 @@ class MonitoringPlugin(BasePlugin):
                 else:
                     critical += 1
 
-                # Save result for history tracking
+                # Save result for history tracking — including the auxiliary
+                # metrics the multi-metric chart needs. Each is best-effort:
+                # current_stats may not carry them on legacy rows or non-numeric
+                # features (e.g. mean_z_score requires baseline.std > 0).
+                current = result.get("current_stats") or {}
+                baseline_stats = result.get("baseline_stats") or {}
+                null_ratio = current.get("null_ratio")
+                sample_size = current.get("total_count")
+                mean_z_score: float | None = None
+                b_mean = baseline_stats.get("mean")
+                b_std = baseline_stats.get("std")
+                c_mean = current.get("mean")
+                if (
+                    isinstance(b_mean, (int, float))
+                    and isinstance(b_std, (int, float))
+                    and isinstance(c_mean, (int, float))
+                    and b_std
+                ):
+                    mean_z_score = round((c_mean - b_mean) / b_std, 4)
+
                 with contextlib.suppress(Exception):
-                    db.save_monitoring_result(f.id, f.name, result.get("psi"), severity)
+                    db.save_monitoring_result(
+                        f.id,
+                        f.name,
+                        result.get("psi"),
+                        severity,
+                        null_ratio=null_ratio if isinstance(null_ratio, (int, float)) else None,
+                        mean_z_score=mean_z_score,
+                        sample_size=int(sample_size) if isinstance(sample_size, (int, float)) else None,
+                    )
+
+                # T2.1 — emit an in-app notification on warning/critical drift.
+                # Best-effort: a notification-table outage shouldn't fail
+                # the monitoring run.
+                if severity in ("warning", "critical"):
+                    psi = result.get("psi")
+                    psi_str = f", PSI={psi:.3f}" if isinstance(psi, (int, float)) else ""
+                    with contextlib.suppress(Exception):
+                        db.create_notification(
+                            kind="drift",
+                            title=f"{severity.capitalize()} drift on {f.name}",
+                            body=f"Drift detected on {f.name}{psi_str}.",
+                            severity=severity,
+                            feature_id=f.id,
+                            link=f"/features/{f.name}",
+                        )
             except Exception as e:
                 details.append(
                     {
@@ -211,9 +254,57 @@ class MonitoringPlugin(BasePlugin):
                 for issue in issues:
                     if issue["feature"] == fname:
                         issue["llm_analysis"] = a
+                        self._persist_llm_outcome(db, issue, a)
                         break
         except Exception:
             pass
+
+    def _persist_llm_outcome(self, db: CatalogBackend, issue: dict, analysis: dict) -> None:
+        """Save LLM analysis to monitoring_checks and auto-create pending action_items."""
+        feat = db.get_feature_by_name(issue["feature"])
+        if feat is None:
+            return
+
+        with contextlib.suppress(Exception):
+            db.save_monitoring_llm_analysis(feat.id, analysis)
+
+        actions = analysis.get("recommended_actions") or []
+        ctx_base = {
+            "severity": issue.get("severity"),
+            "psi": issue.get("psi"),
+            "likely_cause": analysis.get("likely_cause"),
+            "issues": issue.get("issues", []),
+        }
+        for raw in actions:
+            title, recommendation = self._normalize_action_text(raw)
+            if not title:
+                continue
+            with contextlib.suppress(Exception):
+                if db.find_pending_action(feat.id, "drift_alert", title) is not None:
+                    continue
+                db.create_action_item(
+                    feature_id=feat.id,
+                    source="drift_alert",
+                    title=title,
+                    recommendation=recommendation,
+                    context=ctx_base,
+                    created_by="monitoring_plugin",
+                )
+
+    @staticmethod
+    def _normalize_action_text(raw: Any) -> tuple[str, str]:
+        """Return (title, recommendation) from a recommended_action entry (str or dict)."""
+        if isinstance(raw, dict):
+            title = str(raw.get("title") or raw.get("action") or raw.get("summary") or "").strip()
+            rec = raw.get("description") or raw.get("detail") or raw.get("recommendation") or title
+            recommendation = str(rec).strip()
+            return title, recommendation or title
+        text = str(raw).strip()
+        if not text:
+            return "", ""
+        first_line = text.splitlines()[0].strip()
+        title = first_line[:120]
+        return title, text
 
 
 def export_monitoring_report(report: dict) -> str:
