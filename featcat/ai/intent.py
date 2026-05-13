@@ -12,8 +12,6 @@ all 14 tool implementations; we just filter what's exposed in the prompt.
 Pure-Python; no LLM call. Multi-intent supported (every matching rule
 contributes its tool subset; the final selection is the union). Falls
 back to a small versatile set when nothing matches.
-
-See `audits/ai-chat-mvp-failure-analysis-2026-05-12.md` Section 3 (P0.3).
 """
 
 from __future__ import annotations

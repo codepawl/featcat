@@ -47,8 +47,7 @@ class ChatSession:
         Returns a comma-separated list of distinct feature names mentioned in
         the dropped portion of history, or ``None`` if nothing carryover-worthy
         remains. Used to seed a system message so multi-turn dialogues don't
-        forget the feature(s) the user was investigating earlier (C5 in
-        audits/ai-chat-mvp-failure-analysis-2026-05-12.md).
+        forget the feature(s) the user was investigating earlier.
         """
         pairs = [m for m in self.messages if m["role"] in ("user", "assistant")]
         if len(pairs) <= window:

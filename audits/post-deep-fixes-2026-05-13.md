@@ -6,8 +6,8 @@
 **Builds on:** `audits/p0-3-verification-2026-05-13.md` (85.7% pass-only baseline)
 
 This document records the three deep fixes shipped after P0.3 verification.
-Each one targets a specific failure mode flagged in
-`audits/ai-chat-mvp-failure-analysis-2026-05-12.md`. Re-running the 35-prompt
+Each one targets a specific failure mode identified during P0 MVP
+testing. Re-running the 35-prompt
 MVP suite and updating the headline numbers is **deferred to the user** because
 the suite requires the live LLM stack (~30 min wall-clock) — placeholders
 below mark where numbers should land.

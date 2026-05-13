@@ -89,8 +89,7 @@ _SUMMARY_MAX_TOKENS = 600
 # Tools whose executor output is already user-readable. When every tool call
 # in a round is in this set (or list_features below the size threshold), the
 # agent streams the tool result directly to the user and skips the second LLM
-# call. Cuts ~30-60s off fact-lookup queries on a 2B model. See audit
-# `audits/ai-chat-mvp-failure-analysis-2026-05-12.md`.
+# call. Cuts ~30-60s off fact-lookup queries on a 2B model.
 SELF_EXPLANATORY_TOOLS: frozenset[str] = frozenset(
     {
         "list_sources",
