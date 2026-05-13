@@ -24,6 +24,8 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
+import re
 import sqlite3
 from collections import defaultdict
 from contextlib import contextmanager
@@ -37,6 +39,8 @@ from ..db.connection import make_engine, make_session_factory, resolve_backend
 from ..db.models import Base
 from .backend import CatalogBackend
 from .models import DataSource, Feature, FeatureGroup, FeatureGroupVersion, ScanLog, _new_id
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -135,6 +139,35 @@ def _adapt_datetime_iso(val: datetime) -> str:
 
 
 sqlite3.register_adapter(datetime, _adapt_datetime_iso)
+
+
+# FTS5 query construction. Splits user input on whitespace, underscore, and
+# punctuation, then builds a phrase + OR fallback so a search for
+# "cpu_usage" matches features named cpu_usage AND features with "cpu" or
+# "usage" tokens. The phrase boost ranks exact matches higher via BM25.
+_FTS5_SPLIT_RE = re.compile(r"[\s_\-.,;:!?()\[\]{}/\\\"']+")
+
+
+def _build_fts5_query(raw: str) -> str | None:
+    """Tokenize raw user input, return an FTS5 query string or None.
+
+    Returns None when the query is empty, single-char, or all stopword-like.
+    None signals callers to skip the FTS5 path entirely (don't fall back to
+    LIKE either — the user gave us nothing to match).
+    """
+    if not raw or len(raw.strip()) < 2:
+        return None
+    parts = [p for p in _FTS5_SPLIT_RE.split(raw.strip()) if p]
+    if not parts:
+        return None
+    # Quote each token so FTS5 treats it as a literal string (no operator
+    # interpretation). Phrase = adjacent tokens for the exact-match bonus.
+    quoted = [f'"{p}"' for p in parts]
+    or_clause = " OR ".join(quoted)
+    if len(parts) > 1:
+        phrase = '"' + " ".join(parts) + '"'
+        return f"{phrase} OR {or_clause}"
+    return or_clause
 
 
 def _row_to_feature(row: Any) -> Feature:
@@ -241,6 +274,33 @@ class LocalBackend(CatalogBackend):
             "CREATE INDEX IF NOT EXISTS idx_monitoring_checks_feature_date "
             "ON monitoring_checks(feature_id, checked_at)",
             "CREATE INDEX IF NOT EXISTS idx_monitoring_checks_date_severity ON monitoring_checks(checked_at, severity)",
+            # FTS5 contentful index over features. Contentful (not external-content)
+            # because features.id is TEXT — can't use it as content_rowid. Tokenizer
+            # strips Vietnamese diacritics so "cpu" matches "cpù". Triggers below
+            # keep the index synced with all INSERT/UPDATE/DELETE paths in the
+            # features table. P2.1 in audits/ai-chat-mvp-failure-analysis-2026-05-12.md.
+            "CREATE VIRTUAL TABLE IF NOT EXISTS features_fts USING fts5("
+            "    id UNINDEXED, name, description, tags, column_name,"
+            "    tokenize='unicode61 remove_diacritics 2'"
+            ")",
+            # Backfill existing rows on first migration. WHERE NOT EXISTS makes
+            # this a no-op on second run so we don't double-insert.
+            "INSERT INTO features_fts (id, name, description, tags, column_name) "
+            "SELECT id, name, COALESCE(description, ''), COALESCE(tags, ''), column_name "
+            "FROM features "
+            "WHERE NOT EXISTS (SELECT 1 FROM features_fts LIMIT 1)",
+            "CREATE TRIGGER IF NOT EXISTS features_fts_ai AFTER INSERT ON features BEGIN "
+            "  INSERT INTO features_fts (id, name, description, tags, column_name) "
+            "  VALUES (new.id, new.name, COALESCE(new.description, ''), COALESCE(new.tags, ''), new.column_name); "
+            "END",
+            "CREATE TRIGGER IF NOT EXISTS features_fts_au AFTER UPDATE ON features BEGIN "
+            "  DELETE FROM features_fts WHERE id = old.id; "
+            "  INSERT INTO features_fts (id, name, description, tags, column_name) "
+            "  VALUES (new.id, new.name, COALESCE(new.description, ''), COALESCE(new.tags, ''), new.column_name); "
+            "END",
+            "CREATE TRIGGER IF NOT EXISTS features_fts_ad AFTER DELETE ON features BEGIN "
+            "  DELETE FROM features_fts WHERE id = old.id; "
+            "END",
         )
         with self.engine.begin() as conn:
             for stmt in legacy_alters:
@@ -833,14 +893,105 @@ class LocalBackend(CatalogBackend):
         has_doc: bool | None,
         limit: int,
     ) -> list[dict]:
-        """Sqlite fallback — tokenizes the query and counts matches across
-        name/description/tags/column_name to produce a synthetic rank. Slower
-        than postgres FTS but doesn't require a special index."""
+        """SQLite full-text search via the FTS5 contentful index.
+
+        Returns ``[{id, name, dtype, source, rank}]`` sorted by BM25 score
+        (lower = better, but we surface ``-rank`` so callers see "higher =
+        better" like the postgres path). Filters (source/tag/dtype/has_doc)
+        are applied via Python intersect with ``list_features`` after the FTS5
+        match — keeps the FTS5 query simple and avoids duplicating filter
+        pushdown logic. Falls back to the legacy keyword scorer on FTS5 errors
+        (malformed query, missing virtual table on a stale DB, etc.).
+        """
+        fts_query = _build_fts5_query(q)
+        if fts_query is None:
+            return []
+        ranked_ids = self._fts5_match_ids(fts_query)
+        if ranked_ids is None:
+            # FTS5 unavailable or query rejected. Fall back to the legacy
+            # token-count scorer so the catalog still answers searches.
+            return self._fts_sqlite_legacy(q, source, tag, dtype, has_doc, limit)
+        if not ranked_ids:
+            return []
+        # Apply structured filters using the existing list_features pushdown.
+        # Intersect with FTS5 hits and re-rank by the FTS5 score so filtered
+        # results keep BM25 ordering.
+        if any(v is not None for v in (source, tag, dtype, has_doc)):
+            filtered = self.list_features(source_name=source, dtype=dtype, has_doc=has_doc, tag=tag, limit=None)
+            allowed = {f.id: f for f in filtered}
+            ordered = [(fid, score, allowed[fid]) for fid, score in ranked_ids if fid in allowed]
+        else:
+            # Fetch only the matched IDs in bulk — much cheaper than list_features.
+            by_id = self._features_by_ids([fid for fid, _ in ranked_ids])
+            ordered = [(fid, score, by_id[fid]) for fid, score in ranked_ids if fid in by_id]
+        results: list[dict] = []
+        for fid, score, f in ordered[:limit]:
+            results.append(
+                {
+                    "id": fid,
+                    "name": f.name,
+                    "dtype": f.dtype,
+                    "source": f.name.split(".")[0] if "." in f.name else "",
+                    "rank": round(-score, 4),  # negate so higher = better
+                }
+            )
+        return results
+
+    def _fts5_match_ids(self, fts_query: str) -> list[tuple[str, float]] | None:
+        """Run an FTS5 MATCH and return ``[(feature_id, bm25_score), ...]``.
+
+        Returns None if FTS5 errors (parse failure, missing virtual table) so
+        callers can fall back to the legacy scorer. Empty list = valid query
+        with no hits.
+        """
+        try:
+            with self.session() as s:
+                rows = (
+                    s.execute(
+                        text(
+                            "SELECT id, bm25(features_fts) AS rank "
+                            "FROM features_fts "
+                            "WHERE features_fts MATCH :q "
+                            "ORDER BY rank "
+                            "LIMIT 500"
+                        ),
+                        {"q": fts_query},
+                    )
+                    .mappings()
+                    .all()
+                )
+            return [(r["id"], float(r["rank"])) for r in rows]
+        except OperationalError as e:
+            logger.warning("fts5 query failed, falling back to legacy scorer: %s", e)
+            return None
+
+    def _features_by_ids(self, ids: list[str]) -> dict[str, Feature]:
+        if not ids:
+            return {}
+        with self.session() as s:
+            rows = (
+                s.execute(
+                    text("SELECT * FROM features WHERE id IN :ids").bindparams(bindparam("ids", expanding=True)),
+                    {"ids": ids},
+                )
+                .mappings()
+                .all()
+            )
+        return {r["id"]: _row_to_feature(r) for r in rows}
+
+    def _fts_sqlite_legacy(
+        self,
+        q: str,
+        source: str | None,
+        tag: str | None,
+        dtype: str | None,
+        has_doc: bool | None,
+        limit: int,
+    ) -> list[dict]:
+        """Pre-FTS5 keyword scorer. Kept as a fallback when FTS5 errors out."""
         tokens = [t for t in q.lower().split() if t]
         if not tokens:
             return []
-        # Reuse list_features filter pushdown for source/dtype/has_doc, then
-        # rank in Python. Pull source name via join.
         feats = self.list_features(source_name=source, dtype=dtype, has_doc=has_doc, tag=tag, limit=None)
         scored: list[tuple[float, Feature]] = []
         for f in feats:
@@ -855,7 +1006,6 @@ class LocalBackend(CatalogBackend):
             hits = sum(1 for tok in tokens if tok in haystack)
             if hits == 0:
                 continue
-            # Higher = better. Bonus when the name contains the query verbatim.
             score = hits / len(tokens)
             if q.lower() in f.name.lower():
                 score += 0.5
@@ -952,21 +1102,21 @@ class LocalBackend(CatalogBackend):
         }
 
     def search_features(self, query: str) -> list[Feature]:
-        pattern = f"%{query}%"
-        with self.session() as s:
-            rows = (
-                s.execute(
-                    text(
-                        "SELECT * FROM features "
-                        "WHERE name LIKE :p OR description LIKE :p OR tags LIKE :p OR column_name LIKE :p "
-                        "ORDER BY name"
-                    ),
-                    {"p": pattern},
-                )
-                .mappings()
-                .all()
-            )
-            return [_row_to_feature(r) for r in rows]
+        """Keyword search across features, ranked by BM25 (FTS5) or token-hit
+        score (legacy fallback). Returns Feature objects in rank order.
+
+        Delegates to ``full_text_search`` so SQLite and postgres go through
+        the same code path. Pre-FTS5 callers expected substring matches on
+        name/description/tags/column_name — FTS5 with the OR fallback in
+        :func:`_build_fts5_query` keeps that recall while adding ranking.
+        """
+        hits = self.full_text_search(query, limit=200)
+        if not hits:
+            return []
+        ids = [h["id"] for h in hits]
+        by_id = self._features_by_ids(ids)
+        # Preserve rank order — full_text_search already sorted by relevance.
+        return [by_id[i] for i in ids if i in by_id]
 
     @staticmethod
     def _parse_version_row(d: dict) -> dict:

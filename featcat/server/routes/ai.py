@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
 import threading
 
@@ -15,7 +16,11 @@ from ..deps import get_db, get_llm, get_settings
 
 router = APIRouter()
 
-LLM_TIMEOUT = 180  # 3 minutes max for LLM calls
+LLM_TIMEOUT = 180  # 3 minutes max for /discover and /ask LLM calls
+# Chat is streamed and tool-calling, so it gets a tighter deadline by default —
+# B2 (audits/p0-3-verification-2026-05-13.md) ran 235s with no cutoff and blocked the worker.
+CHAT_TIMEOUT = int(os.getenv("FEATCAT_CHAT_TIMEOUT_SECONDS", "90"))
+_CHAT_TIMEOUT_MESSAGE_VI = "Phản hồi quá lâu, vui lòng thử query ngắn hơn."
 
 _THINKING_KEYWORDS = frozenset(
     ["discover", "analyze", "why", "explain", "compare", "recommend", "suggest", "strategy", "tại sao", "phân tích"]
@@ -296,18 +301,48 @@ async def agent_chat(body: ChatRequest, db=Depends(get_db), llm=Depends(get_llm)
                 llm_ok = await run_in_threadpool(llm.health_check)
 
         full_response = ""
+        timed_out = False
         try:
             if llm_ok:
                 agent = CatalogAgent(llm, db)
-                gen = agent.chat(query, history=session.get_history())
+                gen = agent.chat(
+                    query,
+                    history=session.get_history(),
+                    context_summary=session.get_context_summary(),
+                )
             else:
                 agent = FallbackAgent(db)
                 gen = agent.chat(query)
 
-            async for event in gen:
+            # Deadline-aware loop: per-iteration wait_for with shrinking budget.
+            # Python 3.10 doesn't have asyncio.timeout() context manager, so we
+            # bound each anext() call instead of wrapping the whole generator.
+            loop = asyncio.get_event_loop()
+            deadline = loop.time() + CHAT_TIMEOUT
+            iterator = gen.__aiter__()
+            while True:
+                remaining = deadline - loop.time()
+                if remaining <= 0:
+                    timed_out = True
+                    break
+                try:
+                    event = await asyncio.wait_for(iterator.__anext__(), timeout=remaining)
+                except StopAsyncIteration:
+                    break
+                except asyncio.TimeoutError:
+                    timed_out = True
+                    break
                 if event.get("type") == "token":
                     full_response += event.get("content", "")
                 yield {"event": "message", "data": json.dumps(event)}
+
+            if timed_out:
+                yield {
+                    "event": "message",
+                    "data": json.dumps({"type": "error", "content": _CHAT_TIMEOUT_MESSAGE_VI}),
+                }
+                with contextlib.suppress(Exception):
+                    await iterator.aclose()  # type: ignore[attr-defined]
 
         except Exception as e:
             yield {"event": "message", "data": json.dumps({"type": "error", "content": str(e)})}
@@ -319,7 +354,9 @@ async def agent_chat(body: ChatRequest, db=Depends(get_db), llm=Depends(get_llm)
                 yield {"event": "message", "data": json.dumps(event)}
 
         session.add_message("user", query)
-        if full_response:
+        # Don't persist a half-streamed assistant turn on timeout — it would
+        # poison future context with a truncated answer.
+        if full_response and not timed_out:
             session.add_message("assistant", full_response)
 
     return EventSourceResponse(

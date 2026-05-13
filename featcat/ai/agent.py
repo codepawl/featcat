@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING, Any
 
 from starlette.concurrency import run_in_threadpool
 
+from featcat.utils.lang import detect_language
+
 from .executor import ToolExecutor
 from .intent import select_tool_schemas
 from .tools import CATALOG_TOOLS
@@ -162,7 +164,12 @@ class CatalogAgent:
         self.llm = llm
         self.executor = ToolExecutor(backend, llm)
 
-    async def chat(self, user_message: str, history: list[dict] | None = None) -> AsyncIterator[dict[str, Any]]:
+    async def chat(
+        self,
+        user_message: str,
+        history: list[dict] | None = None,
+        context_summary: str | None = None,
+    ) -> AsyncIterator[dict[str, Any]]:
         """Process a user message through the agentic loop.
 
         Yields SSE-compatible event dicts:
@@ -171,8 +178,19 @@ class CatalogAgent:
             {"type": "tool_result", "name": "...", "result": "..."}
             {"type": "token", "content": "..."}
             {"type": "done"}
+
+        ``context_summary`` (optional) is a short string naming entities from
+        history older than the live window so the model can recall earlier
+        topics across long sessions (see ChatSession.get_context_summary).
         """
         messages: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
+        if context_summary:
+            label = (
+                "Bối cảnh trước đó (các feature đã đề cập)"
+                if detect_language(user_message) == "vi"
+                else "Earlier context (features mentioned)"
+            )
+            messages.append({"role": "system", "content": f"{label}: {context_summary}"})
         if history:
             messages.extend(history[-6:])
         messages.append({"role": "user", "content": user_message})

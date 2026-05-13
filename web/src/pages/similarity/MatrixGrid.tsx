@@ -8,16 +8,16 @@ interface MatrixGridProps {
   onCellClick: (aId: string, bId: string) => void
 }
 
-// 5-bucket scale. Step boundaries chosen so even the lowest bucket has a
-// visible tint (the old `bg-brand/10` in light mode was indistinguishable from
-// the page background). Hover ring kept inside the cell padding so it doesn't
-// shift neighbours.
-function bucketClasses(score: number): { bg: string; text: string } {
-  if (score < 0.5) return { bg: 'bg-brand/15 dark:bg-brand/20', text: 'text-[var(--text-secondary)]' }
-  if (score < 0.65) return { bg: 'bg-brand/30 dark:bg-brand/35', text: 'text-[var(--text-primary)]' }
-  if (score < 0.8) return { bg: 'bg-brand/55 dark:bg-brand/55', text: 'text-white' }
-  if (score < 0.92) return { bg: 'bg-brand/75 dark:bg-brand/75', text: 'text-white' }
-  return { bg: 'bg-brand text-white', text: 'text-white' }
+// 5-bucket scale with bigger opacity jumps so 0.03 and 0.73 don't look alike.
+// Below 0.5 the cell is tinted but text-free — magnitude is communicated by
+// color, the exact value lives in the title= tooltip. Avoids visual clutter
+// when many weak hits land just above the threshold slider.
+function bucketClasses(score: number): { bg: string; text: string; showText: boolean } {
+  if (score < 0.5) return { bg: 'bg-brand/10 dark:bg-brand/15', text: '', showText: false }
+  if (score < 0.65) return { bg: 'bg-brand/30 dark:bg-brand/35', text: 'text-[var(--text-primary)]', showText: true }
+  if (score < 0.8) return { bg: 'bg-brand/55', text: 'text-white', showText: true }
+  if (score < 0.92) return { bg: 'bg-brand/80', text: 'text-white', showText: true }
+  return { bg: 'bg-brand', text: 'text-white', showText: true }
 }
 
 function columnPart(name: string): string {
@@ -28,14 +28,6 @@ function columnPart(name: string): string {
 function sourcePart(name: string): string {
   const idx = name.indexOf('.')
   return idx === -1 ? '' : name.slice(0, idx)
-}
-
-// Hatched stripe pattern for self-similarity diagonal — distinct from real
-// scores at a glance. Uses CSS variable so it picks up the brand color in
-// both themes.
-const DIAGONAL_STYLE: React.CSSProperties = {
-  backgroundImage:
-    'repeating-linear-gradient(45deg, var(--brand) 0 4px, color-mix(in srgb, var(--brand) 60%, transparent) 4px 8px)',
 }
 
 interface CellProps {
@@ -64,13 +56,17 @@ const MatrixCell = memo(function MatrixCell({
   }`
 
   if (kind === 'diagonal') {
+    // Self-similarity is always 1.0 and carries no information; fade into the
+    // background instead of competing with real scores. An em-dash signals
+    // "no data here" without drawing the eye.
     return (
       <td
-        className={`${borderClass} w-10 h-10 align-middle p-0`}
-        style={DIAGONAL_STYLE}
+        className={`${borderClass} bg-[var(--bg-tertiary)] w-10 h-10 align-middle text-center text-[var(--text-tertiary)] select-none`}
         title={`${rowName} (self)`}
         aria-label="self"
-      />
+      >
+        —
+      </td>
     )
   }
 
@@ -90,7 +86,7 @@ const MatrixCell = memo(function MatrixCell({
       title={`${rowName} ↔ ${colName}: ${score.toFixed(3)}`}
       onClick={handle}
     >
-      {score.toFixed(2)}
+      {cls.showText ? score.toFixed(2) : ''}
     </td>
   )
 })
@@ -117,23 +113,38 @@ function MatrixGridImpl({ features, cells, threshold, onCellClick }: MatrixGridP
   }, [features, n])
 
   return (
-    <table className="border-collapse text-[10px] font-mono">
+    <table className="border-collapse text-[10px] font-mono [table-layout:fixed] w-max">
+      {/* w-max forces the table to its intrinsic max-content width (sum of
+          colgroup widths). Without it, table-layout:fixed scales colgroup
+          widths down proportionally to fit the parent container — which is
+          how 40px columns ended up rendering as 18px. The parent's
+          overflow-auto picks up horizontal scroll when total > viewport. */}
+      {/* table-layout:fixed + colgroup pin every column's width regardless
+          of cell content. Without this, the browser would slightly redistribute
+          width based on which cells render score text vs. empty. */}
+      <colgroup>
+        <col className="w-44" />
+        {features.map((f) => (
+          <col key={f.id} className="w-10" />
+        ))}
+      </colgroup>
       <thead>
         <tr>
           <th className="sticky top-0 left-0 z-30 bg-[var(--bg-primary)] border-b border-r border-[var(--border-default)]" />
           {features.map((f, j) => (
             <th
               key={f.id}
-              className={`sticky top-0 z-20 bg-[var(--bg-primary)] border-b border-[var(--border-default)] align-bottom h-32 px-0.5 ${
+              className={`sticky top-0 z-20 bg-[var(--bg-primary)] border-b border-[var(--border-default)] align-bottom w-10 h-36 px-0 ${
                 isNewSource[j] ? 'border-l-2 border-l-[var(--border-default)]' : ''
               }`}
               title={f.name}
             >
-              <div
-                className="origin-bottom-left rotate-[-60deg] translate-x-3 whitespace-nowrap text-[var(--text-secondary)]"
-                style={{ width: '0', height: '110px' }}
-              >
-                <span className="inline-block max-w-[110px] truncate">{columnPart(f.name)}</span>
+              {/* Vertical-writing-mode + 180° flip reads bottom-to-top, with
+                  the first character sitting next to the data cell. w-10 on the
+                  parent th keeps the header column flush with the 40px data
+                  column — no more rotated-out-of-flow misalignment. */}
+              <div className="mx-auto whitespace-nowrap text-[10px] text-[var(--text-secondary)] pb-1 max-h-[136px] overflow-hidden [writing-mode:vertical-rl] rotate-180">
+                {columnPart(f.name)}
               </div>
             </th>
           ))}
