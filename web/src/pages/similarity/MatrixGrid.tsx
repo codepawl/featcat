@@ -113,7 +113,12 @@ function MatrixGridImpl({ features, cells, threshold, onCellClick }: MatrixGridP
   }, [features, n])
 
   return (
-    <table className="border-collapse text-[10px] font-mono [table-layout:fixed]">
+    <table className="border-collapse text-[10px] font-mono [table-layout:fixed] w-max">
+      {/* w-max forces the table to its intrinsic max-content width (sum of
+          colgroup widths). Without it, table-layout:fixed scales colgroup
+          widths down proportionally to fit the parent container — which is
+          how 40px columns ended up rendering as 18px. The parent's
+          overflow-auto picks up horizontal scroll when total > viewport. */}
       {/* table-layout:fixed + colgroup pin every column's width regardless
           of cell content. Without this, the browser would slightly redistribute
           width based on which cells render score text vs. empty. */}
