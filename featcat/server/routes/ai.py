@@ -305,7 +305,11 @@ async def agent_chat(body: ChatRequest, db=Depends(get_db), llm=Depends(get_llm)
         try:
             if llm_ok:
                 agent = CatalogAgent(llm, db)
-                gen = agent.chat(query, history=session.get_history())
+                gen = agent.chat(
+                    query,
+                    history=session.get_history(),
+                    context_summary=session.get_context_summary(),
+                )
             else:
                 agent = FallbackAgent(db)
                 gen = agent.chat(query)

@@ -38,7 +38,12 @@ def _client(db: LocalBackend) -> TestClient:
     return TestClient(app)
 
 
-async def _slow_chat(self: Any, query: str, history: Any = None) -> AsyncIterator[dict[str, Any]]:
+async def _slow_chat(
+    self: Any,
+    query: str,
+    history: Any = None,
+    context_summary: Any = None,
+) -> AsyncIterator[dict[str, Any]]:
     # Slower than the patched CHAT_TIMEOUT so the deadline always wins.
     await asyncio.sleep(10)
     yield {"type": "token", "content": "never reached"}

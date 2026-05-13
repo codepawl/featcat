@@ -245,6 +245,68 @@ class TestSessionManager:
         history = session.get_history()
         assert len(history) == 6
 
+
+# --- get_context_summary tests (Fix 2 / C5) ---
+
+
+class TestContextSummary:
+    def test_returns_none_when_within_window(self):
+        session = ChatSession(session_id="short")
+        session.add_message("user", "what about device_performance.cpu_usage?")
+        session.add_message("assistant", "it has good coverage")
+        assert session.get_context_summary() is None
+
+    def test_extracts_feature_names_from_dropped_turns(self):
+        session = ChatSession(session_id="long")
+        # Turn 1 mentions cpu_usage, then 6 more turns of small talk drop it
+        # out of the 6-message window.
+        session.add_message("user", "tell me about device_performance.cpu_usage")
+        session.add_message("assistant", "it tracks CPU load on devices")
+        for _ in range(6):
+            session.add_message("user", "ok thanks")
+            session.add_message("assistant", "you're welcome")
+        summary = session.get_context_summary()
+        assert summary is not None
+        assert "device_performance.cpu_usage" in summary
+
+    def test_dedups_and_caps_at_eight_entities(self):
+        session = ChatSession(session_id="many")
+        # MAX_MESSAGES=20 trims the oldest, so cap the test fixture under
+        # that budget. Use one packed message per feature so all 10 names
+        # land inside session.messages.
+        names = [f"src_{i}.col_{i}" for i in range(10)]
+        session.add_message("user", "checking: " + ", ".join(names))
+        for _ in range(7):
+            session.add_message("assistant", "ok")
+            session.add_message("user", "more?")
+        summary = session.get_context_summary()
+        assert summary is not None
+        parts = [s.strip() for s in summary.split(",")]
+        assert len(parts) <= 8
+        # Order preserved: earliest-mentioned features survive the cap.
+        assert "src_0.col_0" in parts
+        assert "src_7.col_7" in parts  # last that fits within the cap
+        assert "src_9.col_9" not in parts  # dropped by the cap
+
+    def test_no_features_returns_none(self):
+        session = ChatSession(session_id="bare")
+        for i in range(10):
+            session.add_message("user", f"hello {i}")
+            session.add_message("assistant", f"hi {i}")
+        assert session.get_context_summary() is None
+
+    def test_ignores_non_string_content(self):
+        session = ChatSession(session_id="weird")
+        for _ in range(8):
+            session.add_message("user", "device_performance.cpu_usage update?")
+            session.add_message("assistant", "ok")
+        # Inject a malformed entry (defensive — should not raise)
+        session.messages[0]["content"] = None  # type: ignore[assignment]
+        # Doesn't crash; still pulls features from the well-formed turns.
+        summary = session.get_context_summary()
+        assert summary is not None
+        assert "device_performance.cpu_usage" in summary
+
     def test_ttl_eviction(self):
         mgr = SessionManager()
         mgr.TTL_SECONDS = 0  # Expire immediately
@@ -306,6 +368,65 @@ class TestCatalogAgent:
         tokens = "".join(e["content"] for e in events if e["type"] == "token")
         assert "featcat" in tokens
         assert events[-1]["type"] == "done"
+
+    def test_context_summary_injected_as_system_message(self, db_with_features: CatalogDB):
+        """context_summary is prepended as a second system message before history."""
+        from featcat.ai.agent import CatalogAgent
+
+        mock_llm = MagicMock()
+        mock_llm.chat.return_value = {
+            "content": "ok",
+            "tool_calls": None,
+            "finish_reason": "stop",
+        }
+        agent = CatalogAgent(mock_llm, db_with_features)
+        asyncio.get_event_loop().run_until_complete(
+            _collect_events(
+                agent.chat(
+                    "tóm tắt lại giúp tôi",
+                    history=[{"role": "user", "content": "ok"}],
+                    context_summary="device_performance.cpu_usage, user_data.churn",
+                )
+            )
+        )
+        # First call records the messages list.
+        sent_messages = mock_llm.chat.call_args.args[0]
+        # Two system messages: base prompt + context summary, then history, then user.
+        assert sent_messages[0]["role"] == "system"
+        assert sent_messages[1]["role"] == "system"
+        assert "Bối cảnh trước đó" in sent_messages[1]["content"]
+        assert "device_performance.cpu_usage" in sent_messages[1]["content"]
+
+    def test_context_summary_label_english_for_english_query(self, db_with_features: CatalogDB):
+        from featcat.ai.agent import CatalogAgent
+
+        mock_llm = MagicMock()
+        mock_llm.chat.return_value = {"content": "ok", "tool_calls": None, "finish_reason": "stop"}
+        agent = CatalogAgent(mock_llm, db_with_features)
+        asyncio.get_event_loop().run_until_complete(
+            _collect_events(
+                agent.chat(
+                    "summarize what we discussed",
+                    history=None,
+                    context_summary="user_data.churn",
+                )
+            )
+        )
+        sent_messages = mock_llm.chat.call_args.args[0]
+        assert sent_messages[1]["role"] == "system"
+        assert "Earlier context" in sent_messages[1]["content"]
+        assert "Bối cảnh" not in sent_messages[1]["content"]
+
+    def test_no_context_summary_keeps_single_system_message(self, db_with_features: CatalogDB):
+        from featcat.ai.agent import CatalogAgent
+
+        mock_llm = MagicMock()
+        mock_llm.chat.return_value = {"content": "ok", "tool_calls": None, "finish_reason": "stop"}
+        agent = CatalogAgent(mock_llm, db_with_features)
+        asyncio.get_event_loop().run_until_complete(_collect_events(agent.chat("hi")))
+        sent_messages = mock_llm.chat.call_args.args[0]
+        system_msgs = [m for m in sent_messages if m["role"] == "system"]
+        assert len(system_msgs) == 1
 
     def test_tool_call_then_response(self, db_with_features: CatalogDB):
         """LLM calls a tool, then responds with text."""
