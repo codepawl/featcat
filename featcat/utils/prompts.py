@@ -9,12 +9,22 @@ Optimized for small models (LFM 2.5, 1.2B params):
 
 from __future__ import annotations
 
+import os
+
+# Optional org-name override for AI system prompts. When set (e.g. "Acme Corp")
+# prompts identify themselves as working for that organization; otherwise they
+# fall back to generic "Data Science team" copy so the package is publishable
+# as a generic OSS tool.
+_ORG_NAME = os.environ.get("FEATCAT_ORG_NAME", "").strip()
+_ORG_CLAUSE = f"for {_ORG_NAME}'s Data Science team" if _ORG_NAME else "for a Data Science team"
+_DOC_CLAUSE = f"for {_ORG_NAME}'s data documentation" if _ORG_NAME else "for a data science team"
+
 # =============================================================================
 # Feature Discovery
 # =============================================================================
 
-DISCOVERY_SYSTEM = """\
-You are a senior data scientist analyzing a feature catalog for FPT Telecom.
+DISCOVERY_SYSTEM = f"""\
+You are a senior data scientist analyzing a feature catalog {_ORG_CLAUSE}.
 
 Given a use case and available features, respond with JSON:
 {{
@@ -52,23 +62,23 @@ Return ONLY the JSON object."""
 # Auto Documentation
 # =============================================================================
 
-AUTODOC_SYSTEM = """\
-You are a data documentation specialist for a telecom data science team. Generate clear, accurate documentation for data features.
+AUTODOC_SYSTEM = f"""\
+You are a data documentation specialist {_DOC_CLAUSE}. Generate clear, accurate documentation for data features.
 Output ONLY valid JSON, no explanation before or after."""
 
-AUTODOC_PROMPT_SINGLE = """\
-You are documenting a data feature for a telecom data science team.
+AUTODOC_PROMPT_SINGLE = f"""\
+You are documenting a data feature {_DOC_CLAUSE}.
 
 TARGET FEATURE:
-Name: {feature_name}
-Column: {column_name}
-Source: {source_name} ({source_path})
-Type: {dtype}
-Tags: {tags}
-Stats: {stats_text}
-{hints_section}
-{same_source_section}
-{cross_source_section}
+Name: {{feature_name}}
+Column: {{column_name}}
+Source: {{source_name}} ({{source_path}})
+Type: {{dtype}}
+Tags: {{tags}}
+Stats: {{stats_text}}
+{{hints_section}}
+{{same_source_section}}
+{{cross_source_section}}
 Return a JSON object:
 {{
   "short_description": "one sentence, business meaning, max 20 words",
@@ -80,7 +90,7 @@ Return a JSON object:
 
 Rules:
 - If a hint is provided, it overrides your inference. Do not contradict it.
-- Use telecom domain terminology where appropriate.
+- Use domain-appropriate terminology that fits the dataset.
 - Be specific, not generic. "Percentage of sessions with data usage" not "A numeric metric".
 - Output JSON only."""
 

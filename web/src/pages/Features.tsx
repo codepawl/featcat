@@ -1142,7 +1142,7 @@ function GenerateDocsModal({ open, onClose, features, selectedSpecs, onStarted }
             value={globalHint}
             onChange={(e) => setGlobalHint(e.target.value)}
             rows={2}
-            placeholder="e.g. All features are computed from the last 30 days of telecom usage data. Dataset covers FPT Telecom subscribers in Vietnam."
+            placeholder="e.g. All features are computed from the last 30 days of usage data."
             className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px] focus:border-brand outline-none resize-none"
           />
           <p className="text-[11px] text-[var(--text-tertiary)] mt-1">Applied to all features in this batch. Individual feature hints take priority.</p>

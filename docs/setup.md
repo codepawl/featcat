@@ -126,6 +126,7 @@ featcat reads configuration from environment variables (prefix `FEATCAT_`):
 | `FEATCAT_CATALOG_DB_PATH` | `catalog.db` | Database path |
 | `FEATCAT_MAX_CONTEXT_FEATURES` | `100` | Max features sent to LLM |
 | `FEATCAT_LLM_TIMEOUT` | `120` | Timeout (seconds) for LLM requests |
+| `FEATCAT_ORG_NAME` | *(none)* | Optional org name injected into AI assistant system prompts (e.g. `Acme Corp`). Default is empty, which keeps the prompts generic. |
 | `FEATCAT_S3_ENDPOINT_URL` | *(none)* | S3/MinIO endpoint override (`http://` for plain HTTP) |
 | `FEATCAT_S3_ACCESS_KEY` | *(none)* | S3 access key (must pair with `FEATCAT_S3_SECRET_KEY`) |
 | `FEATCAT_S3_SECRET_KEY` | *(none)* | S3 secret key (must pair with `FEATCAT_S3_ACCESS_KEY`) |

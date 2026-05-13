@@ -1,77 +1,98 @@
-# Triển khai featcat với Docker
+# featcat Docker Deployment
 
-## Yêu cầu
+## Requirements
 
 - Docker >= 20.10
 - Docker Compose >= 2.0
 
-## Cài đặt lần đầu
+> 🇻🇳 Tiếng Việt: see [README-vi.md](README-vi.md).
+
+## Pre-built Image
+
+Each GitHub Release automatically builds and publishes a multi-arch image
+(`linux/amd64` + `linux/arm64`) to GHCR:
 
 ```bash
-# Clone repo
+docker pull ghcr.io/codepawl/featcat:latest
+```
+
+Available tags: `latest`, `<version>` (for example `0.2.5`), and `<major>.<minor>` (for example `0.2`).
+
+To use the published image instead of building locally, update `docker-compose.yml`:
+
+```yaml
+  featcat:
+    # build: .                                  # remove this line
+    image: ghcr.io/codepawl/featcat:latest      # add this line
+```
+
+## First-time Setup
+
+```bash
+# Clone the repo
 git clone https://github.com/codepawl/featcat.git
 cd featcat/deploy
 
-# Tạo file cấu hình
+# Create the config file
 cp .env.example .env
 
-# Sửa DATA_DIR trong .env — trỏ đến thư mục chứa file Parquet
+# Edit DATA_DIR in .env to point at the directory containing Parquet files
 nano .env
 
-# Chạy setup (pull model, start services)
+# Run setup (pull model, start services)
 bash setup.sh
 ```
 
-## Truy cập
+## Access
 
 - **Web UI:** http://<server-ip>:8000
 - **API:** http://<server-ip>:8000/api/health
-- **CLI từ máy khác:**
+- **CLI from another machine:**
   ```bash
   uv pip install featcat
   featcat config set server http://<server-ip>:8000
   featcat stats
   ```
 
-## Import dữ liệu
+## Import Data
 
 ```bash
-# Copy file Parquet vào thư mục DATA_DIR, sau đó:
-docker exec featcat-server featcat add /sources/your_file.parquet --owner <tên>
+# Copy a Parquet file into DATA_DIR, then:
+docker exec featcat-server featcat add /sources/your_file.parquet --owner <name>
 
-# Hoặc import nhiều file:
-docker exec featcat-server featcat add /sources/ --name my-dataset --owner <tên>
+# Or import multiple files:
+docker exec featcat-server featcat add /sources/ --name my-dataset --owner <name>
 ```
 
-## Các lệnh hữu ích
+## Useful Commands
 
 ```bash
-# Xem logs
+# View logs
 docker compose logs -f featcat
 
-# Restart server
+# Restart the server
 docker compose restart featcat
 
-# Dừng tất cả
+# Stop everything
 docker compose down
 
-# Khởi động lại
+# Bring services back up
 docker compose up -d
 
 # Health check
 docker exec featcat-server featcat doctor
 
-# Xem thống kê catalog
+# View catalog stats
 docker exec featcat-server featcat stats
 
-# Xem scheduled jobs
+# View scheduled jobs
 docker exec featcat-server featcat job list
 
-# Chạy manual job
+# Run a manual job
 docker exec featcat-server featcat job run monitor_check
 ```
 
-## Nâng cấp
+## Upgrade
 
 ```bash
 cd featcat
@@ -84,53 +105,53 @@ docker compose up -d
 ## Backup
 
 ```bash
-# Backup catalog database
+# Back up the catalog database
 docker exec featcat-server cp /data/catalog.db /sources/backup/catalog-$(date +%Y%m%d).db
 
-# Hoặc copy từ Docker volume
+# Or copy it from the Docker volume
 docker cp featcat-server:/data/catalog.db ./backup/
 ```
 
-## Cấu hình
+## Configuration
 
-Sửa file `.env` và restart:
+Edit `.env` and restart:
 
-| Biến | Mô tả | Mặc định |
-|------|-------|----------|
-| `DATA_DIR` | Thư mục chứa file Parquet trên host | `./data` |
-| `FEATCAT_PORT` | Port expose cho Web UI + API | `8000` |
-| `LLM_MODEL` | Model LLM sử dụng | `lfm2.5-thinking` |
-| `SERVER_AUTH` | Token xác thực API (để trống = không cần auth) | _(trống)_ |
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DATA_DIR` | Host directory containing Parquet files | `./data` |
+| `FEATCAT_PORT` | Port exposed for the Web UI + API | `8000` |
+| `LLM_MODEL` | LLM model filename | `lfm2.5-thinking` |
+| `SERVER_AUTH` | API auth token (leave empty for no auth) | _(empty)_ |
 
-## Proxy (mạng công ty)
+## Proxy (Corporate Networks)
 
-Nếu server nằm sau proxy, cần cấu hình trong `.env` trước khi chạy `setup.sh`:
+If the server sits behind a proxy, set these in `.env` before running `setup.sh`:
 
 ```env
-HTTP_PROXY=http://proxy.company.com:8080
-HTTPS_PROXY=http://proxy.company.com:8080
+HTTP_PROXY=http://proxy.example.com:8080
+HTTPS_PROXY=http://proxy.example.com:8080
 ```
 
-Proxy được truyền tự động cho cả Ollama (để pull model) và featcat container.
+The proxy is forwarded automatically to both Ollama (for pulling the model) and the featcat container.
 
-**Nếu Ollama vẫn không pull được model qua proxy:**
-1. Cài Ollama trực tiếp trên host
-2. Pull model với proxy:
+**If Ollama still cannot pull the model through the proxy:**
+1. Install Ollama directly on the host
+2. Pull the model with the proxy set:
    ```bash
-   HTTPS_PROXY=http://proxy.company.com:8080 ollama pull lfm2.5-thinking
+   HTTPS_PROXY=http://proxy.example.com:8080 ollama pull lfm2.5-thinking
    ```
-3. Mount thư mục model vào container Ollama (sửa `docker-compose.yml`):
+3. Mount the model directory into the Ollama container (edit `docker-compose.yml`):
    ```yaml
    ollama:
      volumes:
        - /usr/share/ollama/.ollama:/root/.ollama
    ```
 
-## Xử lý sự cố
+## Troubleshooting
 
-**featcat không kết nối được Ollama:**
+**featcat cannot connect to Ollama:**
 ```bash
-# Kiểm tra Ollama đang chạy
+# Check that Ollama is running
 docker compose ps
 docker compose logs ollama
 
@@ -138,15 +159,15 @@ docker compose logs ollama
 docker compose restart ollama
 ```
 
-**Model chưa được pull:**
+**Model has not been pulled:**
 ```bash
 docker exec featcat-ollama ollama list
 docker exec featcat-ollama ollama pull lfm2.5-thinking
 ```
 
-**Catalog database bị lỗi:**
+**Catalog database is corrupted:**
 ```bash
-# Xóa và init lại
+# Remove and reinitialize
 docker exec featcat-server rm /data/catalog.db
 docker compose restart featcat
 ```
