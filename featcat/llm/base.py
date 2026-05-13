@@ -47,6 +47,39 @@ class BaseLLM(ABC):
     def health_check(self) -> bool:
         """Check if the LLM server is running and reachable."""
 
+    def chat(
+        self,
+        messages: list[dict],
+        temperature: float = 0.3,
+        tools: list[dict] | None = None,
+        max_tokens: int | None = None,
+    ) -> dict:
+        """Send a chat-completion request with optional tool calling.
+
+        Returns ``{"content": str, "tool_calls": list | None, "finish_reason": str}``.
+        Default raises so backends that only need the prompt-style ``generate``
+        interface (and test stubs) don't have to implement it. LlamaCppLLM and
+        CachedLLM override with real implementations.
+        """
+        del messages, temperature, tools, max_tokens
+        raise NotImplementedError(f"{type(self).__name__} does not implement chat()")
+
+    def stream_chat(
+        self,
+        messages: list[dict],
+        temperature: float = 0.3,
+        max_tokens: int | None = None,
+    ) -> Iterator[str]:
+        """Stream chat completion tokens from message history.
+
+        Default raises (see :meth:`chat` for rationale). Yields nothing in
+        the body so the method's return type is still recognised as
+        Iterator[str] at type-check time.
+        """
+        del messages, temperature, max_tokens
+        raise NotImplementedError(f"{type(self).__name__} does not implement stream_chat()")
+        yield ""  # unreachable; keeps this a generator for static analysis
+
     def generate_json(
         self,
         prompt: str,
