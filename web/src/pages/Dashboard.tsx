@@ -125,7 +125,7 @@ export function Dashboard() {
       <PageHeader title={t('page.title')} actions={<RefreshButton onClick={load} loading={loading} />} />
 
       {/* Section 1: Catalog Overview */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div data-testid="stats-cards" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {loading ? (
           Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20" />)
         ) : (

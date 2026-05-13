@@ -124,6 +124,7 @@ export function Groups() {
               groups.map((g) => (
                 <div
                   key={g.name}
+                  data-testid="group-row"
                   onClick={() => selectGroup(g)}
                   className={`p-3 rounded-lg border cursor-pointer transition-all ${
                     selected?.name === g.name
@@ -153,7 +154,7 @@ export function Groups() {
           ) : detailLoading ? (
             <Skeleton className="h-48 flex-1" />
           ) : detail ? (
-            <div className="bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-xl p-5 flex-1 flex flex-col">
+            <div data-testid="group-detail" className="bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-xl p-5 flex-1 flex flex-col">
               <div className="flex items-start justify-between mb-4">
                 <div>
                   <h2 className="text-lg font-semibold">{detail.name}</h2>

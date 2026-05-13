@@ -510,7 +510,7 @@ export function Chat() {
           {/* Reading width capped at 800px (matches ChatGPT/Claude). Both
               AI and user messages share this width; the centred container
               keeps line length comfortable on wide displays. */}
-          <div className="max-w-[1200px] mx-auto">
+          <div data-testid="chat-messages" className="max-w-[1200px] mx-auto">
             {messages.map((m, idx) => (
               <ChatMessage
                 key={m.id}

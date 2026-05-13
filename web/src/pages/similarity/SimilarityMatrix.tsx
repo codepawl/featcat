@@ -222,7 +222,7 @@ export function SimilarityMatrix() {
           )}
         </div>
 
-        <div className="flex-1 min-h-0 overflow-auto rounded border border-[var(--border-subtle)]">
+        <div data-testid="similarity-matrix" className="flex-1 min-h-0 overflow-auto rounded border border-[var(--border-subtle)]">
           {cappedIds.length < 2 ? (
             <EmptyState
               title={t('matrix.empty.too_few.title')}

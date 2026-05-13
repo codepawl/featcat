@@ -512,7 +512,7 @@ export function Features() {
         </div>
       )}
 
-      <div className="bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-xl overflow-hidden p-3">
+      <div data-testid="features-list" className="bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-xl overflow-hidden p-3">
         {loading && features.length === 0 ? (
           <Skeleton className="h-48" />
         ) : isPaginated ? (

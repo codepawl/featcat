@@ -926,7 +926,7 @@ export function Lineage() {
           </div>
         </div>
       ) : (
-        <div ref={containerRef} className="relative flex-1 min-h-[500px] bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-xl overflow-hidden">
+        <div ref={containerRef} data-testid="lineage-graph" className="relative flex-1 min-h-[500px] bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-xl overflow-hidden">
           {effectiveMode === 'svg'
             ? <svg ref={svgRef} className="w-full h-full" />
             : <canvas ref={canvasRef} className="w-full h-full block" />
