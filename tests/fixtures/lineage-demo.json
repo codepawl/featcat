@@ -1,0 +1,71 @@
+{
+  "description": "Demo lineage data for featcat — realistic feature derivation patterns across three sources (device_logs, client_logs, demand_v2). Covers rolling aggregates, normalization, multi-parent aggregation, and 3-level chain depth.",
+  "version": "1.0",
+  "edges": [
+    {
+      "child": "device_logs.cpu_usage_30d_avg",
+      "parent": "device_logs.cpu_usage_raw",
+      "transformation": "rolling_mean(window='30d')"
+    },
+    {
+      "child": "device_logs.memory_usage_30d_avg",
+      "parent": "device_logs.memory_usage_raw",
+      "transformation": "rolling_mean(window='30d')"
+    },
+    {
+      "child": "client_logs.latency_p95_30d",
+      "parent": "client_logs.request_latency",
+      "transformation": "rolling_quantile(0.95, window='30d')"
+    },
+    {
+      "child": "demand_v2.volume_7d_ma",
+      "parent": "demand_v2.daily_volume",
+      "transformation": "rolling_mean(window='7d')"
+    },
+    {
+      "child": "device_logs.cpu_zscore",
+      "parent": "device_logs.cpu_usage_raw",
+      "transformation": "(x - mean) / std over 90d window"
+    },
+    {
+      "child": "client_logs.error_rate_normalized",
+      "parent": "client_logs.error_count",
+      "transformation": "error_count / total_requests, clipped to [0, 1]"
+    },
+    {
+      "child": "device_logs.health_score",
+      "parent": "device_logs.cpu_usage_30d_avg",
+      "transformation": "weighted_avg(cpu_30d * 0.5, mem_30d * 0.5)"
+    },
+    {
+      "child": "device_logs.health_score",
+      "parent": "device_logs.memory_usage_30d_avg",
+      "transformation": "weighted_avg(cpu_30d * 0.5, mem_30d * 0.5)"
+    },
+    {
+      "child": "client_logs.service_quality",
+      "parent": "client_logs.latency_p95_30d",
+      "transformation": "100 - (latency_p95 * 0.6 + error_rate * 40)"
+    },
+    {
+      "child": "client_logs.service_quality",
+      "parent": "client_logs.error_rate_normalized",
+      "transformation": "100 - (latency_p95 * 0.6 + error_rate * 40)"
+    },
+    {
+      "child": "device_logs.cpu_anomaly_flag",
+      "parent": "device_logs.cpu_usage_30d_avg",
+      "transformation": "abs(cpu_zscore) > 3 OR cpu_30d_avg > p99"
+    },
+    {
+      "child": "device_logs.cpu_anomaly_flag",
+      "parent": "device_logs.cpu_zscore",
+      "transformation": "abs(cpu_zscore) > 3 OR cpu_30d_avg > p99"
+    },
+    {
+      "child": "demand_v2.volume_anomaly_flag",
+      "parent": "demand_v2.volume_7d_ma",
+      "transformation": "abs(volume - volume_7d_ma) > 3 * stddev"
+    }
+  ]
+}

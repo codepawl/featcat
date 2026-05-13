@@ -9,9 +9,11 @@ import sys
 from pathlib import Path
 
 import typer
+from pydantic import BaseModel
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
+from sqlalchemy import text
 
 from .catalog.factory import get_backend
 from .catalog.local import DEFAULT_DB, LocalBackend
@@ -3257,6 +3259,417 @@ def _apply_proposed_edges(db, edges) -> tuple[int, int]:
         console.print(f"[yellow]  skip:[/yellow] parent not in catalog: {edge.parent}")
         skipped += 1
     return written, skipped
+
+
+# =========================================================================
+# Lineage demo fixture seeding (lineage seed / lineage clear --demo-only)
+# =========================================================================
+
+# Marker values used to identify lineage rows + features created by the demo
+# seeder. The `detected_method` column on feature_lineage already accepts
+# free-form strings ('manual', 'sql_parse', 'imported'); 'demo' fits the same
+# pattern without a schema change. For features we tag them so the existing
+# `tag` filter on list_features can find them later.
+DEMO_DETECTED_METHOD = "demo"
+DEMO_FEATURE_TAG = "demo"
+_DEMO_FEATURE_DESC = "Demo feature (auto-created from lineage fixture)"
+_DEMO_SOURCE_DESC = "Auto-created by `featcat lineage seed` for demo lineage"
+
+
+class _LineageFixtureEdge(BaseModel):
+    """One edge in a lineage fixture file."""
+
+    child: str
+    parent: str
+    transformation: str = ""
+
+
+class _LineageFixture(BaseModel):
+    """Top-level schema for `tests/fixtures/lineage-demo.json` and friends."""
+
+    description: str = ""
+    version: str = "1.0"
+    edges: list[_LineageFixtureEdge]
+
+
+def _infer_demo_dtype(feature_name: str) -> str:
+    """Guess a sensible dtype from the feature-name suffix.
+
+    Demo features have no real data, so the dtype is purely cosmetic — it
+    shows up in the lineage graph node label. Aiming for plausible types
+    that match what each feature would be in reality.
+    """
+    col = feature_name.rsplit(".", 1)[-1].lower()
+    if col.endswith("_flag") or col.endswith("_anomaly"):
+        return "bool"
+    if col.endswith("_count") or col.endswith("_id"):
+        return "int64"
+    return "float64"
+
+
+def _split_feature_name(name: str) -> tuple[str, str]:
+    """Split `source.column` into `(source_name, column_name)`.
+
+    Feature names without a dot are rejected — every feature in a fixture
+    must belong to a registered (or auto-creatable) source so the lineage
+    graph can colour nodes by source.
+    """
+    if "." not in name:
+        raise ValueError(
+            f"Fixture feature name must be 'source.column', got: {name!r}. "
+            "Lineage seeding needs a source prefix to bucket the feature."
+        )
+    src, col = name.split(".", 1)
+    if not src or not col:
+        raise ValueError(f"Empty source or column in feature name: {name!r}")
+    return src, col
+
+
+def _ensure_demo_source(db, name: str, *, dry_run: bool):
+    """Return the source for `name`, creating a placeholder if missing.
+
+    The placeholder path is `/demo/<name>.parquet` — it doesn't have to
+    exist on disk; lineage doesn't read source data, only joins by ID. We
+    skip path uniqueness collisions by checking name first.
+    """
+    existing = db.get_source_by_name(name)
+    if existing is not None:
+        return existing, False
+    if dry_run:
+        return None, True
+    source = db.add_source(
+        DataSource(
+            name=name,
+            path=f"/demo/{name}.parquet",
+            description=_DEMO_SOURCE_DESC,
+        )
+    )
+    return source, True
+
+
+def _ensure_demo_feature(db, full_name: str, *, dry_run: bool):
+    """Return the feature for `full_name`, creating a tagged stub if missing.
+
+    Returns ``(feature_or_none, was_created)``. In dry-run mode we return
+    ``(None, True)`` for features that would be created; callers should
+    only consume the feature object outside dry-run.
+    """
+    existing = db.get_feature_by_name(full_name)
+    if existing is not None:
+        return existing, False
+
+    src_name, col_name = _split_feature_name(full_name)
+    source, _ = _ensure_demo_source(db, src_name, dry_run=dry_run)
+    if dry_run:
+        return None, True
+    assert source is not None, "non-dry-run must always return a source"
+    feature = Feature(
+        name=full_name,
+        data_source_id=source.id,
+        column_name=col_name,
+        dtype=_infer_demo_dtype(full_name),
+        description=_DEMO_FEATURE_DESC,
+        tags=[DEMO_FEATURE_TAG],
+    )
+    db.upsert_feature(feature)
+    # upsert_feature returns the same model we passed in, but re-read so
+    # we're sure we have the persisted row (with the source_id resolved).
+    persisted = db.get_feature_by_name(full_name)
+    return persisted, True
+
+
+def _load_lineage_fixture(path: Path) -> _LineageFixture:
+    """Read a JSON file and validate it against ``_LineageFixture``.
+
+    Raises ``typer.Exit(1)`` with a clear console message on parse or
+    schema errors — callers shouldn't need to handle JSONDecodeError or
+    pydantic.ValidationError directly.
+    """
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except OSError as e:
+        console.print(f"[red]Could not read fixture {path}:[/red] {e}")
+        raise typer.Exit(1) from None
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as e:
+        console.print(f"[red]Invalid JSON in {path}:[/red] {e}")
+        raise typer.Exit(1) from None
+    try:
+        return _LineageFixture.model_validate(data)
+    except Exception as e:  # pydantic.ValidationError, but kept loose to avoid the import.
+        console.print(f"[red]Fixture schema validation failed:[/red] {e}")
+        raise typer.Exit(1) from None
+
+
+@lineage_app.command("seed")
+def lineage_seed(
+    fixture_file: Path = typer.Argument(  # noqa: B008
+        ...,
+        exists=True,
+        readable=True,
+        help="Path to a lineage fixture JSON file (see tests/fixtures/lineage-demo.json).",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Print what would be created without writing to the catalog.",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Re-create lineage edges that already exist (transforms get updated).",
+    ),
+) -> None:
+    """Import lineage edges from a JSON fixture, auto-creating any missing
+    features and sources as demo stubs.
+
+    Stub features get tag ``demo`` and edges get ``detected_method='demo'``
+    so ``featcat lineage clear --demo-only`` can roll the whole thing back.
+    Existing features and edges (created by real workflows) are never
+    touched.
+
+    Examples:
+
+        featcat lineage seed tests/fixtures/lineage-demo.json --dry-run
+        featcat lineage seed tests/fixtures/lineage-demo.json
+    """
+    fixture = _load_lineage_fixture(fixture_file)
+    if not fixture.edges:
+        console.print("[yellow]Fixture has no edges. Nothing to do.[/yellow]")
+        return
+
+    db = _get_db()
+
+    # Plan phase — compute, before touching the DB, what's new vs. existing.
+    # We resolve every feature name once (set), then walk edges to count
+    # new/duplicate. In dry-run we stop here and print; otherwise we proceed
+    # to the apply phase below.
+    unique_features: list[str] = []
+    seen: set[str] = set()
+    for edge in fixture.edges:
+        for name in (edge.child, edge.parent):
+            if name not in seen:
+                seen.add(name)
+                unique_features.append(name)
+
+    sources_to_create: list[str] = []
+    features_to_create: list[str] = []
+    for fname in unique_features:
+        src_name, _ = _split_feature_name(fname)
+        if db.get_source_by_name(src_name) is None and src_name not in sources_to_create:
+            sources_to_create.append(src_name)
+        if db.get_feature_by_name(fname) is None:
+            features_to_create.append(fname)
+
+    console.print(f"[bold]Loading fixture:[/bold] {fixture_file}")
+    console.print(
+        f"Found [cyan]{len(fixture.edges)}[/cyan] edge(s) across [cyan]{len(unique_features)}[/cyan] feature(s)."
+    )
+
+    if sources_to_create:
+        console.print(f"\n[bold]Sources to auto-create ({len(sources_to_create)}):[/bold]")
+        for s in sources_to_create:
+            console.print(f"  - [magenta]{s}[/magenta] (path: /demo/{s}.parquet)")
+
+    if features_to_create:
+        console.print(f"\n[bold]Features to auto-create ({len(features_to_create)}):[/bold]")
+        for fname in features_to_create:
+            console.print(f"  - [cyan]{fname}[/cyan] ({_infer_demo_dtype(fname)})")
+
+    if dry_run:
+        console.print(f"\n[bold]Edges to seed ({len(fixture.edges)}):[/bold]")
+        for edge in fixture.edges:
+            console.print(f"  - [cyan]{edge.child}[/cyan] <- [magenta]{edge.parent}[/magenta]")
+        console.print("\n[dim]Dry run — no changes written. Re-run without --dry-run to apply.[/dim]")
+        return
+
+    # Apply phase — ensure sources and features first so we can resolve IDs
+    # for each edge.
+    sources_created = 0
+    for src_name in sources_to_create:
+        _, was_new = _ensure_demo_source(db, src_name, dry_run=False)
+        if was_new:
+            sources_created += 1
+
+    features_created = 0
+    for fname in features_to_create:
+        _, was_new = _ensure_demo_feature(db, fname, dry_run=False)
+        if was_new:
+            features_created += 1
+
+    edges_created = 0
+    edges_skipped = 0
+    edges_replaced = 0
+    for edge in fixture.edges:
+        child = db.get_feature_by_name(edge.child)
+        parent = db.get_feature_by_name(edge.parent)
+        # Should never happen — we just ensured both above.
+        assert child is not None and parent is not None
+        if _lineage_edge_exists(db, child.id, parent.id):
+            if force:
+                db.remove_lineage(child.id, parent.id)
+                _insert_demo_lineage_edge(db, child.id, parent.id, edge.transformation)
+                edges_replaced += 1
+            else:
+                edges_skipped += 1
+            continue
+        _insert_demo_lineage_edge(db, child.id, parent.id, edge.transformation)
+        edges_created += 1
+
+    console.print(
+        f"\n[green]Created {sources_created} source(s), {features_created} feature(s), {edges_created} edge(s).[/green]"
+    )
+    if edges_replaced:
+        console.print(f"[yellow]Replaced {edges_replaced} existing edge(s) (--force).[/yellow]")
+    if edges_skipped:
+        console.print(f"[dim]Skipped {edges_skipped} duplicate edge(s). Use --force to re-create.[/dim]")
+    console.print("\n[dim]View the lineage graph at http://localhost:8000/lineage[/dim]")
+
+
+def _lineage_edge_exists(db, child_feature_id: str, parent_feature_id: str) -> bool:
+    """Return True iff a feature→feature lineage row exists for this pair.
+
+    The seeder uses this to count duplicates (without --force) and decide
+    whether to replace (with --force). Source-column edges live in the
+    same table but are keyed differently — the demo fixture doesn't emit
+    them, so we only check the feature→feature case.
+    """
+    with db.session() as s:
+        row = s.execute(
+            text(
+                "SELECT 1 FROM feature_lineage "
+                "WHERE parent_type = 'feature' "
+                "  AND child_feature_id = :cid AND parent_feature_id = :pid"
+            ),
+            {"cid": child_feature_id, "pid": parent_feature_id},
+        ).first()
+        return row is not None
+
+
+def _insert_demo_lineage_edge(db, child_feature_id: str, parent_feature_id: str, transform: str) -> None:
+    """Insert a demo feature→feature lineage row directly.
+
+    Why not just call ``db.add_lineage``? That method's ON CONFLICT clause
+    targets the widened 5-column unique constraint that landed in the T1.1
+    SQLAlchemy model (``uq_feature_lineage_pair``). Catalogs created before
+    T1.1 keep the old 2-column ``UNIQUE(child_feature_id, parent_feature_id)``
+    constraint — ``init_db`` adds the new columns via ALTER TABLE but doesn't
+    rebuild the constraint, so the ON CONFLICT clause fails to resolve.
+
+    The seeder already pre-checks duplicates via ``_lineage_edge_exists``
+    so we don't need conflict resolution here — a plain INSERT works on
+    both legacy and current schemas.
+    """
+    import uuid
+    from datetime import datetime, timezone
+
+    with db.session() as s:
+        s.execute(
+            text(
+                "INSERT INTO feature_lineage "
+                "(id, child_feature_id, parent_type, parent_feature_id, "
+                " parent_source_id, parent_column, transform, "
+                " detected_method, created_at) "
+                "VALUES (:id, :cid, 'feature', :pid, NULL, NULL, :transform, "
+                "        :method, :now)"
+            ),
+            {
+                "id": str(uuid.uuid4()),
+                "cid": child_feature_id,
+                "pid": parent_feature_id,
+                "transform": transform,
+                "method": DEMO_DETECTED_METHOD,
+                "now": datetime.now(timezone.utc),
+            },
+        )
+        s.commit()
+
+
+@lineage_app.command("clear")
+def lineage_clear(
+    demo_only: bool = typer.Option(
+        False,
+        "--demo-only",
+        help=(
+            "Remove only the rows created by `lineage seed` "
+            "(detected_method='demo' edges + 'demo'-tagged stub features)."
+        ),
+    ),
+    yes: bool = typer.Option(
+        False,
+        "--yes",
+        "-y",
+        help="Skip the confirmation prompt.",
+    ),
+) -> None:
+    """Remove demo lineage seeded by `featcat lineage seed`.
+
+    Currently only ``--demo-only`` is supported — clearing real lineage
+    needs a different UX and isn't part of this command. Pass ``--yes`` to
+    skip the prompt (useful from scripts).
+    """
+    if not demo_only:
+        console.print(
+            "[red]Refusing to clear without --demo-only.[/red] "
+            "Mass lineage deletion is not supported via this command yet."
+        )
+        raise typer.Exit(2)
+
+    db = _get_db()
+
+    # Count first so we can report exactly what we'll touch (and skip the
+    # confirmation entirely when there's nothing to do).
+    with db.session() as s:
+        edge_count = int(
+            s.execute(
+                text("SELECT COUNT(*) FROM feature_lineage WHERE detected_method = :m"),
+                {"m": DEMO_DETECTED_METHOD},
+            ).scalar()
+            or 0
+        )
+    demo_features = db.list_features(tag=DEMO_FEATURE_TAG)
+    if edge_count == 0 and not demo_features:
+        console.print("[yellow]No demo lineage or features found. Nothing to clear.[/yellow]")
+        return
+
+    console.print(
+        f"Will remove [cyan]{edge_count}[/cyan] demo edge(s) and [cyan]{len(demo_features)}[/cyan] demo feature(s)."
+    )
+    if not yes and not typer.confirm("Proceed?", default=False):
+        console.print("[yellow]Aborted.[/yellow]")
+        raise typer.Exit(0)
+
+    # Delete demo edges first so the feature delete doesn't have to cascade
+    # them (it would, via FK ON DELETE CASCADE, but explicit is clearer for
+    # the user-visible counters).
+    with db.session() as s:
+        s.execute(
+            text("DELETE FROM feature_lineage WHERE detected_method = :m"),
+            {"m": DEMO_DETECTED_METHOD},
+        )
+        s.commit()
+
+    removed_features = db.bulk_delete_features([f.id for f in demo_features]) if demo_features else 0
+
+    # Identify and drop demo sources that are now empty (no remaining
+    # features). Real sources that happened to share a name with the
+    # fixture are untouched because they were created with a different
+    # description; we filter on that.
+    demo_sources = [
+        s for s in db.list_sources() if s.description == _DEMO_SOURCE_DESC and not db.list_features(source_name=s.name)
+    ]
+    removed_sources = 0
+    for src in demo_sources:
+        try:
+            db.delete_source(src.name)
+            removed_sources += 1
+        except KeyError:
+            pass  # Race with another caller — fine.
+
+    console.print(
+        f"[green]Removed {edge_count} edge(s), {removed_features} feature(s), {removed_sources} source(s).[/green]"
+    )
 
 
 # =========================================================================
