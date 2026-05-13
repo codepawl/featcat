@@ -113,7 +113,16 @@ function MatrixGridImpl({ features, cells, threshold, onCellClick }: MatrixGridP
   }, [features, n])
 
   return (
-    <table className="border-collapse text-[10px] font-mono">
+    <table className="border-collapse text-[10px] font-mono [table-layout:fixed]">
+      {/* table-layout:fixed + colgroup pin every column's width regardless
+          of cell content. Without this, the browser would slightly redistribute
+          width based on which cells render score text vs. empty. */}
+      <colgroup>
+        <col className="w-44" />
+        {features.map((f) => (
+          <col key={f.id} className="w-10" />
+        ))}
+      </colgroup>
       <thead>
         <tr>
           <th className="sticky top-0 left-0 z-30 bg-[var(--bg-primary)] border-b border-r border-[var(--border-default)]" />

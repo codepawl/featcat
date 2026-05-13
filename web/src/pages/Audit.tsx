@@ -51,7 +51,7 @@ export function Audit() {
   })
 
   return (
-    <div>
+    <div data-testid="audit-page">
       <PageHeader
         title={t('page.title')}
         subtitle={t('page.subtitle')}
