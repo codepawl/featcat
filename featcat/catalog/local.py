@@ -278,7 +278,7 @@ class LocalBackend(CatalogBackend):
             # because features.id is TEXT — can't use it as content_rowid. Tokenizer
             # strips Vietnamese diacritics so "cpu" matches "cpù". Triggers below
             # keep the index synced with all INSERT/UPDATE/DELETE paths in the
-            # features table. P2.1 in audits/ai-chat-mvp-failure-analysis-2026-05-12.md.
+            # features table.
             "CREATE VIRTUAL TABLE IF NOT EXISTS features_fts USING fts5("
             "    id UNINDEXED, name, description, tags, column_name,"
             "    tokenize='unicode61 remove_diacritics 2'"

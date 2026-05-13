@@ -23,7 +23,6 @@ The suite seeds 14 features once per run via `POST /api/scan-bulk` against `test
 ```
 web/playwright.config.ts          ← config + dual webServer (backend + Vite)
 web/tests/e2e/
-├── PLAN.md                       ← which flows are covered (canonical source of truth)
 ├── *.spec.ts                     ← one per flow
 └── fixtures/
     ├── constants.ts              ← ports, paths, URLs

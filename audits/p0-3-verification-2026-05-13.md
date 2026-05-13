@@ -6,7 +6,7 @@
 **Hardware:** llama.cpp `gemma-4-E2B-it-Q4_K_M.gguf` Docker container on local WSL2, 4 threads, ctx 4096
 **Test corpus:** `featcat-mvp-test-prompts.md` Sections A–E (35 prompts; 28 single-shot, 5 multi-turn, 2 unmeasurable)
 
-This document **replaces** the speculative numbers in `audits/ai-chat-mvp-failure-analysis-2026-05-12.md` Section 3 with measured numbers. Scripts that produced them: `scripts/measure_intent_savings.py`, `scripts/run_mvp_tests.py`. Raw artifacts in `artifacts/p0-3-*.csv`.
+This document captures measured numbers (token reduction, latency, accuracy) for the P0.3 intent classifier — replacing the speculative pre-implementation estimates. Scripts that produced them: `scripts/measure_intent_savings.py`, `scripts/run_mvp_tests.py`. Raw artifacts in `artifacts/p0-3-*.csv`.
 
 ---
 
