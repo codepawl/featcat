@@ -321,3 +321,9 @@ These are limitations to ship as known issues, not block on:
 ---
 
 Analysis complete. Awaiting prioritization decision on which fixes to ship first.
+
+---
+
+## Follow-up: P0.3 verification (2026-05-13)
+
+The P0.3 intent classifier + tool-subset routing has been implemented (branch `feat/intent-classifier`) and measured. **See [`p0-3-verification-2026-05-13.md`](p0-3-verification-2026-05-13.md) for measured numbers — the speculative claims in Section 3 of this doc are replaced there.** Headline: 58.6% median total-prompt token reduction, 28.6% fallback rate, mechanical 35-prompt pass-rate 85.7% (up from ~75% pre-PR #60).
