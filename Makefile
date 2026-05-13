@@ -1,4 +1,7 @@
-.PHONY: install lint format type-check test test-cov build clean check release-check docs docs-serve docs-clean bench
+.PHONY: install lint format type-check test test-cov build clean check release-check docs docs-serve docs-clean bench docker-version docker-build docker-push
+
+DOCKER_IMAGE ?= nxank4/featcat
+VERSION := $(shell grep '^__version__' featcat/__init__.py | cut -d'"' -f2)
 
 install:
 	uv pip install -e ".[dev,tui,s3,server]"
@@ -50,3 +53,21 @@ bench:
 
 release-check: clean check build
 	twine check dist/*
+
+# Docker image build + push. Version flows from featcat/__init__.py so it
+# stays in lockstep with the PyPI release (Hatch reads the same file).
+docker-version:
+	@echo $(VERSION)
+
+docker-build:
+	docker build \
+	  --build-arg VERSION=$(VERSION) \
+	  --build-arg HTTP_PROXY=$${HTTP_PROXY:-} \
+	  --build-arg HTTPS_PROXY=$${HTTPS_PROXY:-} \
+	  --tag $(DOCKER_IMAGE):$(VERSION) \
+	  --tag $(DOCKER_IMAGE):latest \
+	  --file deploy/Dockerfile .
+
+docker-push: docker-build
+	docker push $(DOCKER_IMAGE):$(VERSION)
+	docker push $(DOCKER_IMAGE):latest

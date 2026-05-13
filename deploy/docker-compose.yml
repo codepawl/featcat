@@ -35,6 +35,7 @@ services:
     restart: unless-stopped
 
   featcat:
+    image: nxank4/featcat:${FEATCAT_VERSION:-latest}
     build:
       context: ..
       dockerfile: deploy/Dockerfile
@@ -89,6 +90,7 @@ services:
     restart: unless-stopped
 
   featcat-worker:
+    image: nxank4/featcat:${FEATCAT_VERSION:-latest}
     build:
       context: ..
       dockerfile: deploy/Dockerfile
@@ -110,6 +112,7 @@ services:
     restart: unless-stopped
 
   featcat-beat:
+    image: nxank4/featcat:${FEATCAT_VERSION:-latest}
     build:
       context: ..
       dockerfile: deploy/Dockerfile
@@ -124,6 +127,7 @@ services:
     restart: unless-stopped
 
   featcat-flower:
+    image: nxank4/featcat:${FEATCAT_VERSION:-latest}
     build:
       context: ..
       dockerfile: deploy/Dockerfile

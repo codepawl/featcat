@@ -19,6 +19,18 @@ RUN DOCKER_BUILD=1 bun run build
 FROM python:3.12-slim
 WORKDIR /app
 
+# Image version. Built by `make docker-build`, which derives this from
+# `featcat/__init__.py` (the single source of truth that Hatch also reads
+# for PyPI). Override at build time: `--build-arg VERSION=x.y.z`.
+ARG VERSION=0.4.0
+ENV FEATCAT_VERSION=$VERSION
+
+LABEL org.opencontainers.image.title="featcat" \
+      org.opencontainers.image.description="AI-powered Feature Catalog with CLI, TUI, REST API, and Web UI" \
+      org.opencontainers.image.version="$VERSION" \
+      org.opencontainers.image.source="https://github.com/codepawl/featcat" \
+      org.opencontainers.image.licenses="MIT"
+
 ARG HTTP_PROXY=
 ARG HTTPS_PROXY=
 
