@@ -32,8 +32,14 @@ MAX_TOOL_ROUNDS = 2
 # something in production.
 _INTENT_FILTER_ON = os.environ.get("FEATCAT_INTENT_FILTER", "on").lower() != "off"
 
-SYSTEM_PROMPT = """\
-You are featcat, a feature catalog assistant for FPT Telecom's Data Science team.
+# Optional org-name override for the assistant identity. Default is generic so
+# the package is publishable as an OSS tool; deployers can rebrand by setting
+# FEATCAT_ORG_NAME=<their org> in the server environment.
+_ORG_NAME = os.environ.get("FEATCAT_ORG_NAME", "").strip()
+_ORG_CLAUSE = f"for {_ORG_NAME}'s Data Science team" if _ORG_NAME else "for a Data Science team"
+
+SYSTEM_PROMPT = f"""\
+You are featcat, a feature catalog assistant {_ORG_CLAUSE}.
 
 IMPORTANT: When the user asks about features, data quality, groups, sources, or use cases, \
 you MUST call the appropriate tool immediately. Do NOT describe tools or ask what the user \
