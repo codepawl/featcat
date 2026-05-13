@@ -174,6 +174,22 @@ class CatalogBackend(ABC):
         del source_name, column, max_depth
         return []
 
+    def find_duplicate_pairs(
+        self,
+        threshold: float,
+        limit: int,
+        sources: list[str] | None = None,
+    ) -> tuple[list[dict], int, str | None]:
+        """Find feature pairs whose similarity score exceeds the threshold.
+
+        Returns ``(pairs, total_before_limit, summary_message)``. Default
+        implementation returns an empty result so backends without similarity
+        data (e.g. RemoteBackend before the endpoint exists) satisfy the
+        interface without raising. LocalBackend overrides with a real query.
+        """
+        del threshold, limit, sources
+        return [], 0, None
+
     def full_text_search(
         self,
         query: str,
