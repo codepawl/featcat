@@ -44,6 +44,11 @@ lineage_app = typer.Typer(help="Lineage management (T1.1)")
 lineage_edge_app = typer.Typer(help="Manage individual lineage edges")
 lineage_app.add_typer(lineage_edge_app, name="edge")
 demo_app = typer.Typer(help="Demo catalog data: seed and clear")
+backup_app = typer.Typer(
+    name="backup",
+    help="Catalog backup utilities.",
+    invoke_without_command=True,
+)
 app.add_typer(source_app, name="source")
 app.add_typer(feature_app, name="feature")
 app.add_typer(doc_app, name="doc")
@@ -56,6 +61,7 @@ app.add_typer(usage_app, name="usage")
 app.add_typer(actions_app, name="actions")
 app.add_typer(lineage_app, name="lineage")
 app.add_typer(demo_app, name="demo")
+app.add_typer(backup_app, name="backup")
 
 console = Console()
 
@@ -4216,6 +4222,171 @@ def demo_clear(
         f"  groups:   -{stats.groups_removed}\n"
         f"  lineage:  -{stats.lineage_edges_removed}"
     )
+
+
+# =========================================================================
+# Backup / restore
+# =========================================================================
+
+
+@backup_app.callback()
+def backup_root(
+    ctx: typer.Context,
+    output: Path | None = typer.Option(  # noqa: B008
+        None,
+        "--output",
+        "-o",
+        help="Path to the backup archive (.tar.gz). Default: ./catalog-backup-<ts>.tar.gz",
+    ),
+) -> None:
+    """Create a backup archive of the current catalog."""
+    if ctx.invoked_subcommand is not None:
+        return
+    _backup_create(output)
+
+
+@backup_app.command("list")
+def backup_list_cmd(
+    directory: Path = typer.Option(  # noqa: B008
+        Path("."), "--dir", "-d", help="Directory to scan for *.tar.gz backup archives."
+    ),
+) -> None:
+    """List backup archives in a directory."""
+    archives = sorted(directory.glob("*.tar.gz"))
+    if not archives:
+        console.print(f"[dim]No backup archives in {directory}[/dim]")
+        return
+    table = Table(title=f"Backups in {directory}")
+    table.add_column("File")
+    table.add_column("Size")
+    table.add_column("Created")
+    for archive in archives:
+        size_mb = archive.stat().st_size / 1024 / 1024
+        meta = _read_archive_metadata(archive)
+        created = meta.created_at.isoformat() if meta else "(unreadable metadata)"
+        table.add_row(archive.name, f"{size_mb:.2f} MB", created)
+    console.print(table)
+
+
+@app.command("restore")
+def restore_cmd(
+    input_path: Path = typer.Option(  # noqa: B008
+        ...,
+        "--input",
+        "-i",
+        exists=True,
+        readable=True,
+        help="Path to a backup archive (.tar.gz) created by `featcat backup`.",
+    ),
+    force: bool = typer.Option(False, "--force", help="Overwrite the destination catalog even if it has data."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt."),
+) -> None:
+    """Restore a catalog from a backup archive."""
+    import tempfile
+
+    from .backup import restore_catalog, unpack_archive
+    from .backup.metadata import BackupMetadata
+    from .backup.restore import RestoreError
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        try:
+            dump_dir = unpack_archive(input_path, Path(tmpdir))
+        except Exception as e:
+            console.print(f"[red]Could not unpack archive:[/red] {e}")
+            raise typer.Exit(1) from None
+
+        try:
+            meta = BackupMetadata.model_validate_json((dump_dir / "metadata.json").read_text(encoding="utf-8"))
+        except Exception as e:
+            console.print(f"[red]Invalid backup metadata:[/red] {e}")
+            raise typer.Exit(1) from None
+
+        console.print("[bold]Backup metadata[/bold]")
+        console.print(f"  Created:        {meta.created_at}")
+        console.print(f"  Featcat version: {meta.featcat_version}")
+        console.print(f"  Backend:         {meta.backend} {meta.backend_version}")
+        console.print(f"  Stats:           {meta.stats}")
+
+        db = _get_db()
+        current = db.get_catalog_stats()
+        non_empty = int(current.get("sources", 0) or 0) > 0 or int(current.get("features", 0) or 0) > 0
+        if non_empty and not force:
+            console.print(
+                f"[yellow]Current catalog has {current.get('sources', 0)} sources / "
+                f"{current.get('features', 0)} features — restore will REPLACE them.[/yellow]"
+            )
+            if not yes and not typer.confirm("Proceed?", default=False):
+                console.print("[yellow]Aborted.[/yellow]")
+                db.close()
+                raise typer.Exit(0)
+            force = True
+
+        try:
+            counts = restore_catalog(db, dump_dir, force=force)
+        except RestoreError as e:
+            console.print(f"[red]Restore failed:[/red] {e}")
+            db.close()
+            raise typer.Exit(1) from None
+        finally:
+            db.close()
+
+        total = sum(counts.values())
+        console.print(f"[green]Restored {total} rows across {len(counts)} tables from {input_path.name}[/green]")
+
+
+def _backup_create(output: Path | None) -> None:
+    """Shared body for the `backup` callback."""
+    import tempfile
+    from datetime import datetime
+
+    from .backup import dump_catalog, pack_archive
+
+    if output is None:
+        ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+        output = Path(f"./catalog-backup-{ts}.tar.gz")
+
+    db = _get_db()
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            stem = output.name
+            if stem.endswith(".tar.gz"):
+                stem = stem[: -len(".tar.gz")]
+            elif output.suffix:
+                stem = output.stem
+            dump_dir = Path(tmpdir) / stem
+            dump_dir.mkdir(parents=True)
+            metadata, _ = dump_catalog(db, dump_dir)
+            pack_archive(dump_dir, output)
+    finally:
+        db.close()
+
+    size_mb = output.stat().st_size / 1024 / 1024
+    console.print(
+        f"[green]Backup created:[/green] {output} ({size_mb:.2f} MB)\n"
+        f"  sources:  {metadata.stats.get('sources', 0)}\n"
+        f"  features: {metadata.stats.get('features', 0)}\n"
+        f"  groups:   {metadata.stats.get('groups', 0)}\n"
+        f"  edges:    {metadata.stats.get('lineage_edges', 0)}"
+    )
+
+
+def _read_archive_metadata(archive: Path):
+    """Return BackupMetadata for an archive, or None if unreadable."""
+    import tarfile
+
+    from .backup.metadata import BackupMetadata
+
+    try:
+        with tarfile.open(archive, "r:gz") as tf:
+            for m in tf.getmembers():
+                if m.name.endswith("/metadata.json"):
+                    f = tf.extractfile(m)
+                    if f is None:
+                        return None
+                    return BackupMetadata.model_validate_json(f.read().decode("utf-8"))
+    except Exception:
+        return None
+    return None
 
 
 # =========================================================================
