@@ -80,13 +80,13 @@ Stats: {{stats_text}}
 {{same_source_section}}
 {{cross_source_section}}
 Return a JSON object:
-{{
+{{{{
   "short_description": "one sentence, business meaning, max 20 words",
   "long_description": "2-3 sentences, how it's computed, what affects it, edge cases",
   "expected_range": "what normal values look like",
   "potential_issues": "data quality risks, common failure modes",
   "suggested_tags": ["tag1", "tag2"]
-}}
+}}}}
 
 Rules:
 - If a hint is provided, it overrides your inference. Do not contradict it.
