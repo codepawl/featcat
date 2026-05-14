@@ -265,6 +265,68 @@ featcat feature list --source user_behavior --json | jq 'length'
 featcat group list --json | jq '.[] | {name, feature_count}'
 ```
 
+## Diagnostics via `featcat doctor`
+
+`featcat doctor` is a Typer sub-app that runs structured checks across
+five groups. Bare invocation runs every group; passing a group name
+scopes the run. Add `--json/-j` to emit a machine-readable envelope
+for scripts and monitoring.
+
+```bash
+# All groups, rich output:
+featcat doctor
+
+# Just one group:
+featcat doctor db
+featcat doctor llm
+featcat doctor data
+featcat doctor network
+featcat doctor deploy
+
+# JSON envelope (versioned schema):
+featcat doctor --json | jq '.summary, .exit_code'
+featcat doctor db --json | jq '.groups.db.checks[] | select(.status != "pass")'
+```
+
+Exit codes:
+
+- `0`: every check is `pass` / `warn` / `skip`
+- `1`: at least one check returned `fail`
+- `2`: the doctor process itself crashed
+
+`warn` and `skip` never trip a non-zero exit. `skip` is reserved for
+checks that don't apply in the current context (e.g. `db_pgvector` on
+SQLite, `deploy_git` when running from an installed package).
+
+### JSON envelope shape
+
+```json
+{
+  "version": 1,
+  "summary": {"pass": 5, "warn": 0, "fail": 0, "skip": 3},
+  "exit_code": 0,
+  "groups": {
+    "db": {
+      "group": "db",
+      "checks": [
+        {
+          "name": "db_reachable",
+          "status": "pass",
+          "detail": "sqlite (12ms)",
+          "resolution": null,
+          "duration_ms": 12,
+          "metadata": {"backend": "sqlite", "latency_ms": 12}
+        }
+      ]
+    }
+  }
+}
+```
+
+The same check infrastructure feeds `/api/health` (the `checks` array
+there is the `db` group with a tighter 0.5s per-check budget), so
+external monitors can alert on the same conditions the CLI surfaces.
+
 ## Tips and Tricks
 
 - **Cache**: Auto-doc and NL query results are cached. Use `--no-cache` to bypass
