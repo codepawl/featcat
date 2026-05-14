@@ -873,6 +873,68 @@ def feature_info(
     console.print()
 
 
+@feature_app.command("rm")
+def feature_rm(
+    name: str = typer.Argument(help="Feature name (source.column)"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
+) -> None:
+    """Hard-delete a feature and cascade-remove its docs, baselines, checks,
+    usage logs, group memberships, lineage edges, and version history.
+
+    Cascade contract matches ``LocalBackend.bulk_delete_features``.
+    """
+    db = _get_db()
+    try:
+        feature = db.get_feature_by_name(name)
+        if feature is None:
+            console.print(f"[red]Feature not found:[/red] {name}")
+            raise typer.Exit(1)
+
+        if not yes and not typer.confirm(f"Delete feature '{name}'?"):
+            console.print("[dim]Aborted.[/dim]")
+            raise typer.Exit(0)
+
+        removed = db.bulk_delete_features([feature.id])
+        if removed == 0:
+            console.print(f"[red]Delete failed for:[/red] {name}")
+            raise typer.Exit(1)
+        console.print(f"[green]Removed feature:[/green] {name}")
+    finally:
+        db.close()
+
+
+@feature_app.command("update")
+def feature_update(
+    name: str = typer.Argument(help="Feature name (source.column)"),
+    owner: str | None = typer.Option(None, "--owner", help="New owner"),
+    description: str | None = typer.Option(None, "--description", "-d", help="New description"),
+) -> None:
+    """Update mutable fields on a feature (owner, description).
+
+    Mirrors ``PATCH /api/features/by-name`` (excluding ``tags``, which has
+    its own dedicated ``featcat feature tag`` command).
+    """
+    if owner is None and description is None:
+        console.print("[red]Nothing to update.[/red] Pass --owner and/or --description.")
+        raise typer.Exit(1)
+
+    db = _get_db()
+    try:
+        feature = db.get_feature_by_name(name)
+        if feature is None:
+            console.print(f"[red]Feature not found:[/red] {name}")
+            raise typer.Exit(1)
+        updates: dict[str, str] = {}
+        if owner is not None:
+            updates["owner"] = owner
+        if description is not None:
+            updates["description"] = description
+        db.update_feature_metadata(feature.id, **updates)
+        console.print(f"[green]Updated feature:[/green] {name}")
+    finally:
+        db.close()
+
+
 @feature_app.command("tag")
 def feature_tag(
     name: str = typer.Argument(help="Feature name"),
