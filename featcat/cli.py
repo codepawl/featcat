@@ -2225,6 +2225,41 @@ def group_delete(
     console.print(f"[green]Group deleted:[/green] {name}")
 
 
+@group_app.command("update")
+def group_update(
+    name: str = typer.Argument(help="Group name"),
+    description: str | None = typer.Option(None, "--description", "-d", help="New description"),
+    project: str | None = typer.Option(None, "--project", "-p", help="New project"),
+    owner: str | None = typer.Option(None, "--owner", help="New owner"),
+) -> None:
+    """Update mutable fields on a group (description, project, owner).
+
+    Mirrors ``PATCH /api/groups/{name}``. Empty strings are passed through
+    (clear the field); to leave a field untouched, omit the option.
+    """
+    if description is None and project is None and owner is None:
+        console.print("[red]Nothing to update.[/red] Pass --description, --project and/or --owner.")
+        raise typer.Exit(1)
+
+    db = _get_db()
+    try:
+        group = db.get_group_by_name(name)
+        if group is None:
+            console.print(f"[red]Group not found:[/red] {name}")
+            raise typer.Exit(1)
+        updates: dict[str, str] = {}
+        if description is not None:
+            updates["description"] = description
+        if project is not None:
+            updates["project"] = project
+        if owner is not None:
+            updates["owner"] = owner
+        db.update_group(group.id, **updates)
+        console.print(f"[green]Updated group:[/green] {name}")
+    finally:
+        db.close()
+
+
 @group_app.command("health")
 def group_health(name: str = typer.Argument(help="Group name")) -> None:
     """Aggregate health score and grade distribution for a group."""
