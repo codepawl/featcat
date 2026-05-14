@@ -129,6 +129,21 @@ class TestHealthAPI:
         data = resp.json()
         assert isinstance(data, list)
 
+    def test_api_health_includes_checks(self, client):
+        """`/api/health` keeps the legacy shape and exposes the structured checks array."""
+        resp = client.get("/api/health")
+        assert resp.status_code == 200
+        data = resp.json()
+        # Legacy fields (back-compat).
+        assert {"status", "db", "llm", "model"} <= set(data)
+        # New structured surface.
+        assert "checks" in data
+        assert isinstance(data["checks"], list)
+        # The db group has at least the reachable + backend checks even on an empty catalog.
+        names = {c["name"] for c in data["checks"]}
+        assert "db_reachable" in names
+        assert "db_backend" in names
+
     def test_health_summary_empty(self, client):
         resp = client.get("/api/features/health-summary")
         assert resp.status_code == 200
