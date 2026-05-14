@@ -82,6 +82,7 @@ web/playwright-report/
 web/test-results/
 web/tests/e2e/.auth/
 web/tests/e2e/.tmp/
+test-results/
 
 # OpenPawl
 .openpawl/
