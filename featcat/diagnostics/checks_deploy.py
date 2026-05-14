@@ -103,7 +103,7 @@ def deploy_compose(_settings: Settings) -> CheckResult:
     if shutil.which("docker") is None:
         # Fall back to a YAML-parse check so we still catch syntax errors when docker isn't installed.
         try:
-            import yaml  # type: ignore[import-untyped]
+            import yaml
 
             with compose_path.open(encoding="utf-8") as f:
                 yaml.safe_load(f)
