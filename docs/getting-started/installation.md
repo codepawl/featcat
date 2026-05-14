@@ -110,6 +110,18 @@ curl http://localhost:8000/api/health    # API liveness — returns {"status":"o
 
 If the API returns `{"status": "degraded"}`, the LLM container probably isn't up yet — give `llama.cpp` a minute on the first start (it has to load the GGUF into memory). Catalog operations work without the LLM; documentation generation and AI chat don't.
 
+## Demo data
+
+Want a populated catalog for screenshots, screencasts, or just to click around the UI? `featcat demo seed` writes a bundled fixture (3 sources, 10 features, 2 pre-canned docs, 3 groups, 3 lineage edges) into the active catalog:
+
+```bash
+featcat demo seed              # idempotent; safe to re-run
+featcat demo seed --fixture path/to/custom.json
+featcat demo clear --yes       # remove demo rows; real data untouched
+```
+
+Demo rows are marked with `tags=['demo']` (features), `detected_method='demo'` (lineage edges), `model_used='demo'` (docs), and a description prefix on sources and groups. `featcat demo clear` scopes strictly to those markers, so seeding and clearing on a mixed catalog leaves real content alone.
+
 ## Troubleshooting
 
 - **`featcat: command not found`** — the editable install put the script in `.venv/bin/`. Either activate the venv (`source .venv/bin/activate`) or run via `uv run featcat ...`.
