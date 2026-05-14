@@ -192,23 +192,19 @@ override_compose="${sandbox_root}/repo/deploy/sandbox/compose/docker-compose.san
 
 compose_args_array "${project_name}" "${base_compose}" "${override_compose}" "${sandbox_env}"
 
-# Build.
-build_args=()
-if [[ -n "${SANDBOX_BUILD_NETWORK:-}" ]]; then
-  build_args+=(--build-arg "BUILDKIT_INLINE_CACHE=1")
+# Build — skipped entirely on the lab profile, which expects the operator to
+# have a pre-built nxank4/featcat image cached locally (the lab proxy chain
+# makes online builds unreliable; rebuilds are an explicit step). `compose up`
+# below will fail loud if the image is missing, surfacing it as a clear error
+# instead of a hung BuildKit job.
+if [[ "${SANDBOX_REQUIRE_CACHED_IMAGES:-false}" == "true" ]]; then
+  log_info "lab profile: skipping 'compose build', expecting cached images"
+else
+  build_cmd=(docker compose "${_compose_args[@]}" build)
+  log_info "running: ${build_cmd[*]}"
+  "${build_cmd[@]}"
+  log_ok "build complete"
 fi
-build_cmd=(docker compose "${_compose_args[@]}" build "${build_args[@]}")
-log_info "running: ${build_cmd[*]}"
-if [[ -n "${SANDBOX_BUILD_NETWORK:-}" ]]; then
-  # `compose build` itself doesn't accept --network, but it honours
-  # DOCKER_BUILDKIT_NETWORK_HOST for the underlying buildkit invocation. The
-  # safer approach on lab boxes is to pre-build with `docker build --network=host`
-  # and let compose reuse the cached image; we surface a clear message instead
-  # of silently doing the wrong thing.
-  log_warn "lab profile: ensure images are pre-built with --network=host if BuildKit cannot reach the proxy"
-fi
-"${build_cmd[@]}"
-log_ok "build complete"
 
 # Up.
 up_cmd=(docker compose "${_compose_args[@]}" up -d)
