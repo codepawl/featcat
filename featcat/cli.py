@@ -39,6 +39,8 @@ group_app = typer.Typer(help="Feature groups management")
 usage_app = typer.Typer(help="Feature usage analytics")
 actions_app = typer.Typer(help="Recommended actions (lifecycle loop)")
 lineage_app = typer.Typer(help="Lineage management (T1.1)")
+lineage_edge_app = typer.Typer(help="Manage individual lineage edges")
+lineage_app.add_typer(lineage_edge_app, name="edge")
 app.add_typer(source_app, name="source")
 app.add_typer(feature_app, name="feature")
 app.add_typer(doc_app, name="doc")
@@ -3906,6 +3908,73 @@ def lineage_clear(
     console.print(
         f"[green]Removed {edge_count} edge(s), {removed_features} feature(s), {removed_sources} source(s).[/green]"
     )
+
+
+@lineage_edge_app.command("add")
+def lineage_edge_add(
+    child: str = typer.Argument(help="Child feature name (the derived feature)"),
+    parent: str = typer.Argument(help="Parent feature name (the upstream feature)"),
+    transform: str = typer.Option("", "--transform", "-t", help="Free-form transform expression (e.g. SQL)"),
+) -> None:
+    """Manually add a feature→feature lineage edge.
+
+    Wraps ``LocalBackend.add_lineage`` with ``detected_method='manual'``.
+    The DB unique constraint makes inserts idempotent (re-adding the same
+    edge is a no-op).
+    """
+    db = _get_db()
+    try:
+        child_feat = db.get_feature_by_name(child)
+        if child_feat is None:
+            console.print(f"[red]Child feature not found:[/red] {child}")
+            raise typer.Exit(1)
+        parent_feat = db.get_feature_by_name(parent)
+        if parent_feat is None:
+            console.print(f"[red]Parent feature not found:[/red] {parent}")
+            raise typer.Exit(1)
+        db.add_lineage(
+            child_feature_id=child_feat.id,
+            parent_feature_id=parent_feat.id,
+            transform=transform,
+            detected_method="manual",
+        )
+        console.print(f"[green]Added lineage edge:[/green] {child} <- {parent}")
+    finally:
+        db.close()
+
+
+@lineage_edge_app.command("rm")
+def lineage_edge_rm(
+    child: str = typer.Argument(help="Child feature name"),
+    parent: str = typer.Argument(help="Parent feature name"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
+) -> None:
+    """Remove a feature→feature lineage edge.
+
+    Source-column edges (parent_type='source_column') are not removable
+    through this command — see ``featcat lineage clear --demo-only`` for
+    bulk removal of seeded edges.
+    """
+    db = _get_db()
+    try:
+        child_feat = db.get_feature_by_name(child)
+        if child_feat is None:
+            console.print(f"[red]Child feature not found:[/red] {child}")
+            raise typer.Exit(1)
+        parent_feat = db.get_feature_by_name(parent)
+        if parent_feat is None:
+            console.print(f"[red]Parent feature not found:[/red] {parent}")
+            raise typer.Exit(1)
+        if not _lineage_edge_exists(db, child_feat.id, parent_feat.id):
+            console.print(f"[red]Edge not found:[/red] {child} <- {parent}")
+            raise typer.Exit(1)
+        if not yes and not typer.confirm(f"Remove lineage edge {child} <- {parent}?"):
+            console.print("[dim]Aborted.[/dim]")
+            raise typer.Exit(0)
+        db.remove_lineage(child_feat.id, parent_feat.id)
+        console.print(f"[green]Removed lineage edge:[/green] {child} <- {parent}")
+    finally:
+        db.close()
 
 
 # =========================================================================
