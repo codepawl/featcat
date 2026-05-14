@@ -13,7 +13,7 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-# shellcheck source=lib/common.sh
+# shellcheck source=deploy/sandbox/scripts/lib/common.sh
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/common.sh"
 
 sandbox_id=""
@@ -105,7 +105,11 @@ teardown_one() {
   local env_file="${root}/.env"
   if [[ -f "${base_compose}" && -f "${override_compose}" && -f "${env_file}" ]]; then
     compose_args_array "${project}" "${base_compose}" "${override_compose}" "${env_file}"
-    run_or_echo docker compose "${_compose_args[@]}" down -v --remove-orphans --timeout 5
+    # Tolerate `down` failures (e.g. an override file that no longer parses)
+    # because the orphan-cleanup pass below removes anything that survives.
+    if ! run_or_echo docker compose "${_compose_args[@]}" down -v --remove-orphans --timeout 5; then
+      log_warn "compose down failed; falling back to orphan cleanup for ${project}"
+    fi
   else
     log_warn "compose files missing under ${root}; relying on orphan cleanup"
   fi

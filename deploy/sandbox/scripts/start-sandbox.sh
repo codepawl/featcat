@@ -15,7 +15,7 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-# shellcheck source=lib/common.sh
+# shellcheck source=deploy/sandbox/scripts/lib/common.sh
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/common.sh"
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

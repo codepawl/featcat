@@ -18,19 +18,19 @@
 
 services:
   llm:
-    container_name: ""
+    container_name: !reset null
     ports: !override
       - "${SANDBOX_LLM_PORT}:8080"
     volumes: !override
       - ${SANDBOX_MODEL_DIR}:/models:ro
 
   postgres:
-    container_name: ""
+    container_name: !reset null
     ports:
       - "${SANDBOX_PG_PORT}:5432"
 
   featcat:
-    container_name: ""
+    container_name: !reset null
     ports: !override
       - "${FEATCAT_PORT}:8000"
 
