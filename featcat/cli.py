@@ -937,6 +937,141 @@ def feature_update(
         db.close()
 
 
+def _resolve_specs(db, specs: list[str]) -> tuple[list[str], list[str]]:
+    """Resolve ``source.column`` specs to feature IDs.
+
+    Mirrors the REST bulk endpoints' all-or-nothing validation contract:
+    caller should exit with an error if ``invalid`` is non-empty.
+    """
+    ids: list[str] = []
+    invalid: list[str] = []
+    for spec in specs:
+        feature = db.get_feature_by_name(spec)
+        if feature is None:
+            invalid.append(spec)
+        else:
+            ids.append(feature.id)
+    return ids, invalid
+
+
+def _read_specs_file(path: Path) -> list[str]:
+    """Read a newline-delimited specs file. Blank lines and ``#`` comments are skipped."""
+    raw = path.read_text(encoding="utf-8").splitlines()
+    return [line.strip() for line in raw if line.strip() and not line.lstrip().startswith("#")]
+
+
+@feature_app.command("bulk-tag")
+def feature_bulk_tag(
+    action: str = typer.Option(..., "--action", "-a", help="add | remove | replace"),
+    tags: str = typer.Option(..., "--tags", "-t", help="Comma-separated tags"),
+    file: Path = typer.Option(  # noqa: B008
+        ...,
+        "--file",
+        "-f",
+        help="Path to newline-delimited specs file (one source.column per line; '#' lines ignored)",
+        exists=True,
+        dir_okay=False,
+        readable=True,
+    ),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt for --action replace"),
+) -> None:
+    """Bulk-apply a tag change across many features.
+
+    Mirrors ``POST /api/features/bulk/tags`` (LocalBackend.bulk_update_tags).
+    All-or-nothing: if any spec in the file doesn't resolve to a feature
+    the command exits 1 with the unresolved specs listed, before any DB
+    writes happen.
+    """
+    if action not in {"add", "remove", "replace"}:
+        console.print(f"[red]--action must be add|remove|replace[/red] (got {action!r})")
+        raise typer.Exit(1)
+
+    specs = _read_specs_file(file)
+    if not specs:
+        console.print("[red]No specs in file.[/red]")
+        raise typer.Exit(1)
+
+    tag_list = [t.strip() for t in tags.split(",") if t.strip()]
+    if not tag_list:
+        console.print("[red]--tags must contain at least one tag.[/red]")
+        raise typer.Exit(1)
+
+    db = _get_db()
+    try:
+        ids, invalid = _resolve_specs(db, specs)
+        if invalid:
+            console.print(f"[red]Unresolved feature spec(s):[/red] {', '.join(invalid)}")
+            raise typer.Exit(1)
+
+        if action == "replace" and not yes:
+            console.print(
+                f"[yellow]Replacing tags on {len(ids)} feature(s)"
+                f" with {tag_list}.[/yellow] Existing tags will be discarded."
+            )
+            if not typer.confirm("Continue?"):
+                console.print("[dim]Aborted.[/dim]")
+                raise typer.Exit(0)
+
+        updated = db.bulk_update_tags(ids, action, tag_list)
+        console.print(f"[green]Updated {updated}/{len(ids)} feature(s) (action: {action}).[/green]")
+    finally:
+        db.close()
+
+
+@feature_app.command("bulk-delete")
+def feature_bulk_delete(
+    file: Path = typer.Option(  # noqa: B008
+        ...,
+        "--file",
+        "-f",
+        help="Path to newline-delimited specs file (one source.column per line; '#' lines ignored)",
+        exists=True,
+        dir_okay=False,
+        readable=True,
+    ),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompts"),
+) -> None:
+    """Bulk hard-delete features (cascade per LocalBackend.bulk_delete_features).
+
+    Mirrors ``POST /api/features/bulk/delete`` (with the REST API's
+    ``confirm: true`` gate replaced by an interactive prompt). When the
+    file contains more than 10 specs the prompt requires typing
+    ``DELETE`` back to confirm.
+    """
+    specs = _read_specs_file(file)
+    if not specs:
+        console.print("[red]No specs in file.[/red]")
+        raise typer.Exit(1)
+
+    db = _get_db()
+    try:
+        ids, invalid = _resolve_specs(db, specs)
+        if invalid:
+            console.print(f"[red]Unresolved feature spec(s):[/red] {', '.join(invalid)}")
+            raise typer.Exit(1)
+
+        impact_summary = (
+            f"[yellow]About to delete {len(ids)} feature(s).[/yellow]\n"
+            "[yellow]This will cascade-remove docs, baselines, monitoring checks,"
+            " usage logs, group memberships, lineage edges, and version history.[/yellow]"
+        )
+
+        if len(ids) > 10:
+            if not _confirm_typing("DELETE", impact_summary, skip=yes):
+                console.print("[dim]Aborted.[/dim]")
+                raise typer.Exit(0)
+        elif not yes:
+            console.print(impact_summary)
+            if not typer.confirm("Proceed?"):
+                console.print("[dim]Aborted.[/dim]")
+                raise typer.Exit(0)
+
+        deleted = db.bulk_delete_features(ids)
+        console.print(f"[green]Deleted {deleted}/{len(ids)} feature(s).[/green]")
+    finally:
+        db.close()
+
+
 @feature_app.command("tag")
 def feature_tag(
     name: str = typer.Argument(help="Feature name"),
