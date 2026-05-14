@@ -13,6 +13,7 @@ The top-level CLI and ``/api/health`` only need ``run_*`` + ``aggregate``.
 
 from __future__ import annotations
 
+from . import checks_db as _checks_db  # noqa: F401 — registers db checks at import
 from .models import AggregateReport, CheckResult, CheckStatus, GroupReport
 from .runner import GROUPS, aggregate, register, run_all, run_group
 

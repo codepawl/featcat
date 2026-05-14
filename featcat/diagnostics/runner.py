@@ -16,7 +16,7 @@ import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeoutError
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, overload
 
 from .models import AggregateReport, CheckResult, CheckStatus, GroupReport
 
@@ -30,10 +30,27 @@ CheckFn = Callable[["Settings"], CheckResult]
 _REGISTRY: dict[str, list[CheckFn]] = {g: [] for g in GROUPS}
 
 
-def register(group: str, fn: CheckFn) -> CheckFn:
-    """Add ``fn`` to ``group``'s check list. Returns ``fn`` for decorator use."""
+@overload
+def register(group: str) -> Callable[[CheckFn], CheckFn]: ...
+@overload
+def register(group: str, fn: CheckFn) -> CheckFn: ...
+def register(group: str, fn: CheckFn | None = None) -> CheckFn | Callable[[CheckFn], CheckFn]:
+    """Add a check to ``group``'s list.
+
+    Two-call styles are supported so call sites can pick whichever reads better:
+
+    - As a decorator: ``@register("db")`` above a check function.
+    - As a direct call: ``register("db", db_reachable)``.
+    """
     if group not in _REGISTRY:
         raise ValueError(f"Unknown group {group!r}. Known: {sorted(_REGISTRY)}")
+    if fn is None:
+
+        def _decorator(check_fn: CheckFn) -> CheckFn:
+            _REGISTRY[group].append(check_fn)
+            return check_fn
+
+        return _decorator
     _REGISTRY[group].append(fn)
     return fn
 
