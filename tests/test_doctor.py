@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -23,17 +24,49 @@ def catalog_env(tmp_path: Path, sample_parquet: Path, monkeypatch):
 
 
 class TestDoctor:
-    def test_doctor_runs(self, catalog_env):
-        result = runner.invoke(app, ["doctor"])
-        assert result.exit_code == 0
-        assert "Python" in result.output
-        assert "features registered" in result.output
+    """`featcat doctor` is a Typer sub-app since the diagnostics refactor.
 
-    def test_doctor_no_db(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
+    No subcommand runs all groups; subcommands target one group. Exit code
+    is 1 if any check returns FAIL — fresh catalogs typically have stale-drift
+    FAILs, so these tests don't assert exit_code == 0 for the bare invocation.
+    """
+
+    def test_bare_doctor_emits_groups(self, catalog_env: Path) -> None:
         result = runner.invoke(app, ["doctor"])
-        assert result.exit_code == 0
-        assert "catalog" in result.output.lower()
+        # Crash-free (exit 2 = doctor itself crashed; anything else is fine).
+        assert result.exit_code != 2, result.output
+        assert "Python" in result.output
+        # Each group should render even on a fresh catalog.
+        for group_label in ("Db", "Llm", "Data", "Network", "Deploy"):
+            assert group_label in result.output
+
+    def test_doctor_db_subcommand_only_runs_db(self, catalog_env: Path) -> None:
+        result = runner.invoke(app, ["doctor", "db"])
+        assert result.exit_code != 2, result.output
+        assert "Db" in result.output
+        # Other groups should NOT appear when a subcommand is invoked.
+        assert "Llm" not in result.output
+        assert "Network" not in result.output
+
+    def test_doctor_json_envelope_is_parseable(self, catalog_env: Path) -> None:
+        result = runner.invoke(app, ["doctor", "--json"])
+        # Strip any header line from the pre-check (we still print Python version line
+        # before the JSON body only in human mode — so JSON mode body should parse cleanly).
+        payload = json.loads(result.stdout)
+        assert payload["version"] == 1
+        assert set(payload["summary"]) == {"pass", "warn", "fail", "skip"}
+        assert set(payload["groups"]) == {"deploy", "db", "llm", "network", "data"}
+        # Each group has a list of checks.
+        for group_name, group in payload["groups"].items():
+            assert group["group"] == group_name
+            assert isinstance(group["checks"], list)
+
+    def test_doctor_db_json_only_runs_db(self, catalog_env: Path) -> None:
+        result = runner.invoke(app, ["doctor", "db", "--json"])
+        payload = json.loads(result.stdout)
+        # Single-group invocations emit just that group, not an empty shell for every group.
+        assert set(payload["groups"]) == {"db"}
+        assert payload["groups"]["db"]["checks"]
 
 
 class TestStats:

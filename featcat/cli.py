@@ -27,6 +27,8 @@ from .config import load_settings
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from .diagnostics import AggregateReport, GroupReport
+
 app = typer.Typer(name="featcat", help="Lightweight AI-powered Feature Catalog")
 source_app = typer.Typer(help="Manage data sources")
 feature_app = typer.Typer(help="Manage features")
@@ -235,112 +237,132 @@ def add(
     console.print(Panel("\n".join(summary_lines), title="Source Added", border_style="green"))
 
 
-@app.command()
-def doctor() -> None:
-    """Check system health and report status."""
+doctor_app = typer.Typer(
+    name="doctor",
+    help="System diagnostics: reachability, schema, coverage, deploy state",
+    invoke_without_command=True,
+)
+app.add_typer(doctor_app, name="doctor")
+
+
+_DOCTOR_GLYPHS = {
+    "pass": "[green]✓[/green]",
+    "warn": "[yellow]⚠[/yellow]",
+    "fail": "[red]✗[/red]",
+    "skip": "[dim]⊘[/dim]",
+}
+
+
+def _doctor_status_glyph(status: str) -> str:
+    return _DOCTOR_GLYPHS.get(status, " ")
+
+
+def _doctor_print_group(group_report: GroupReport) -> None:
+    console.print(f"\n[bold]▸ {group_report.group.capitalize()}[/bold]")
+    if not group_report.checks:
+        console.print("  [dim](no checks registered)[/dim]")
+        return
+    for check in group_report.checks:
+        glyph = _doctor_status_glyph(check.status.value)
+        console.print(f"  {glyph} {check.name}: {check.detail}")
+        if check.resolution and check.status.value in {"warn", "fail"}:
+            console.print(f"    [dim]Resolution: {check.resolution}[/dim]")
+
+
+def _doctor_print_aggregate(agg: AggregateReport) -> None:
+    s = agg.summary
+    parts = [
+        f"[green]{s.get('pass', 0)} pass[/green]",
+        f"[yellow]{s.get('warn', 0)} warn[/yellow]",
+        f"[red]{s.get('fail', 0)} fail[/red]",
+        f"[dim]{s.get('skip', 0)} skip[/dim]",
+    ]
+    console.print(f"\n[bold]Summary:[/bold] {' · '.join(parts)}")
+
+
+def _doctor_run(group: str | None, json_output: bool) -> None:
+    """Shared body for all doctor invocations."""
+    from .diagnostics import aggregate, run_all, run_group
+
     settings = load_settings()
-    all_ok = True
-    remote_mode = bool(settings.server_url)
 
-    # Python version
+    # Always-on pre-check: Python version. Lives outside the group system because it
+    # can't possibly run if the interpreter is broken anyway, and we never want it
+    # parallelized with anything.
     py_ver = sys.version_info
-    ok = py_ver >= (3, 10)
-    _print_check(ok, f"Python {py_ver.major}.{py_ver.minor}.{py_ver.micro}")
-    if not ok:
-        all_ok = False
+    py_ok = py_ver >= (3, 10)
+    if not json_output:
+        glyph = "[green]✓[/green]" if py_ok else "[red]✗[/red]"
+        console.print(f"{glyph} Python {py_ver.major}.{py_ver.minor}.{py_ver.micro}")
+        if settings.server_url:
+            console.print(f"[dim]Mode: remote (FEATCAT_SERVER_URL={settings.server_url})[/dim]")
 
-    if remote_mode:
-        # Remote mode: check server connectivity
-        console.print(f"\n[bold]Mode:[/bold] Remote ({settings.server_url})")
-        try:
-            import httpx
+    reports = run_all(settings=settings) if group is None else {group: run_group(group, settings=settings)}
+    agg = aggregate(reports)
 
-            resp = httpx.get(f"{settings.server_url}/api/health", timeout=5)
-            health = resp.json()
-            _print_check(True, f"Server reachable at {settings.server_url}")
-            _print_check(health.get("db", False), "Server database connected")
-            _print_check(health.get("llm", False), f"Server LLM ({health.get('model', 'unknown')})")
-        except Exception as e:
-            _print_check(False, f"Server at {settings.server_url}: {e}")
-            all_ok = False
-            console.print()
-            console.print("[yellow]Cannot reach server. Check FEATCAT_SERVER_URL.[/yellow]")
-            return
-    else:
-        console.print("\n[bold]Mode:[/bold] Local")
+    if json_output:
+        print(json.dumps(agg.model_dump(mode="json"), indent=2))
+        if agg.exit_code or not py_ok:
+            raise typer.Exit(agg.exit_code or 1)
+        return
 
-    # Catalog check (works for both local and remote via get_backend)
-    if not remote_mode:
-        db_exists = Path(settings.catalog_db_path).exists()
-        _print_check(db_exists, f"SQLite catalog exists ({settings.catalog_db_path})")
-        if not db_exists:
-            all_ok = False
-            console.print()
-            return
+    for name in sorted(reports):
+        _doctor_print_group(reports[name])
+    _doctor_print_aggregate(agg)
+    exit_code = agg.exit_code or (0 if py_ok else 1)
+    if exit_code:
+        raise typer.Exit(exit_code)
 
-    db = _get_db()
-    try:
-        features = db.list_features()
-        sources = db.list_sources()
-        _print_check(True, f"{len(features)} features registered from {len(sources)} sources")
 
-        # Doc coverage
-        from .plugins.autodoc import get_doc_stats
+@doctor_app.callback()
+def doctor_root(
+    ctx: typer.Context,
+    json_output: bool = typer.Option(False, "--json", "-j", help="Emit JSON envelope to stdout"),
+) -> None:
+    """Run every diagnostic group when invoked without a subcommand."""
+    if ctx.invoked_subcommand is not None:
+        return
+    _doctor_run(group=None, json_output=json_output)
 
-        doc_stats = get_doc_stats(db)
-        has_docs = doc_stats["documented"] > 0
-        _print_check(has_docs, f"{doc_stats['documented']} features have docs ({doc_stats['coverage']:.1f}%)")
 
-        # Monitoring alerts
-        from .plugins.monitoring import MonitoringPlugin
+@doctor_app.command("deploy")
+def doctor_deploy(
+    json_output: bool = typer.Option(False, "--json", "-j", help="Emit JSON envelope to stdout"),
+) -> None:
+    """Git, Docker, compose validity."""
+    _doctor_run(group="deploy", json_output=json_output)
 
-        plugin = MonitoringPlugin()
-        result = plugin.execute(db, None, action="check")
-        warnings = result.data.get("warnings", 0)
-        critical = result.data.get("critical", 0)
-        alert_count = warnings + critical
-        if alert_count > 0:
-            _print_check(False, f"{alert_count} features have drift alerts ({critical} critical, {warnings} warnings)")
-            all_ok = False
-        else:
-            checked = result.data.get("checked", 0)
-            if checked > 0:
-                _print_check(True, f"All {checked} monitored features healthy")
-            else:
-                _print_check(True, "No monitoring baselines yet (run: featcat monitor baseline)")
-    finally:
-        db.close()
 
-    # LLM server (only check in local mode — remote server manages its own LLM)
-    if not remote_mode:
-        try:
-            from .llm.llamacpp import LlamaCppLLM
+@doctor_app.command("db")
+def doctor_db(
+    json_output: bool = typer.Option(False, "--json", "-j", help="Emit JSON envelope to stdout"),
+) -> None:
+    """DB reachability, version, migrations, catalog stats."""
+    _doctor_run(group="db", json_output=json_output)
 
-            llm = LlamaCppLLM(model=settings.llm_model, base_url=settings.llamacpp_url)
-            reachable = llm.health_check()
-            _print_check(reachable, f"LLM server running at {settings.llamacpp_url}")
-            if not reachable:
-                all_ok = False
-        except Exception:
-            _print_check(False, f"LLM server at {settings.llamacpp_url}")
-            all_ok = False
 
-        # Cache stats (local only)
-        try:
-            from .utils.cache import ResponseCache
+@doctor_app.command("llm")
+def doctor_llm(
+    json_output: bool = typer.Option(False, "--json", "-j", help="Emit JSON envelope to stdout"),
+) -> None:
+    """LLM reachability, model identity, context size, slot availability."""
+    _doctor_run(group="llm", json_output=json_output)
 
-            cache = ResponseCache(settings.catalog_db_path)
-            cs = cache.stats()
-            cache.close()
-            _print_check(True, f"Cache: {cs['active']} active entries, {cs['expired']} expired")
-        except Exception:
-            pass
 
-    console.print()
-    if all_ok:
-        console.print("[green]All checks passed![/green]")
-    else:
-        console.print("[yellow]Some checks failed. See above for details.[/yellow]")
+@doctor_app.command("network")
+def doctor_network(
+    json_output: bool = typer.Option(False, "--json", "-j", help="Emit JSON envelope to stdout"),
+) -> None:
+    """TCP probes, proxy correctness, S3 endpoint."""
+    _doctor_run(group="network", json_output=json_output)
+
+
+@doctor_app.command("data")
+def doctor_data(
+    json_output: bool = typer.Option(False, "--json", "-j", help="Emit JSON envelope to stdout"),
+) -> None:
+    """Sources, stats coverage, doc coverage, drift recency, lineage coverage."""
+    _doctor_run(group="data", json_output=json_output)
 
 
 @app.command()
