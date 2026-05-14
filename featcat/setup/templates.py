@@ -34,13 +34,13 @@ POSTGRES_COMPOSE_BLOCK = """\
     image: pgvector/pgvector:pg16
     container_name: featcat-postgres
     environment:
-      POSTGRES_USER: ${{POSTGRES_USER:-featcat}}
-      POSTGRES_PASSWORD: ${{POSTGRES_PASSWORD:-featcat_local_only}}
-      POSTGRES_DB: ${{POSTGRES_DB:-featcat}}
+      POSTGRES_USER: ${POSTGRES_USER:-featcat}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-featcat_local_only}
+      POSTGRES_DB: ${POSTGRES_DB:-featcat}
     volumes:
       - featcat-postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${{POSTGRES_USER:-featcat}} -d ${{POSTGRES_DB:-featcat}}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-featcat} -d ${POSTGRES_DB:-featcat}"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -49,10 +49,10 @@ POSTGRES_COMPOSE_BLOCK = """\
 """
 
 POSTGRES_FEATCAT_ENV = """\
-      - FEATCAT_DB_URL=postgresql+psycopg2://${{POSTGRES_USER:-featcat}}:${{POSTGRES_PASSWORD:-featcat_local_only}}@postgres:5432/${{POSTGRES_DB:-featcat}}
-      - POSTGRES_USER=${{POSTGRES_USER:-featcat}}
-      - POSTGRES_PASSWORD=${{POSTGRES_PASSWORD:-featcat_local_only}}
-      - POSTGRES_DB=${{POSTGRES_DB:-featcat}}
+      - FEATCAT_DB_URL=postgresql+psycopg2://${POSTGRES_USER:-featcat}:${POSTGRES_PASSWORD:-featcat_local_only}@postgres:5432/${POSTGRES_DB:-featcat}
+      - POSTGRES_USER=${POSTGRES_USER:-featcat}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-featcat_local_only}
+      - POSTGRES_DB=${POSTGRES_DB:-featcat}
 """
 
 POSTGRES_DEPENDS_ON = """\
