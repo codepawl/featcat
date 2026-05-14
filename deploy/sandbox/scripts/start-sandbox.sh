@@ -177,6 +177,15 @@ set -a
 . "${profile_env}"
 set +a
 
+# Defend against proxy leakage from the calling shell. The local profile sets
+# HTTP_PROXY=, HTTPS_PROXY=, etc. to empty in the env file — but BuildKit reads
+# the SHELL env (where the operator may have a proxy exported globally), not
+# just the --env-file. Force-clear here for the local profile so bun/uv inside
+# the build can reach upstream registries directly.
+if [[ "${profile}" == "local" ]]; then
+  unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy NO_PROXY no_proxy
+fi
+
 # Compose file paths inside the clone.
 base_compose="${sandbox_root}/repo/deploy/docker-compose.yml"
 override_compose="${sandbox_root}/repo/deploy/sandbox/compose/docker-compose.sandbox.yml"
