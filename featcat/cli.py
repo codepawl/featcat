@@ -644,6 +644,86 @@ def source_scan(
     console.print(f"[green]Done:[/green] {registered} features registered from [cyan]{name}[/cyan]")
 
 
+@source_app.command("rm")
+def source_rm(
+    name: str = typer.Argument(help="Source name to remove"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompts"),
+) -> None:
+    """Hard-delete a source and cascade-remove its features and dependents.
+
+    Mirrors ``DELETE /api/sources/{name}``: every dependent row (features,
+    docs, baselines, monitoring checks, usage logs, group memberships,
+    lineage edges, action items) is cleaned up. When the source has more
+    than 10 features the prompt requires typing the source name back to
+    confirm; ``--yes`` skips both prompts.
+    """
+    db = _get_db()
+    try:
+        if db.get_source_by_name(name) is None:
+            console.print(f"[red]Source not found:[/red] {name}")
+            raise typer.Exit(1)
+
+        impact = db.get_source_impact(name)
+        features_count = int(impact.get("features_count", 0))
+        groups = impact.get("groups", [])
+        groups_count = len(groups)
+
+        impact_summary = (
+            f"[yellow]Source '{name}' has {features_count} feature(s)"
+            f" across {groups_count} group(s).[/yellow]\n"
+            "[yellow]Deleting will cascade-remove all features, docs, baselines,"
+            " monitoring checks, usage logs, group memberships, and lineage edges.[/yellow]"
+        )
+
+        if features_count > 10:
+            if not _confirm_typing(name, impact_summary, skip=yes):
+                console.print("[dim]Aborted.[/dim]")
+                raise typer.Exit(0)
+        elif not yes:
+            console.print(impact_summary)
+            if not typer.confirm(f"Delete source '{name}'?"):
+                console.print("[dim]Aborted.[/dim]")
+                raise typer.Exit(0)
+
+        try:
+            removed = db.delete_source(name)
+        except KeyError:
+            console.print(f"[red]Source not found:[/red] {name}")
+            raise typer.Exit(1) from None
+        console.print(
+            f"[green]Removed source '{name}'[/green] ({removed} feature(s),"
+            f" {groups_count} group membership(s) cleaned up)"
+        )
+    finally:
+        db.close()
+
+
+@source_app.command("update")
+def source_update(
+    name: str = typer.Argument(help="Source name"),
+    description: str | None = typer.Option(None, "--description", "-d", help="New description"),
+    fmt: str | None = typer.Option(None, "--format", help="New file format (parquet|csv)"),
+) -> None:
+    """Update mutable fields on a source (description, format).
+
+    Mirrors ``PATCH /api/sources/{name}``. ``name``, ``path``, and
+    ``storage_type`` are immutable — rename is intentionally not supported.
+    """
+    if description is None and fmt is None:
+        console.print("[red]Nothing to update.[/red] Pass --description and/or --format.")
+        raise typer.Exit(1)
+
+    db = _get_db()
+    try:
+        if db.get_source_by_name(name) is None:
+            console.print(f"[red]Source not found:[/red] {name}")
+            raise typer.Exit(1)
+        db.update_source(name, description=description, format=fmt)
+        console.print(f"[green]Updated source:[/green] {name}")
+    finally:
+        db.close()
+
+
 # =========================================================================
 # Feature commands
 # =========================================================================
