@@ -7,6 +7,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import typer
 from pydantic import BaseModel
@@ -22,6 +23,9 @@ from .catalog.scanner import discover_parquet_files, scan_source
 from .catalog.storage import is_s3_uri
 from .catalog.usage import log_feature_usage
 from .config import load_settings
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 app = typer.Typer(name="featcat", help="Lightweight AI-powered Feature Catalog")
 source_app = typer.Typer(help="Manage data sources")
@@ -52,6 +56,33 @@ console = Console()
 
 def _get_db():
     return get_backend()
+
+
+def _emit(payload: object, render_table: Callable[[], None], *, json_mode: bool) -> None:
+    """Print ``payload`` as JSON when ``json_mode`` is true, else call ``render_table``.
+
+    Keeps the existing rich/table rendering path the default while making
+    list/get commands scriptable with ``--json``.
+    """
+    if json_mode:
+        print(json.dumps(payload, indent=2, default=str))
+        return
+    render_table()
+
+
+def _confirm_typing(name: str, impact_summary: str, *, skip: bool = False) -> bool:
+    """Type-to-confirm prompt for high-impact destructive ops.
+
+    Prints ``impact_summary`` (a few lines describing the cascade), then asks
+    the operator to type the resource name back. Returns True on match, False
+    otherwise. ``skip=True`` (passed when ``--yes`` is set) returns True
+    without prompting.
+    """
+    if skip:
+        return True
+    console.print(impact_summary)
+    typed = typer.prompt(f"Type '{name}' to confirm", default="", show_default=False)
+    return typed.strip() == name
 
 
 def _get_llm(use_cache: bool = True):
@@ -539,27 +570,40 @@ def source_add(
 
 
 @source_app.command("list")
-def source_list() -> None:
+def source_list(
+    json_output: bool = typer.Option(False, "--json", "-j", help="Emit JSON to stdout instead of a table"),
+) -> None:
     """List all registered data sources."""
     db = _get_db()
     sources = db.list_sources()
     db.close()
 
-    if not sources:
-        console.print("[dim]No data sources registered. Use 'featcat source add' first.[/dim]")
-        return
+    payload = [
+        {
+            "name": s.name,
+            "path": s.path,
+            "storage_type": s.storage_type,
+            "format": s.format,
+            "description": s.description,
+        }
+        for s in sources
+    ]
 
-    table = Table(title="Data Sources")
-    table.add_column("Name", style="cyan")
-    table.add_column("Path")
-    table.add_column("Type")
-    table.add_column("Format")
-    table.add_column("Description")
+    def _render() -> None:
+        if not sources:
+            console.print("[dim]No data sources registered. Use 'featcat source add' first.[/dim]")
+            return
+        table = Table(title="Data Sources")
+        table.add_column("Name", style="cyan")
+        table.add_column("Path")
+        table.add_column("Type")
+        table.add_column("Format")
+        table.add_column("Description")
+        for s in sources:
+            table.add_row(s.name, s.path, s.storage_type, s.format, s.description)
+        console.print(table)
 
-    for s in sources:
-        table.add_row(s.name, s.path, s.storage_type, s.format, s.description)
-
-    console.print(table)
+    _emit(payload, _render, json_mode=json_output)
 
 
 @source_app.command("scan")
@@ -616,6 +660,7 @@ def feature_list(
     owner: str | None = typer.Option(None, "--owner", help="Filter by owner"),
     tag: str | None = typer.Option(None, "--tag", help="Filter by tag"),
     dtype: str | None = typer.Option(None, "--dtype", help="Filter by dtype"),
+    json_output: bool = typer.Option(False, "--json", "-j", help="Emit JSON to stdout instead of a table"),
 ) -> None:
     """List features with rich filtering matching the API."""
     from .catalog.health import compute_health_score
@@ -671,38 +716,41 @@ def feature_list(
     elif has_doc is False:
         enriched = [d for d in enriched if not d.get("has_doc")]
 
-    if not enriched:
-        console.print("[dim]No features match these filters[/dim]")
-        return
+    def _render() -> None:
+        if not enriched:
+            console.print("[dim]No features match these filters[/dim]")
+            return
 
-    table = Table(title=f"Features ({len(enriched)})")
-    table.add_column("Name", style="cyan")
-    table.add_column("Column")
-    table.add_column("Dtype")
-    show_health = "health_grade" in enriched[0]
-    if show_health:
-        table.add_column("Grade")
-        table.add_column("Drift")
-        table.add_column("Doc", justify="center")
-    table.add_column("Owner")
-    table.add_column("Tags")
-    table.add_column("Nulls", justify="right")
-
-    for d in enriched:
-        null_ratio = d["stats"].get("null_ratio", "")
-        null_str = f"{null_ratio:.1%}" if isinstance(null_ratio, (int, float)) else str(null_ratio)
-        tags_str = ", ".join(d["tags"]) if d["tags"] else ""
-        row = [d["name"], d["column"], d["dtype"]]
+        table = Table(title=f"Features ({len(enriched)})")
+        table.add_column("Name", style="cyan")
+        table.add_column("Column")
+        table.add_column("Dtype")
+        show_health = "health_grade" in enriched[0]
         if show_health:
-            row += [
-                d.get("health_grade", "-"),
-                d.get("drift_status", "-"),
-                "yes" if d.get("has_doc") else "-",
-            ]
-        row += [d["owner"] or "-", tags_str, null_str]
-        table.add_row(*row)
+            table.add_column("Grade")
+            table.add_column("Drift")
+            table.add_column("Doc", justify="center")
+        table.add_column("Owner")
+        table.add_column("Tags")
+        table.add_column("Nulls", justify="right")
 
-    console.print(table)
+        for d in enriched:
+            null_ratio = d["stats"].get("null_ratio", "")
+            null_str = f"{null_ratio:.1%}" if isinstance(null_ratio, (int, float)) else str(null_ratio)
+            tags_str = ", ".join(d["tags"]) if d["tags"] else ""
+            row = [d["name"], d["column"], d["dtype"]]
+            if show_health:
+                row += [
+                    d.get("health_grade", "-"),
+                    d.get("drift_status", "-"),
+                    "yes" if d.get("has_doc") else "-",
+                ]
+            row += [d["owner"] or "-", tags_str, null_str]
+            table.add_row(*row)
+
+        console.print(table)
+
+    _emit(enriched, _render, json_mode=json_output)
 
 
 @feature_app.command("info")
@@ -1891,29 +1939,40 @@ def group_create(
 @group_app.command("list")
 def group_list(
     project: str = typer.Option("", "--project", "-p", help="Filter by project"),
+    json_output: bool = typer.Option(False, "--json", "-j", help="Emit JSON to stdout instead of a table"),
 ) -> None:
     """List all feature groups."""
     db = _get_db()
     groups = db.list_groups(project=project or None)
-
-    if not groups:
-        console.print("[dim]No groups found[/dim]")
-        db.close()
-        return
-
-    table = Table(title="Feature Groups")
-    table.add_column("Name", style="cyan")
-    table.add_column("Project")
-    table.add_column("Owner")
-    table.add_column("Features", justify="right")
-    table.add_column("Description")
-
-    for g in groups:
-        count = db.count_group_members(g.id)
-        table.add_row(g.name, g.project or "-", g.owner or "-", str(count), g.description or "-")
-
+    counts = {g.id: db.count_group_members(g.id) for g in groups}
     db.close()
-    console.print(table)
+
+    payload = [
+        {
+            "name": g.name,
+            "project": g.project or "",
+            "owner": g.owner or "",
+            "feature_count": counts[g.id],
+            "description": g.description or "",
+        }
+        for g in groups
+    ]
+
+    def _render() -> None:
+        if not groups:
+            console.print("[dim]No groups found[/dim]")
+            return
+        table = Table(title="Feature Groups")
+        table.add_column("Name", style="cyan")
+        table.add_column("Project")
+        table.add_column("Owner")
+        table.add_column("Features", justify="right")
+        table.add_column("Description")
+        for g in groups:
+            table.add_row(g.name, g.project or "-", g.owner or "-", str(counts[g.id]), g.description or "-")
+        console.print(table)
+
+    _emit(payload, _render, json_mode=json_output)
 
 
 @group_app.command("show")
