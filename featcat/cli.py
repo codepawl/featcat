@@ -7,6 +7,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import typer
 from pydantic import BaseModel
@@ -23,6 +24,9 @@ from .catalog.storage import is_s3_uri
 from .catalog.usage import log_feature_usage
 from .config import load_settings
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
 app = typer.Typer(name="featcat", help="Lightweight AI-powered Feature Catalog")
 source_app = typer.Typer(help="Manage data sources")
 feature_app = typer.Typer(help="Manage features")
@@ -35,6 +39,8 @@ group_app = typer.Typer(help="Feature groups management")
 usage_app = typer.Typer(help="Feature usage analytics")
 actions_app = typer.Typer(help="Recommended actions (lifecycle loop)")
 lineage_app = typer.Typer(help="Lineage management (T1.1)")
+lineage_edge_app = typer.Typer(help="Manage individual lineage edges")
+lineage_app.add_typer(lineage_edge_app, name="edge")
 app.add_typer(source_app, name="source")
 app.add_typer(feature_app, name="feature")
 app.add_typer(doc_app, name="doc")
@@ -52,6 +58,33 @@ console = Console()
 
 def _get_db():
     return get_backend()
+
+
+def _emit(payload: object, render_table: Callable[[], None], *, json_mode: bool) -> None:
+    """Print ``payload`` as JSON when ``json_mode`` is true, else call ``render_table``.
+
+    Keeps the existing rich/table rendering path the default while making
+    list/get commands scriptable with ``--json``.
+    """
+    if json_mode:
+        print(json.dumps(payload, indent=2, default=str))
+        return
+    render_table()
+
+
+def _confirm_typing(name: str, impact_summary: str, *, skip: bool = False) -> bool:
+    """Type-to-confirm prompt for high-impact destructive ops.
+
+    Prints ``impact_summary`` (a few lines describing the cascade), then asks
+    the operator to type the resource name back. Returns True on match, False
+    otherwise. ``skip=True`` (passed when ``--yes`` is set) returns True
+    without prompting.
+    """
+    if skip:
+        return True
+    console.print(impact_summary)
+    typed = typer.prompt(f"Type '{name}' to confirm", default="", show_default=False)
+    return typed.strip() == name
 
 
 def _get_llm(use_cache: bool = True):
@@ -539,27 +572,40 @@ def source_add(
 
 
 @source_app.command("list")
-def source_list() -> None:
+def source_list(
+    json_output: bool = typer.Option(False, "--json", "-j", help="Emit JSON to stdout instead of a table"),
+) -> None:
     """List all registered data sources."""
     db = _get_db()
     sources = db.list_sources()
     db.close()
 
-    if not sources:
-        console.print("[dim]No data sources registered. Use 'featcat source add' first.[/dim]")
-        return
+    payload = [
+        {
+            "name": s.name,
+            "path": s.path,
+            "storage_type": s.storage_type,
+            "format": s.format,
+            "description": s.description,
+        }
+        for s in sources
+    ]
 
-    table = Table(title="Data Sources")
-    table.add_column("Name", style="cyan")
-    table.add_column("Path")
-    table.add_column("Type")
-    table.add_column("Format")
-    table.add_column("Description")
+    def _render() -> None:
+        if not sources:
+            console.print("[dim]No data sources registered. Use 'featcat source add' first.[/dim]")
+            return
+        table = Table(title="Data Sources")
+        table.add_column("Name", style="cyan")
+        table.add_column("Path")
+        table.add_column("Type")
+        table.add_column("Format")
+        table.add_column("Description")
+        for s in sources:
+            table.add_row(s.name, s.path, s.storage_type, s.format, s.description)
+        console.print(table)
 
-    for s in sources:
-        table.add_row(s.name, s.path, s.storage_type, s.format, s.description)
-
-    console.print(table)
+    _emit(payload, _render, json_mode=json_output)
 
 
 @source_app.command("scan")
@@ -600,6 +646,86 @@ def source_scan(
     console.print(f"[green]Done:[/green] {registered} features registered from [cyan]{name}[/cyan]")
 
 
+@source_app.command("rm")
+def source_rm(
+    name: str = typer.Argument(help="Source name to remove"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompts"),
+) -> None:
+    """Hard-delete a source and cascade-remove its features and dependents.
+
+    Mirrors ``DELETE /api/sources/{name}``: every dependent row (features,
+    docs, baselines, monitoring checks, usage logs, group memberships,
+    lineage edges, action items) is cleaned up. When the source has more
+    than 10 features the prompt requires typing the source name back to
+    confirm; ``--yes`` skips both prompts.
+    """
+    db = _get_db()
+    try:
+        if db.get_source_by_name(name) is None:
+            console.print(f"[red]Source not found:[/red] {name}")
+            raise typer.Exit(1)
+
+        impact = db.get_source_impact(name)
+        features_count = int(impact.get("features_count", 0))
+        groups = impact.get("groups", [])
+        groups_count = len(groups)
+
+        impact_summary = (
+            f"[yellow]Source '{name}' has {features_count} feature(s)"
+            f" across {groups_count} group(s).[/yellow]\n"
+            "[yellow]Deleting will cascade-remove all features, docs, baselines,"
+            " monitoring checks, usage logs, group memberships, and lineage edges.[/yellow]"
+        )
+
+        if features_count > 10:
+            if not _confirm_typing(name, impact_summary, skip=yes):
+                console.print("[dim]Aborted.[/dim]")
+                raise typer.Exit(0)
+        elif not yes:
+            console.print(impact_summary)
+            if not typer.confirm(f"Delete source '{name}'?"):
+                console.print("[dim]Aborted.[/dim]")
+                raise typer.Exit(0)
+
+        try:
+            removed = db.delete_source(name)
+        except KeyError:
+            console.print(f"[red]Source not found:[/red] {name}")
+            raise typer.Exit(1) from None
+        console.print(
+            f"[green]Removed source '{name}'[/green] ({removed} feature(s),"
+            f" {groups_count} group membership(s) cleaned up)"
+        )
+    finally:
+        db.close()
+
+
+@source_app.command("update")
+def source_update(
+    name: str = typer.Argument(help="Source name"),
+    description: str | None = typer.Option(None, "--description", "-d", help="New description"),
+    fmt: str | None = typer.Option(None, "--format", help="New file format (parquet|csv)"),
+) -> None:
+    """Update mutable fields on a source (description, format).
+
+    Mirrors ``PATCH /api/sources/{name}``. ``name``, ``path``, and
+    ``storage_type`` are immutable — rename is intentionally not supported.
+    """
+    if description is None and fmt is None:
+        console.print("[red]Nothing to update.[/red] Pass --description and/or --format.")
+        raise typer.Exit(1)
+
+    db = _get_db()
+    try:
+        if db.get_source_by_name(name) is None:
+            console.print(f"[red]Source not found:[/red] {name}")
+            raise typer.Exit(1)
+        db.update_source(name, description=description, format=fmt)
+        console.print(f"[green]Updated source:[/green] {name}")
+    finally:
+        db.close()
+
+
 # =========================================================================
 # Feature commands
 # =========================================================================
@@ -616,6 +742,7 @@ def feature_list(
     owner: str | None = typer.Option(None, "--owner", help="Filter by owner"),
     tag: str | None = typer.Option(None, "--tag", help="Filter by tag"),
     dtype: str | None = typer.Option(None, "--dtype", help="Filter by dtype"),
+    json_output: bool = typer.Option(False, "--json", "-j", help="Emit JSON to stdout instead of a table"),
 ) -> None:
     """List features with rich filtering matching the API."""
     from .catalog.health import compute_health_score
@@ -671,38 +798,41 @@ def feature_list(
     elif has_doc is False:
         enriched = [d for d in enriched if not d.get("has_doc")]
 
-    if not enriched:
-        console.print("[dim]No features match these filters[/dim]")
-        return
+    def _render() -> None:
+        if not enriched:
+            console.print("[dim]No features match these filters[/dim]")
+            return
 
-    table = Table(title=f"Features ({len(enriched)})")
-    table.add_column("Name", style="cyan")
-    table.add_column("Column")
-    table.add_column("Dtype")
-    show_health = "health_grade" in enriched[0]
-    if show_health:
-        table.add_column("Grade")
-        table.add_column("Drift")
-        table.add_column("Doc", justify="center")
-    table.add_column("Owner")
-    table.add_column("Tags")
-    table.add_column("Nulls", justify="right")
-
-    for d in enriched:
-        null_ratio = d["stats"].get("null_ratio", "")
-        null_str = f"{null_ratio:.1%}" if isinstance(null_ratio, (int, float)) else str(null_ratio)
-        tags_str = ", ".join(d["tags"]) if d["tags"] else ""
-        row = [d["name"], d["column"], d["dtype"]]
+        table = Table(title=f"Features ({len(enriched)})")
+        table.add_column("Name", style="cyan")
+        table.add_column("Column")
+        table.add_column("Dtype")
+        show_health = "health_grade" in enriched[0]
         if show_health:
-            row += [
-                d.get("health_grade", "-"),
-                d.get("drift_status", "-"),
-                "yes" if d.get("has_doc") else "-",
-            ]
-        row += [d["owner"] or "-", tags_str, null_str]
-        table.add_row(*row)
+            table.add_column("Grade")
+            table.add_column("Drift")
+            table.add_column("Doc", justify="center")
+        table.add_column("Owner")
+        table.add_column("Tags")
+        table.add_column("Nulls", justify="right")
 
-    console.print(table)
+        for d in enriched:
+            null_ratio = d["stats"].get("null_ratio", "")
+            null_str = f"{null_ratio:.1%}" if isinstance(null_ratio, (int, float)) else str(null_ratio)
+            tags_str = ", ".join(d["tags"]) if d["tags"] else ""
+            row = [d["name"], d["column"], d["dtype"]]
+            if show_health:
+                row += [
+                    d.get("health_grade", "-"),
+                    d.get("drift_status", "-"),
+                    "yes" if d.get("has_doc") else "-",
+                ]
+            row += [d["owner"] or "-", tags_str, null_str]
+            table.add_row(*row)
+
+        console.print(table)
+
+    _emit(enriched, _render, json_mode=json_output)
 
 
 @feature_app.command("info")
@@ -743,6 +873,203 @@ def feature_info(
 
     db.close()
     console.print()
+
+
+@feature_app.command("rm")
+def feature_rm(
+    name: str = typer.Argument(help="Feature name (source.column)"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
+) -> None:
+    """Hard-delete a feature and cascade-remove its docs, baselines, checks,
+    usage logs, group memberships, lineage edges, and version history.
+
+    Cascade contract matches ``LocalBackend.bulk_delete_features``.
+    """
+    db = _get_db()
+    try:
+        feature = db.get_feature_by_name(name)
+        if feature is None:
+            console.print(f"[red]Feature not found:[/red] {name}")
+            raise typer.Exit(1)
+
+        if not yes and not typer.confirm(f"Delete feature '{name}'?"):
+            console.print("[dim]Aborted.[/dim]")
+            raise typer.Exit(0)
+
+        removed = db.bulk_delete_features([feature.id])
+        if removed == 0:
+            console.print(f"[red]Delete failed for:[/red] {name}")
+            raise typer.Exit(1)
+        console.print(f"[green]Removed feature:[/green] {name}")
+    finally:
+        db.close()
+
+
+@feature_app.command("update")
+def feature_update(
+    name: str = typer.Argument(help="Feature name (source.column)"),
+    owner: str | None = typer.Option(None, "--owner", help="New owner"),
+    description: str | None = typer.Option(None, "--description", "-d", help="New description"),
+) -> None:
+    """Update mutable fields on a feature (owner, description).
+
+    Mirrors ``PATCH /api/features/by-name`` (excluding ``tags``, which has
+    its own dedicated ``featcat feature tag`` command).
+    """
+    if owner is None and description is None:
+        console.print("[red]Nothing to update.[/red] Pass --owner and/or --description.")
+        raise typer.Exit(1)
+
+    db = _get_db()
+    try:
+        feature = db.get_feature_by_name(name)
+        if feature is None:
+            console.print(f"[red]Feature not found:[/red] {name}")
+            raise typer.Exit(1)
+        updates: dict[str, str] = {}
+        if owner is not None:
+            updates["owner"] = owner
+        if description is not None:
+            updates["description"] = description
+        db.update_feature_metadata(feature.id, **updates)
+        console.print(f"[green]Updated feature:[/green] {name}")
+    finally:
+        db.close()
+
+
+def _resolve_specs(db, specs: list[str]) -> tuple[list[str], list[str]]:
+    """Resolve ``source.column`` specs to feature IDs.
+
+    Mirrors the REST bulk endpoints' all-or-nothing validation contract:
+    caller should exit with an error if ``invalid`` is non-empty.
+    """
+    ids: list[str] = []
+    invalid: list[str] = []
+    for spec in specs:
+        feature = db.get_feature_by_name(spec)
+        if feature is None:
+            invalid.append(spec)
+        else:
+            ids.append(feature.id)
+    return ids, invalid
+
+
+def _read_specs_file(path: Path) -> list[str]:
+    """Read a newline-delimited specs file. Blank lines and ``#`` comments are skipped."""
+    raw = path.read_text(encoding="utf-8").splitlines()
+    return [line.strip() for line in raw if line.strip() and not line.lstrip().startswith("#")]
+
+
+@feature_app.command("bulk-tag")
+def feature_bulk_tag(
+    action: str = typer.Option(..., "--action", "-a", help="add | remove | replace"),
+    tags: str = typer.Option(..., "--tags", "-t", help="Comma-separated tags"),
+    file: Path = typer.Option(  # noqa: B008
+        ...,
+        "--file",
+        "-f",
+        help="Path to newline-delimited specs file (one source.column per line; '#' lines ignored)",
+        exists=True,
+        dir_okay=False,
+        readable=True,
+    ),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt for --action replace"),
+) -> None:
+    """Bulk-apply a tag change across many features.
+
+    Mirrors ``POST /api/features/bulk/tags`` (LocalBackend.bulk_update_tags).
+    All-or-nothing: if any spec in the file doesn't resolve to a feature
+    the command exits 1 with the unresolved specs listed, before any DB
+    writes happen.
+    """
+    if action not in {"add", "remove", "replace"}:
+        console.print(f"[red]--action must be add|remove|replace[/red] (got {action!r})")
+        raise typer.Exit(1)
+
+    specs = _read_specs_file(file)
+    if not specs:
+        console.print("[red]No specs in file.[/red]")
+        raise typer.Exit(1)
+
+    tag_list = [t.strip() for t in tags.split(",") if t.strip()]
+    if not tag_list:
+        console.print("[red]--tags must contain at least one tag.[/red]")
+        raise typer.Exit(1)
+
+    db = _get_db()
+    try:
+        ids, invalid = _resolve_specs(db, specs)
+        if invalid:
+            console.print(f"[red]Unresolved feature spec(s):[/red] {', '.join(invalid)}")
+            raise typer.Exit(1)
+
+        if action == "replace" and not yes:
+            console.print(
+                f"[yellow]Replacing tags on {len(ids)} feature(s)"
+                f" with {tag_list}.[/yellow] Existing tags will be discarded."
+            )
+            if not typer.confirm("Continue?"):
+                console.print("[dim]Aborted.[/dim]")
+                raise typer.Exit(0)
+
+        updated = db.bulk_update_tags(ids, action, tag_list)
+        console.print(f"[green]Updated {updated}/{len(ids)} feature(s) (action: {action}).[/green]")
+    finally:
+        db.close()
+
+
+@feature_app.command("bulk-delete")
+def feature_bulk_delete(
+    file: Path = typer.Option(  # noqa: B008
+        ...,
+        "--file",
+        "-f",
+        help="Path to newline-delimited specs file (one source.column per line; '#' lines ignored)",
+        exists=True,
+        dir_okay=False,
+        readable=True,
+    ),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompts"),
+) -> None:
+    """Bulk hard-delete features (cascade per LocalBackend.bulk_delete_features).
+
+    Mirrors ``POST /api/features/bulk/delete`` (with the REST API's
+    ``confirm: true`` gate replaced by an interactive prompt). When the
+    file contains more than 10 specs the prompt requires typing
+    ``DELETE`` back to confirm.
+    """
+    specs = _read_specs_file(file)
+    if not specs:
+        console.print("[red]No specs in file.[/red]")
+        raise typer.Exit(1)
+
+    db = _get_db()
+    try:
+        ids, invalid = _resolve_specs(db, specs)
+        if invalid:
+            console.print(f"[red]Unresolved feature spec(s):[/red] {', '.join(invalid)}")
+            raise typer.Exit(1)
+
+        impact_summary = (
+            f"[yellow]About to delete {len(ids)} feature(s).[/yellow]\n"
+            "[yellow]This will cascade-remove docs, baselines, monitoring checks,"
+            " usage logs, group memberships, lineage edges, and version history.[/yellow]"
+        )
+
+        if len(ids) > 10:
+            if not _confirm_typing("DELETE", impact_summary, skip=yes):
+                console.print("[dim]Aborted.[/dim]")
+                raise typer.Exit(0)
+        elif not yes:
+            console.print(impact_summary)
+            if not typer.confirm("Proceed?"):
+                console.print("[dim]Aborted.[/dim]")
+                raise typer.Exit(0)
+
+        deleted = db.bulk_delete_features(ids)
+        console.print(f"[green]Deleted {deleted}/{len(ids)} feature(s).[/green]")
+    finally:
+        db.close()
 
 
 @feature_app.command("tag")
@@ -1891,29 +2218,40 @@ def group_create(
 @group_app.command("list")
 def group_list(
     project: str = typer.Option("", "--project", "-p", help="Filter by project"),
+    json_output: bool = typer.Option(False, "--json", "-j", help="Emit JSON to stdout instead of a table"),
 ) -> None:
     """List all feature groups."""
     db = _get_db()
     groups = db.list_groups(project=project or None)
-
-    if not groups:
-        console.print("[dim]No groups found[/dim]")
-        db.close()
-        return
-
-    table = Table(title="Feature Groups")
-    table.add_column("Name", style="cyan")
-    table.add_column("Project")
-    table.add_column("Owner")
-    table.add_column("Features", justify="right")
-    table.add_column("Description")
-
-    for g in groups:
-        count = db.count_group_members(g.id)
-        table.add_row(g.name, g.project or "-", g.owner or "-", str(count), g.description or "-")
-
+    counts = {g.id: db.count_group_members(g.id) for g in groups}
     db.close()
-    console.print(table)
+
+    payload = [
+        {
+            "name": g.name,
+            "project": g.project or "",
+            "owner": g.owner or "",
+            "feature_count": counts[g.id],
+            "description": g.description or "",
+        }
+        for g in groups
+    ]
+
+    def _render() -> None:
+        if not groups:
+            console.print("[dim]No groups found[/dim]")
+            return
+        table = Table(title="Feature Groups")
+        table.add_column("Name", style="cyan")
+        table.add_column("Project")
+        table.add_column("Owner")
+        table.add_column("Features", justify="right")
+        table.add_column("Description")
+        for g in groups:
+            table.add_row(g.name, g.project or "-", g.owner or "-", str(counts[g.id]), g.description or "-")
+        console.print(table)
+
+    _emit(payload, _render, json_mode=json_output)
 
 
 @group_app.command("show")
@@ -2022,6 +2360,41 @@ def group_delete(
     db.delete_group(group.id)
     db.close()
     console.print(f"[green]Group deleted:[/green] {name}")
+
+
+@group_app.command("update")
+def group_update(
+    name: str = typer.Argument(help="Group name"),
+    description: str | None = typer.Option(None, "--description", "-d", help="New description"),
+    project: str | None = typer.Option(None, "--project", "-p", help="New project"),
+    owner: str | None = typer.Option(None, "--owner", help="New owner"),
+) -> None:
+    """Update mutable fields on a group (description, project, owner).
+
+    Mirrors ``PATCH /api/groups/{name}``. Empty strings are passed through
+    (clear the field); to leave a field untouched, omit the option.
+    """
+    if description is None and project is None and owner is None:
+        console.print("[red]Nothing to update.[/red] Pass --description, --project and/or --owner.")
+        raise typer.Exit(1)
+
+    db = _get_db()
+    try:
+        group = db.get_group_by_name(name)
+        if group is None:
+            console.print(f"[red]Group not found:[/red] {name}")
+            raise typer.Exit(1)
+        updates: dict[str, str] = {}
+        if description is not None:
+            updates["description"] = description
+        if project is not None:
+            updates["project"] = project
+        if owner is not None:
+            updates["owner"] = owner
+        db.update_group(group.id, **updates)
+        console.print(f"[green]Updated group:[/green] {name}")
+    finally:
+        db.close()
 
 
 @group_app.command("health")
@@ -3670,6 +4043,73 @@ def lineage_clear(
     console.print(
         f"[green]Removed {edge_count} edge(s), {removed_features} feature(s), {removed_sources} source(s).[/green]"
     )
+
+
+@lineage_edge_app.command("add")
+def lineage_edge_add(
+    child: str = typer.Argument(help="Child feature name (the derived feature)"),
+    parent: str = typer.Argument(help="Parent feature name (the upstream feature)"),
+    transform: str = typer.Option("", "--transform", "-t", help="Free-form transform expression (e.g. SQL)"),
+) -> None:
+    """Manually add a feature→feature lineage edge.
+
+    Wraps ``LocalBackend.add_lineage`` with ``detected_method='manual'``.
+    The DB unique constraint makes inserts idempotent (re-adding the same
+    edge is a no-op).
+    """
+    db = _get_db()
+    try:
+        child_feat = db.get_feature_by_name(child)
+        if child_feat is None:
+            console.print(f"[red]Child feature not found:[/red] {child}")
+            raise typer.Exit(1)
+        parent_feat = db.get_feature_by_name(parent)
+        if parent_feat is None:
+            console.print(f"[red]Parent feature not found:[/red] {parent}")
+            raise typer.Exit(1)
+        db.add_lineage(
+            child_feature_id=child_feat.id,
+            parent_feature_id=parent_feat.id,
+            transform=transform,
+            detected_method="manual",
+        )
+        console.print(f"[green]Added lineage edge:[/green] {child} <- {parent}")
+    finally:
+        db.close()
+
+
+@lineage_edge_app.command("rm")
+def lineage_edge_rm(
+    child: str = typer.Argument(help="Child feature name"),
+    parent: str = typer.Argument(help="Parent feature name"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
+) -> None:
+    """Remove a feature→feature lineage edge.
+
+    Source-column edges (parent_type='source_column') are not removable
+    through this command — see ``featcat lineage clear --demo-only`` for
+    bulk removal of seeded edges.
+    """
+    db = _get_db()
+    try:
+        child_feat = db.get_feature_by_name(child)
+        if child_feat is None:
+            console.print(f"[red]Child feature not found:[/red] {child}")
+            raise typer.Exit(1)
+        parent_feat = db.get_feature_by_name(parent)
+        if parent_feat is None:
+            console.print(f"[red]Parent feature not found:[/red] {parent}")
+            raise typer.Exit(1)
+        if not _lineage_edge_exists(db, child_feat.id, parent_feat.id):
+            console.print(f"[red]Edge not found:[/red] {child} <- {parent}")
+            raise typer.Exit(1)
+        if not yes and not typer.confirm(f"Remove lineage edge {child} <- {parent}?"):
+            console.print("[dim]Aborted.[/dim]")
+            raise typer.Exit(0)
+        db.remove_lineage(child_feat.id, parent_feat.id)
+        console.print(f"[green]Removed lineage edge:[/green] {child} <- {parent}")
+    finally:
+        db.close()
 
 
 # =========================================================================

@@ -198,6 +198,73 @@ featcat feature info device_perf.cpu_usage
 featcat monitor check device_perf.cpu_usage --llm
 ```
 
+## Catalog admin via CLI
+
+These commands mirror the corresponding REST endpoints under `/api/`,
+so SSH-only deploys and CI scripts have the same management surface as
+the web UI.
+
+### Sources
+
+```bash
+# Update mutable metadata (description, format). name/path/storage_type are immutable.
+featcat source update raw_logs --description "raw event ingest from S3"
+
+# Hard-delete with cascade through features, docs, baselines, monitoring
+# checks, usage logs, group memberships, and lineage edges. When the
+# source has >10 features the CLI asks the operator to type the source
+# name back to confirm; --yes skips both prompts.
+featcat source rm raw_logs --yes
+```
+
+### Features
+
+```bash
+# Update owner / description (tags have their own `feature tag` command).
+featcat feature update user_behavior.session_count --owner alice@example.com
+
+# Hard-delete one feature (cascade: docs, baselines, checks, usage,
+# group memberships, lineage edges, version history).
+featcat feature rm user_behavior.session_count --yes
+
+# Bulk-tag from a newline-delimited specs file ("# ..." lines are skipped).
+featcat feature bulk-tag --action add --tags pii,sensitive --file specs.txt
+
+# Bulk hard-delete. >10 specs requires typing DELETE back to confirm.
+featcat feature bulk-delete --file specs.txt
+```
+
+### Groups
+
+```bash
+# Update description / project / owner. Omitted options leave the field
+# untouched; pass an empty string to clear.
+featcat group update churn_v1 --description "v1 features for churn model" \
+    --owner ds-team@example.com
+```
+
+### Lineage edges
+
+```bash
+# Manually link a derived feature to its upstream feature (detected_method="manual").
+featcat lineage edge add features.weekly_logins features.daily_logins \
+    --transform "SUM(daily_logins) OVER (7d)"
+
+# Remove that edge.
+featcat lineage edge rm features.weekly_logins features.daily_logins --yes
+```
+
+### JSON for scripts
+
+`--json` is supported on the three big read commands so output is
+pipeable into `jq` for scripting:
+
+```bash
+featcat source list --json | jq '.[] | .name'
+featcat feature list --source user_behavior --json | jq 'length'
+featcat group list --json | jq '.[] | {name, feature_count}'
+```
+
 ## Tips and Tricks
 
 - **Cache**: Auto-doc and NL query results are cached. Use `--no-cache` to bypass
