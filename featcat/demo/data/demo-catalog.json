@@ -1,0 +1,72 @@
+{
+  "description": "Demo data for featcat — realistic feature derivation patterns across three sources (device_logs, client_logs, demand_v2). Populated by `featcat demo seed`; removed by `featcat demo clear`.",
+  "version": "1.0",
+  "sources": [
+    {"name": "device_logs", "path": "/demo/device_logs.parquet", "description": "Per-device telemetry (CPU, memory, disk)."},
+    {"name": "client_logs", "path": "/demo/client_logs.parquet", "description": "Per-session client events."},
+    {"name": "demand_v2", "path": "/demo/demand_v2.parquet", "description": "Aggregated demand signals."}
+  ],
+  "features": [
+    {"name": "device_logs.cpu_usage_raw", "column_name": "cpu_usage_raw", "dtype": "float64", "description": "Instantaneous CPU usage proportion."},
+    {"name": "device_logs.cpu_usage_30d_avg", "column_name": "cpu_usage_30d_avg", "dtype": "float64", "description": "30-day rolling mean of cpu_usage_raw."},
+    {"name": "device_logs.memory_usage_raw", "column_name": "memory_usage_raw", "dtype": "float64", "description": "Instantaneous memory usage proportion."},
+    {"name": "device_logs.memory_usage_30d_avg", "column_name": "memory_usage_30d_avg", "dtype": "float64", "description": "30-day rolling mean of memory_usage_raw."},
+    {"name": "device_logs.disk_iops", "column_name": "disk_iops", "dtype": "int64", "description": "Disk I/O operations per second."},
+    {"name": "client_logs.session_count_24h", "column_name": "session_count_24h", "dtype": "int64", "description": "Distinct sessions in the last 24h."},
+    {"name": "client_logs.error_rate_1h", "column_name": "error_rate_1h", "dtype": "float64", "description": "Per-session error rate in the trailing hour."},
+    {"name": "client_logs.bytes_received", "column_name": "bytes_received", "dtype": "int64", "description": "Bytes received by client per session."},
+    {"name": "demand_v2.peak_load", "column_name": "peak_load", "dtype": "float64", "description": "Per-region peak load fraction."},
+    {"name": "demand_v2.demand_index", "column_name": "demand_index", "dtype": "float64", "description": "Composite demand signal: peak_load / capacity."}
+  ],
+  "docs": [
+    {
+      "feature_name": "device_logs.cpu_usage_30d_avg",
+      "short_description": "Rolling 30-day mean of CPU usage per device.",
+      "long_description": "Computed as a daily rolling mean over cpu_usage_raw. Smooths short bursts so sustained load shifts surface; resets to NaN after long device outages and recovers over the next 30 days.",
+      "expected_range": "0.0 - 1.0 (proportion of CPU capacity)",
+      "potential_issues": "Devices with sparse telemetry produce noisy averages; the rolling window assumes daily uptime, so brief outages skew toward zero.",
+      "suggested_tags": ["rolling", "device", "smoothed"]
+    },
+    {
+      "feature_name": "demand_v2.demand_index",
+      "short_description": "Composite demand signal combining peak load and effective capacity.",
+      "long_description": "Defined as peak_load divided by the region's effective capacity over the same window. Capacity is recomputed weekly from the active hardware inventory; jumps after capacity additions usually reflect inventory updates, not real demand drops.",
+      "expected_range": "0.0 - 1.0, with sustained values above 0.85 considered stressed.",
+      "potential_issues": "Stale capacity tables produce phantom drops after hardware refresh weeks; cross-check with the inventory pipeline before reacting to large step changes.",
+      "suggested_tags": ["derived", "demand", "capacity-relative"]
+    }
+  ],
+  "groups": [
+    {
+      "name": "device_health_v1",
+      "description": "Core signals for device-level health scoring.",
+      "feature_names": [
+        "device_logs.cpu_usage_30d_avg",
+        "device_logs.memory_usage_30d_avg",
+        "device_logs.disk_iops"
+      ]
+    },
+    {
+      "name": "session_quality_v1",
+      "description": "Per-session quality signals for the network team.",
+      "feature_names": [
+        "client_logs.session_count_24h",
+        "client_logs.error_rate_1h",
+        "client_logs.bytes_received"
+      ]
+    },
+    {
+      "name": "demand_forecasting",
+      "description": "Forecast inputs used by capacity planning.",
+      "feature_names": [
+        "demand_v2.peak_load",
+        "demand_v2.demand_index"
+      ]
+    }
+  ],
+  "lineage_edges": [
+    {"child": "device_logs.cpu_usage_30d_avg", "parent": "device_logs.cpu_usage_raw", "transformation": "rolling_mean(window='30d')"},
+    {"child": "device_logs.memory_usage_30d_avg", "parent": "device_logs.memory_usage_raw", "transformation": "rolling_mean(window='30d')"},
+    {"child": "demand_v2.demand_index", "parent": "demand_v2.peak_load", "transformation": "demand_index = peak_load / capacity"}
+  ]
+}

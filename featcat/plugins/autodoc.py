@@ -38,12 +38,12 @@ class AutodocPlugin(BasePlugin):
         progress_callback = kwargs.get("progress_callback")
         language: str = kwargs.get("language", "en")
         regenerate_all: bool = kwargs.get("regenerate_all", False)
+        context: str | None = kwargs.get("context")
         system = localize_system_prompt(AUTODOC_SYSTEM, language)
 
         if feature_name:
-            return self._document_single(catalog_db, llm, feature_name, system)
-        else:
-            return self._document_all(catalog_db, llm, progress_callback, system, regenerate_all)
+            return self._document_single(catalog_db, llm, feature_name, system, context=context)
+        return self._document_all(catalog_db, llm, progress_callback, system, regenerate_all, context=context)
 
     def _document_single(
         self,
@@ -51,12 +51,14 @@ class AutodocPlugin(BasePlugin):
         llm: BaseLLM,
         feature_name: str,
         system: str = AUTODOC_SYSTEM,
+        *,
+        context: str | None = None,
     ) -> PluginResult:
         feature = db.get_feature_by_name(feature_name)
         if feature is None:
             return PluginResult(status="error", errors=[f"Feature not found: {feature_name}"])
 
-        doc = self._generate_one(db, llm, feature, system)
+        doc = self._generate_one(db, llm, feature, system, context=context)
         if doc is None:
             return PluginResult(status="error", errors=[f"Failed to generate doc for: {feature_name}"])
 
@@ -69,6 +71,8 @@ class AutodocPlugin(BasePlugin):
         progress_callback: Any,
         system: str = AUTODOC_SYSTEM,
         regenerate_all: bool = False,
+        *,
+        context: str | None = None,
     ) -> PluginResult:
         if regenerate_all:
             to_process = db.list_features()
@@ -87,7 +91,7 @@ class AutodocPlugin(BasePlugin):
 
         for i, feature in enumerate(to_process):
             try:
-                doc = self._generate_one(db, llm, feature, system)
+                doc = self._generate_one(db, llm, feature, system, context=context)
                 if doc:
                     all_docs[feature.name] = doc
                     documented += 1
@@ -114,6 +118,8 @@ class AutodocPlugin(BasePlugin):
         llm: BaseLLM,
         feature: Feature,
         system: str,
+        *,
+        context: str | None = None,
     ) -> dict | None:
         """Generate documentation for a single feature. Returns doc dict or None."""
         from ..catalog.context_builder import build_doc_context
@@ -167,6 +173,8 @@ class AutodocPlugin(BasePlugin):
         if cross_lines:
             cross_source_section = "CROSS-SOURCE RELATED FEATURES:\n" + "\n".join(cross_lines)
 
+        context_section = f"\nORG CONTEXT:\n{context.strip()}\n" if context else ""
+
         prompt = AUTODOC_PROMPT_SINGLE.format(
             feature_name=feature.name,
             column_name=feature.column_name,
@@ -178,6 +186,7 @@ class AutodocPlugin(BasePlugin):
             hints_section=hints_section,
             same_source_section=same_source_section,
             cross_source_section=cross_source_section,
+            context_section=context_section,
         )
 
         model_name = getattr(llm, "model", "unknown")

@@ -79,6 +79,7 @@ Stats: {{stats_text}}
 {{hints_section}}
 {{same_source_section}}
 {{cross_source_section}}
+{{context_section}}
 Return a JSON object:
 {{{{
   "short_description": "one sentence, business meaning, max 20 words",
@@ -90,6 +91,7 @@ Return a JSON object:
 
 Rules:
 - If a hint is provided, it overrides your inference. Do not contradict it.
+- If ORG CONTEXT is provided, treat it as the catalog's domain context and tailor terminology accordingly.
 - Use domain-appropriate terminology that fits the dataset.
 - Be specific, not generic. "Percentage of sessions with data usage" not "A numeric metric".
 - Output JSON only."""

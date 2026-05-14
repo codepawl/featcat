@@ -43,6 +43,7 @@ actions_app = typer.Typer(help="Recommended actions (lifecycle loop)")
 lineage_app = typer.Typer(help="Lineage management (T1.1)")
 lineage_edge_app = typer.Typer(help="Manage individual lineage edges")
 lineage_app.add_typer(lineage_edge_app, name="edge")
+demo_app = typer.Typer(help="Demo catalog data: seed and clear")
 app.add_typer(source_app, name="source")
 app.add_typer(feature_app, name="feature")
 app.add_typer(doc_app, name="doc")
@@ -54,6 +55,7 @@ app.add_typer(group_app, name="group")
 app.add_typer(usage_app, name="usage")
 app.add_typer(actions_app, name="actions")
 app.add_typer(lineage_app, name="lineage")
+app.add_typer(demo_app, name="demo")
 
 console = Console()
 
@@ -1483,6 +1485,11 @@ def doc_generate(
     name: str | None = typer.Argument(None, help="Feature name (or omit for all)"),
     no_cache: bool = typer.Option(False, "--no-cache", help="Bypass response cache"),
     all_features: bool = typer.Option(False, "--all", help="Regenerate docs for ALL features, even documented ones"),
+    context: str | None = typer.Option(
+        None,
+        "--context",
+        help="Free-form organization/domain context injected into the LLM prompt.",
+    ),
 ) -> None:
     """Generate AI documentation for features."""
     from .catalog.remote import RemoteBackend
@@ -1500,6 +1507,8 @@ def doc_generate(
         db.close()
         documented = data.get("documented", 0)
         console.print(f"[green]Done:[/green] {documented} features documented")
+        if context:
+            console.print("[yellow]Note:[/yellow] --context is ignored in remote mode (server uses its own context).")
         return
 
     llm = _get_llm(use_cache=not no_cache)
@@ -1516,7 +1525,7 @@ def doc_generate(
 
     if name:
         with console.status(f"[blue]Generating doc for {name}..."):
-            result = plugin.execute(db, llm, feature_name=name)
+            result = plugin.execute(db, llm, feature_name=name, context=context)
     else:
         with Progress(console=console) as progress:
             task = progress.add_task("[blue]Generating docs...", total=None)
@@ -1524,7 +1533,13 @@ def doc_generate(
             def on_progress(current: int, total: int) -> None:
                 progress.update(task, completed=current, total=total)
 
-            result = plugin.execute(db, llm, progress_callback=on_progress, regenerate_all=all_features)
+            result = plugin.execute(
+                db,
+                llm,
+                progress_callback=on_progress,
+                regenerate_all=all_features,
+                context=context,
+            )
 
     db.close()
 
@@ -4132,6 +4147,75 @@ def lineage_edge_rm(
         console.print(f"[green]Removed lineage edge:[/green] {child} <- {parent}")
     finally:
         db.close()
+
+
+# =========================================================================
+# Demo commands
+# =========================================================================
+
+
+@demo_app.command("seed")
+def demo_seed(
+    fixture_file: Path | None = typer.Option(  # noqa: B008
+        None, "--fixture", help="Path to a demo-catalog.json (defaults to the bundled fixture)."
+    ),
+) -> None:
+    """Populate the catalog with bundled demo data.
+
+    Demo rows are tagged so ``featcat demo clear`` can remove only them
+    without touching real catalog content.
+    """
+    from .demo import bundled_fixture_path, load_demo_fixture, seed_demo
+
+    path = fixture_file if fixture_file is not None else bundled_fixture_path()
+    try:
+        fixture = load_demo_fixture(path)
+    except ValueError as e:
+        console.print(f"[red]Fixture error:[/red] {e}")
+        raise typer.Exit(1) from None
+
+    db = _get_db()
+    try:
+        stats = seed_demo(db, fixture)
+    finally:
+        db.close()
+
+    console.print(
+        f"[green]Seeded demo catalog:[/green]\n"
+        f"  sources:  +{stats.sources_created}\n"
+        f"  features: +{stats.features_created}\n"
+        f"  docs:     +{stats.docs_created}\n"
+        f"  groups:   +{stats.groups_created}\n"
+        f"  lineage:  +{stats.lineage_edges_created}"
+    )
+    console.print("\n[dim]To remove: featcat demo clear[/dim]")
+
+
+@demo_app.command("clear")
+def demo_clear(
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation."),
+) -> None:
+    """Remove every demo-tagged row from the catalog. Real data is preserved."""
+    from .demo import clear_demo
+
+    if not yes and not typer.confirm("Remove all demo data from this catalog?", default=False):
+        console.print("[yellow]Aborted.[/yellow]")
+        raise typer.Exit(0)
+
+    db = _get_db()
+    try:
+        stats = clear_demo(db)
+    finally:
+        db.close()
+
+    console.print(
+        f"[green]Cleared demo data:[/green]\n"
+        f"  sources:  -{stats.sources_removed}\n"
+        f"  features: -{stats.features_removed}\n"
+        f"  docs:     -{stats.docs_removed}\n"
+        f"  groups:   -{stats.groups_removed}\n"
+        f"  lineage:  -{stats.lineage_edges_removed}"
+    )
 
 
 # =========================================================================
