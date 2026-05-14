@@ -1,0 +1,42 @@
+services:
+  llm:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    container_name: featcat-llm
+    volumes:
+      - ./models:/models
+    ports:
+      - "8080:8080"
+    command: >
+      --model /models/{llm_model}
+      --ctx-size 4096
+      --port 8080
+      --host 0.0.0.0
+      --jinja
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+{compose_postgres_block}  featcat:
+    image: nxank4/featcat:{featcat_version}
+    container_name: featcat-server
+    volumes:
+      - featcat_data:/data
+      - {data_dir}:/sources
+    ports:
+      - "{server_port}:8000"
+    environment:
+      - FEATCAT_DB_BACKEND={db_backend}
+      - FEATCAT_CATALOG_DB_PATH=/data/catalog.db
+      - FEATCAT_LLM_BACKEND=llamacpp
+      - FEATCAT_LLAMACPP_URL=http://llm:8080
+      - FEATCAT_LLM_MODEL={llm_model}
+{compose_postgres_env}    depends_on:
+      llm:
+        condition: service_started
+{compose_postgres_depends}    restart: unless-stopped
+
+volumes:
+  featcat_data:
+  featcat-postgres-data:

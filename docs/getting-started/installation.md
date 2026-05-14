@@ -6,6 +6,27 @@ featcat ships as a Python package plus an optional Docker stack. Three install p
 - **Production via Docker Compose** — recommended for team usage; brings up Postgres + the API + the LLM + (optionally) Celery workers.
 - **SDK only on a notebook host** — install the lightweight `featcat-client` package and point it at an existing server.
 
+## Quickstart (recommended)
+
+Fastest path to a running featcat:
+
+```bash
+featcat quickstart            # writes ./featcat-deploy/ with sane defaults
+cd featcat-deploy
+docker compose up -d
+featcat doctor                # verify reachability
+```
+
+`featcat quickstart` writes a complete deployment directory (`docker-compose.yml`, `.env`, `.gitignore`, `README.md`) with Postgres as the backend, port 8000 for the server, `./data` as the host data directory, and the default Gemma model.
+
+For an interactive walkthrough that lets you pick backend, port, data dir, and LLM model:
+
+```bash
+featcat setup
+```
+
+Both commands refuse to clobber a non-empty target (use `--target` to point them at an alternate directory).
+
 ## Requirements
 
 - **Python**: 3.10+

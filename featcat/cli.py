@@ -139,6 +139,48 @@ def init() -> None:
     console.print(f"[green]Catalog initialized:[/green] {DEFAULT_DB}")
 
 
+@app.command("quickstart")
+def quickstart_cmd(
+    target: Path = typer.Option(  # noqa: B008
+        Path("./featcat-deploy"),
+        "--target",
+        "-t",
+        help="Directory to write the generated deployment files into.",
+    ),
+) -> None:
+    """Non-interactive setup: write a default deployment directory."""
+    from .setup import run_quickstart
+
+    try:
+        run_quickstart(target_dir=target, console=console)
+    except FileExistsError as e:
+        console.print(f"[red]Target is not empty:[/red] {e}")
+        raise typer.Exit(1) from None
+
+    console.print(f"\n[bold]Next steps:[/bold]\n  cd {target}\n  docker compose up -d\n  featcat doctor   # verify")
+
+
+@app.command("setup")
+def setup_cmd(
+    target: Path = typer.Option(  # noqa: B008
+        Path("./featcat-deploy"),
+        "--target",
+        "-t",
+        help="Directory to write the generated deployment files into.",
+    ),
+) -> None:
+    """Interactive setup wizard."""
+    from .setup import run_wizard
+
+    try:
+        run_wizard(target_dir=target, console=console)
+    except FileExistsError as e:
+        console.print(f"[red]Target is not empty:[/red] {e}")
+        raise typer.Exit(1) from None
+
+    console.print(f"\n[bold]Next steps:[/bold]\n  cd {target}\n  docker compose up -d\n  featcat doctor   # verify")
+
+
 @app.command()
 def add(
     path: str = typer.Argument(help="Path to data file (Parquet/CSV) or directory"),
