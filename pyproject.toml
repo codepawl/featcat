@@ -155,3 +155,11 @@ disable_error_code = ["arg-type", "union-attr", "assignment", "return-value"]
 [[tool.mypy.overrides]]
 module = "featcat.catalog.scanner"
 disable_error_code = ["attr-defined"]
+
+# pyyaml ships PEP 561 inline types in some wheel builds and not others, so
+# whether `import yaml` is considered typed depends on which wheel uv resolves.
+# Suppress import-untyped uniformly so both flavours work without an inline
+# ignore that warn_unused_ignores=true would flip-flop on.
+[[tool.mypy.overrides]]
+module = "featcat.diagnostics.checks_deploy"
+disable_error_code = ["import-untyped"]
