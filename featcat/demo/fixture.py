@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 class DemoSource(BaseModel):
@@ -69,8 +71,7 @@ class DemoFixture(BaseModel):
             src = f.name.split(".", 1)[0]
             if src not in known:
                 raise ValueError(
-                    f"Feature {f.name!r} references unknown source {src!r}; "
-                    f"add it to `sources` or fix the prefix."
+                    f"Feature {f.name!r} references unknown source {src!r}; add it to `sources` or fix the prefix."
                 )
         return self
 

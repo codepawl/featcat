@@ -23,9 +23,7 @@ def test_doc_generate_passes_context_to_plugin(monkeypatch) -> None:
     monkeypatch.setattr("featcat.plugins.autodoc.AutodocPlugin", FakePlugin)
 
     runner = CliRunner()
-    result = runner.invoke(
-        app, ["doc", "generate", "src.x", "--context", "DS team focus on churn"]
-    )
+    result = runner.invoke(app, ["doc", "generate", "src.x", "--context", "DS team focus on churn"])
     assert result.exit_code == 0, result.output
     assert captured.get("context") == "DS team focus on churn"
 

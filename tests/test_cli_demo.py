@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from typer.testing import CliRunner
 
 from featcat.catalog.local import LocalBackend
 from featcat.cli import app
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _bootstrap(tmp_path: Path) -> str:

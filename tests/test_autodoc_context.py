@@ -44,14 +44,10 @@ def test_autodoc_passes_context_into_prompt(monkeypatch) -> None:
     db.get_source_by_name.return_value = None
     db.save_feature_doc.return_value = None
 
-    monkeypatch.setattr(
-        "featcat.catalog.context_builder.build_doc_context", lambda *a, **kw: []
-    )
+    monkeypatch.setattr("featcat.catalog.context_builder.build_doc_context", lambda *a, **kw: [])
 
     plugin = AutodocPlugin()
-    plugin.execute(
-        db, llm, feature_name="src.x", context="FPT Telecom DS team — churn focus"
-    )
+    plugin.execute(db, llm, feature_name="src.x", context="FPT Telecom DS team — churn focus")
 
     assert "ORG CONTEXT:" in captured["prompt"]
     assert "FPT Telecom DS team" in captured["prompt"]
@@ -79,9 +75,7 @@ def test_autodoc_empty_context_does_not_inject_section(monkeypatch) -> None:
     db.get_feature_by_name.return_value = feature
     db.get_source_by_name.return_value = None
 
-    monkeypatch.setattr(
-        "featcat.catalog.context_builder.build_doc_context", lambda *a, **kw: []
-    )
+    monkeypatch.setattr("featcat.catalog.context_builder.build_doc_context", lambda *a, **kw: [])
 
     plugin = AutodocPlugin()
     plugin.execute(db, llm, feature_name="src.x")

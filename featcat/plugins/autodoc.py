@@ -43,9 +43,7 @@ class AutodocPlugin(BasePlugin):
 
         if feature_name:
             return self._document_single(catalog_db, llm, feature_name, system, context=context)
-        return self._document_all(
-            catalog_db, llm, progress_callback, system, regenerate_all, context=context
-        )
+        return self._document_all(catalog_db, llm, progress_callback, system, regenerate_all, context=context)
 
     def _document_single(
         self,

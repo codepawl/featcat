@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -14,7 +14,11 @@ from featcat.demo import (
     load_demo_fixture,
     seed_demo,
 )
-from featcat.demo.fixture import DemoFixture
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from featcat.demo.fixture import DemoFixture
 
 
 @pytest.fixture()

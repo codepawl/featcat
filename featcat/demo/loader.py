@@ -1,15 +1,20 @@
-"""Seed and clear demo data against a CatalogBackend.
+"""Seed and clear demo data on a LocalBackend catalog.
 
 Single owner of the demo-marker contract: features get ``tags=['demo']``,
 lineage edges get ``detected_method='demo'``, sources get
 ``description=_DEMO_SOURCE_DESC``, groups get a description prefix, and
 docs get ``model_used='demo'``. The CLI ``demo clear`` command relies on
 those markers to remove only demo data.
+
+Operates against ``LocalBackend`` rather than the abstract ``CatalogBackend``
+because the clear path needs SQLAlchemy sessions and bulk deletes that the
+HTTP-based ``RemoteBackend`` doesn't expose. The CLI demo commands are
+local-only — running them against a remote server is a misconfiguration.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from importlib.resources import as_file, files
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -17,10 +22,10 @@ from typing import TYPE_CHECKING
 from sqlalchemy import text
 
 from ..catalog.models import DataSource, Feature, FeatureGroup
-from .fixture import DemoFixture
 
 if TYPE_CHECKING:
-    from ..catalog.backend import CatalogBackend
+    from ..catalog.local import LocalBackend
+    from .fixture import DemoFixture
 
 DEMO_FEATURE_TAG = "demo"
 DEMO_DETECTED_METHOD = "demo"
@@ -57,7 +62,7 @@ def bundled_fixture_path() -> Path:
         return Path(p)
 
 
-def seed_demo(db: CatalogBackend, fixture: DemoFixture) -> DemoStats:
+def seed_demo(db: LocalBackend, fixture: DemoFixture) -> DemoStats:
     """Insert every item in ``fixture`` into ``db``.
 
     Idempotent: items already present (by natural key — source name,
@@ -149,7 +154,7 @@ def seed_demo(db: CatalogBackend, fixture: DemoFixture) -> DemoStats:
     return stats
 
 
-def clear_demo(db: CatalogBackend) -> DemoStats:
+def clear_demo(db: LocalBackend) -> DemoStats:
     """Remove every row tagged as demo. Real data is left intact."""
     stats = DemoStats()
 
@@ -159,7 +164,7 @@ def clear_demo(db: CatalogBackend) -> DemoStats:
             {"m": DEMO_DETECTED_METHOD},
         )
         s.commit()
-        stats.lineage_edges_removed = int(result.rowcount or 0)
+        stats.lineage_edges_removed = int(result.rowcount or 0)  # type: ignore[attr-defined]
 
     with db.session() as s:
         result = s.execute(
@@ -167,7 +172,7 @@ def clear_demo(db: CatalogBackend) -> DemoStats:
             {"m": _DEMO_DOC_MODEL},
         )
         s.commit()
-        stats.docs_removed = int(result.rowcount or 0)
+        stats.docs_removed = int(result.rowcount or 0)  # type: ignore[attr-defined]
 
     with db.session() as s:
         # Match prefix; cascade removes group_members rows.
@@ -176,7 +181,7 @@ def clear_demo(db: CatalogBackend) -> DemoStats:
             {"p": f"{_DEMO_GROUP_DESC_PREFIX}%"},
         )
         s.commit()
-        stats.groups_removed = int(result.rowcount or 0)
+        stats.groups_removed = int(result.rowcount or 0)  # type: ignore[attr-defined]
 
     demo_features = db.list_features(tag=DEMO_FEATURE_TAG)
     if demo_features:
@@ -191,19 +196,16 @@ def clear_demo(db: CatalogBackend) -> DemoStats:
     return stats
 
 
-def _has_demo_doc(db: CatalogBackend, feature_id: str) -> bool:
+def _has_demo_doc(db: LocalBackend, feature_id: str) -> bool:
     with db.session() as s:
         row = s.execute(
-            text(
-                "SELECT 1 FROM feature_docs "
-                "WHERE feature_id = :fid AND model_used = :m LIMIT 1"
-            ),
+            text("SELECT 1 FROM feature_docs WHERE feature_id = :fid AND model_used = :m LIMIT 1"),
             {"fid": feature_id, "m": _DEMO_DOC_MODEL},
         ).first()
     return row is not None
 
 
-def _lineage_edge_exists(db: CatalogBackend, child_id: str, parent_id: str) -> bool:
+def _lineage_edge_exists(db: LocalBackend, child_id: str, parent_id: str) -> bool:
     with db.session() as s:
         row = s.execute(
             text(
@@ -216,14 +218,11 @@ def _lineage_edge_exists(db: CatalogBackend, child_id: str, parent_id: str) -> b
     return row is not None
 
 
-# ``field`` re-exported so dataclass-based tests can import it; keeps the
-# public surface stable if we ever expose initializers.
 __all__ = [
     "DEMO_DETECTED_METHOD",
     "DEMO_FEATURE_TAG",
     "DemoStats",
     "bundled_fixture_path",
     "clear_demo",
-    "field",
     "seed_demo",
 ]

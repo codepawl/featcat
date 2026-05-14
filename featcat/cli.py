@@ -1508,9 +1508,7 @@ def doc_generate(
         documented = data.get("documented", 0)
         console.print(f"[green]Done:[/green] {documented} features documented")
         if context:
-            console.print(
-                "[yellow]Note:[/yellow] --context is ignored in remote mode (server uses its own context)."
-            )
+            console.print("[yellow]Note:[/yellow] --context is ignored in remote mode (server uses its own context).")
         return
 
     llm = _get_llm(use_cache=not no_cache)
@@ -4158,10 +4156,8 @@ def lineage_edge_rm(
 
 @demo_app.command("seed")
 def demo_seed(
-    fixture_file: Path | None = typer.Option(
-        None,
-        "--fixture",
-        help="Path to a demo-catalog.json (defaults to the bundled fixture).",
+    fixture_file: Path | None = typer.Option(  # noqa: B008
+        None, "--fixture", help="Path to a demo-catalog.json (defaults to the bundled fixture)."
     ),
 ) -> None:
     """Populate the catalog with bundled demo data.
