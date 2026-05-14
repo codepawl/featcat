@@ -51,9 +51,10 @@ featcat.yaml
 # Config
 .config/featcat/
 
-# Parquet fixtures (keep test ones)
+# Parquet fixtures (keep test + sandbox ones)
 *.parquet
 !tests/fixtures/*.parquet
+!deploy/sandbox/fixtures/*.parquet
 
 # mypy
 .mypy_cache/
@@ -89,3 +90,7 @@ site/
 
 # Local Claude Code agent scratchpads (planning notes, not source)
 .claude/
+
+# Sandbox launcher local artifacts (caches, run logs); committed sandbox
+# tooling lives elsewhere under deploy/sandbox/.
+deploy/sandbox/.runs-cache/

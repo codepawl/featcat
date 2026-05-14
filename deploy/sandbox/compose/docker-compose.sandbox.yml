@@ -1,0 +1,38 @@
+# Sandbox compose override. Applied with `-f` AFTER deploy/docker-compose.yml.
+#
+# Why this file exists:
+#  - The production compose pins `container_name:` on every service. Docker
+#    treats those names globally, so a second compose project sharing the file
+#    collides with the production stack. This override BLANKS container_name
+#    on every service so Docker falls back to `<project>-<service>-1` naming
+#    derived from the `-p` flag.
+#  - The sandbox exposes Postgres to the host (production keeps it internal)
+#    so the operator can connect a SQL client for inspection.
+#  - The LLM model is bind-mounted from the source repo via a per-sandbox
+#    SANDBOX_MODEL_DIR env var, so we never re-download a 533 MB GGUF.
+#
+# Variables that MUST be set in the sandbox .env:
+#   - FEATCAT_PORT, SANDBOX_LLM_PORT, SANDBOX_PG_PORT (auto-picked free ports)
+#   - SANDBOX_MODEL_DIR (absolute path to deploy/models/ in the source repo)
+#   - DATA_DIR (sandbox-local data dir bind-mounted at /sources)
+
+services:
+  llm:
+    container_name: ""
+    ports: !override
+      - "${SANDBOX_LLM_PORT}:8080"
+    volumes: !override
+      - ${SANDBOX_MODEL_DIR}:/models:ro
+
+  postgres:
+    container_name: ""
+    ports:
+      - "${SANDBOX_PG_PORT}:5432"
+
+  featcat:
+    container_name: ""
+    ports: !override
+      - "${FEATCAT_PORT}:8000"
+
+  # Sandbox keeps the optional task stack off — UAT runs the in-process
+  # scheduler, same as the default production deploy.
