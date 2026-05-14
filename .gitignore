@@ -20,14 +20,22 @@ env/
 htmlcov/
 .coverage
 coverage.xml
+.benchmarks/
 
-# IDE
+# IDE / editor
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 .DS_Store
+
+# Merge / patch leftovers
+*.orig
+*.rej
+
+# Generic runtime logs
+*.log
 
 # Project runtime
 catalog.db
@@ -65,6 +73,7 @@ web/node_modules/
 web/dist/
 web/.vite/
 web/package-lock.json
+*.tsbuildinfo
 featcat/server/static/
 
 # Playwright E2E
