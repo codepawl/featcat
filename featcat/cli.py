@@ -1483,6 +1483,11 @@ def doc_generate(
     name: str | None = typer.Argument(None, help="Feature name (or omit for all)"),
     no_cache: bool = typer.Option(False, "--no-cache", help="Bypass response cache"),
     all_features: bool = typer.Option(False, "--all", help="Regenerate docs for ALL features, even documented ones"),
+    context: str | None = typer.Option(
+        None,
+        "--context",
+        help="Free-form organization/domain context injected into the LLM prompt.",
+    ),
 ) -> None:
     """Generate AI documentation for features."""
     from .catalog.remote import RemoteBackend
@@ -1500,6 +1505,10 @@ def doc_generate(
         db.close()
         documented = data.get("documented", 0)
         console.print(f"[green]Done:[/green] {documented} features documented")
+        if context:
+            console.print(
+                "[yellow]Note:[/yellow] --context is ignored in remote mode (server uses its own context)."
+            )
         return
 
     llm = _get_llm(use_cache=not no_cache)
@@ -1516,7 +1525,7 @@ def doc_generate(
 
     if name:
         with console.status(f"[blue]Generating doc for {name}..."):
-            result = plugin.execute(db, llm, feature_name=name)
+            result = plugin.execute(db, llm, feature_name=name, context=context)
     else:
         with Progress(console=console) as progress:
             task = progress.add_task("[blue]Generating docs...", total=None)
@@ -1524,7 +1533,13 @@ def doc_generate(
             def on_progress(current: int, total: int) -> None:
                 progress.update(task, completed=current, total=total)
 
-            result = plugin.execute(db, llm, progress_callback=on_progress, regenerate_all=all_features)
+            result = plugin.execute(
+                db,
+                llm,
+                progress_callback=on_progress,
+                regenerate_all=all_features,
+                context=context,
+            )
 
     db.close()
 
