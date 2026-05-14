@@ -12,7 +12,13 @@ router = APIRouter()
 
 @router.get("/health")
 def health(db=Depends(get_db), llm=Depends(get_llm), settings=Depends(get_settings)):
-    """Health check: DB, LLM reachability, and basic stats."""
+    """Health check: DB, LLM reachability, basic stats, and the cheap-subset
+    structured checks shared with ``featcat doctor db``.
+
+    The existing ``{status, db, llm, stats, model}`` shape is preserved so
+    the web UI and any external monitors don't break; the additional
+    ``checks`` field is purely additive.
+    """
     result = {"status": "ok", "db": True, "llm": False}
 
     try:
@@ -29,6 +35,16 @@ def health(db=Depends(get_db), llm=Depends(get_llm), settings=Depends(get_settin
             result["llm"] = llm.health_check()
 
     result["model"] = settings.llm_model
+
+    # Structured checks. Keep the timeout tight so /health stays cheap.
+    import contextlib as _ctx
+
+    with _ctx.suppress(Exception):
+        from featcat.diagnostics import run_group
+
+        report = run_group("db", timeout_per_check=0.5, settings=settings)
+        result["checks"] = [c.model_dump(mode="json") for c in report.checks]
+
     return result
 
 
