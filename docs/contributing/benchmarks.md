@@ -8,7 +8,7 @@ Exercises the T1.2 embedding column + HNSW index against realistic catalog sizes
 
 ### Setup
 
-1. Start a Postgres container with pgvector pre-installed (the project's `postgres:16-alpine` image does **not** include pgvector — use `pgvector/pgvector:pg16` for benches):
+1. Start a Postgres container with pgvector pre-installed (the project's `pgvector/pgvector:pg16` image does **not** include pgvector — use `pgvector/pgvector:pg16` for benches):
 
    ```bash
    docker run --rm -d --name featcat-bench-pg \
