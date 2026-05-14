@@ -81,6 +81,17 @@ featcat docs generate user_behavior.session_count_30d --hint "v2 sessionization 
 
 Hints make the difference between docs that feel obvious and docs that feel right. The LLM has stats but no business context — give it the bot-filter rule, the v2 / v3 distinction, the unit, and so on.
 
+## Organization context
+
+When the whole catalog shares a domain (e.g. "telco churn prediction") you can pass the context once with `--context` instead of repeating it as per-feature hints. The string is injected into the prompt under an `ORG CONTEXT:` header and applies to every feature generated in that run:
+
+```bash
+featcat doc generate --context "FPT Telecom DS team — focus on churn and network quality"
+featcat doc generate user_behavior.session_count_30d --context "Telco DS team"
+```
+
+`--context` is ignored in remote mode (the server uses its own configured context).
+
 ## Generated content
 
 Each doc has these fields:
