@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { api, invalidateCache, timeAgo } from '../api'
 import { Badge } from '../components/Badge'
+import { Card } from '../components/Card'
+import { DataTable } from '../components/DataTable'
 import { FilterCountChip, FilterSelect } from '../components/filters'
 import { PageHeader } from '../components/PageHeader'
 import { RefreshButton } from '../components/RefreshButton'
@@ -95,48 +97,66 @@ export function Audit() {
         <FilterCountChip count={filtered.length} />
       </div>
 
-      <div className="bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-xl overflow-hidden">
+      <Card padding={loading ? 'normal' : 'none'} className="overflow-hidden">
         {loading ? (
-          <div className="p-5"><Skeleton className="h-48" /></div>
+          <Skeleton className="h-48" />
         ) : filtered.length === 0 ? (
           <p className="p-8 text-center text-[var(--text-tertiary)] text-sm">{t('empty')}</p>
         ) : (
-          <table className="w-full text-[13px]">
-            <thead>
-              <tr className="text-xs text-[var(--text-tertiary)] border-b border-[var(--border-default)] bg-[var(--bg-secondary)]">
-                <th className="text-left py-2 px-3 font-medium">{t('table.when')}</th>
-                <th className="text-left py-2 px-3 font-medium">{t('table.feature')}</th>
-                <th className="text-left py-2 px-3 font-medium">{t('table.changed_by')}</th>
-                <th className="text-left py-2 px-3 font-medium">{t('table.type')}</th>
-                <th className="text-left py-2 px-3 font-medium">{t('table.summary')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((v, i) => (
-                <tr
-                  key={i}
-                  className="border-b border-[var(--border-subtle)] hover:bg-[var(--bg-secondary)] cursor-pointer"
-                  onClick={() => navigate(`/features/${encodeURIComponent(v.feature_name as string)}`)}
-                >
-                  <td className="py-2 px-3 text-[var(--text-tertiary)] whitespace-nowrap">
-                    {v.created_at ? timeAgo(v.created_at as string) : '-'}
-                  </td>
-                  <td className="py-2 px-3 font-medium text-brand">{v.feature_name as string || '-'}</td>
-                  <td className="py-2 px-3 text-[var(--text-secondary)]">{v.changed_by as string || '-'}</td>
-                  <td className="py-2 px-3">
-                    <Badge variant={TYPE_COLORS[v.change_type as string] || 'default'}>
-                      {v.change_type as string}
-                    </Badge>
-                  </td>
-                  <td className="py-2 px-3 text-[var(--text-secondary)] max-w-[300px] truncate">
-                    {v.change_summary as string}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <DataTable
+            columns={[
+              {
+                key: 'created_at',
+                label: t('table.when'),
+                render: (r) => (
+                  <span className="text-[var(--text-tertiary)] whitespace-nowrap">
+                    {r.created_at ? timeAgo(r.created_at as string) : '-'}
+                  </span>
+                ),
+              },
+              {
+                key: 'feature_name',
+                label: t('table.feature'),
+                render: (r) => (
+                  <span className="font-medium text-brand">{(r.feature_name as string) || '-'}</span>
+                ),
+              },
+              {
+                key: 'changed_by',
+                label: t('table.changed_by'),
+                render: (r) => (
+                  <span className="text-[var(--text-secondary)]">{(r.changed_by as string) || '-'}</span>
+                ),
+              },
+              {
+                key: 'change_type',
+                label: t('table.type'),
+                sortable: false,
+                render: (r) => (
+                  <Badge variant={TYPE_COLORS[r.change_type as string] || 'default'}>
+                    {r.change_type as string}
+                  </Badge>
+                ),
+              },
+              {
+                key: 'change_summary',
+                label: t('table.summary'),
+                sortable: false,
+                render: (r) => (
+                  <span className="text-[var(--text-secondary)] max-w-[300px] truncate inline-block">
+                    {r.change_summary as string}
+                  </span>
+                ),
+              },
+            ]}
+            data={filtered}
+            onRowClick={(r) =>
+              navigate(`/features/${encodeURIComponent(r.feature_name as string)}`)
+            }
+            pageSize={50}
+          />
         )}
-      </div>
+      </Card>
     </div>
   )
 }

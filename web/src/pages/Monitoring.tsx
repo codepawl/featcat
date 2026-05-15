@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'motion/react'
 import { RefreshCw, FileDown } from 'lucide-react'
 import { api, invalidateCache } from '../api'
 import { Alert } from '../components/Alert'
+import { Card } from '../components/Card'
 import { MetricCard } from '../components/MetricCard'
 import { Badge } from '../components/Badge'
 import { Modal } from '../components/Modal'
@@ -130,8 +131,7 @@ export function Monitoring() {
       </div>
 
       {/* Feature Drift Table */}
-      <div className="bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-xl p-5 mb-6">
-        <h3 className="text-sm font-semibold mb-3">{t('drift_table.title')}</h3>
+      <Card title={t('drift_table.title')} className="mb-6">
         {loading ? <Skeleton className="h-32" /> : sorted.length === 0 ? (
           <p className="text-[var(--text-tertiary)] text-sm py-4 text-center">{t('drift_table.empty')}</p>
         ) : (
@@ -185,7 +185,7 @@ export function Monitoring() {
             </AnimatePresence>
           </div>
         )}
-      </div>
+      </Card>
 
       <Modal open={baselineModal} onClose={() => setBaselineModal(false)} title={t('baseline_modal.title')} actions={
         <>
