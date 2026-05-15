@@ -1251,7 +1251,24 @@ def feature_diff(
         raise typer.Exit(1)
     console.print(f"\n[bold]Comparing v{v2} vs v{v1}:[/bold]")
     has_diff = False
-    for field in ("description", "tags", "owner", "dtype", "column_name"):
+    # User-editable fields the diff should report. The original list missed
+    # `definition` / `definition_type` / `generation_hints` / `status` /
+    # `status_notes`, so any version that only changed those (the common case
+    # after `feature set-definition` or `feature set-hint`) reported
+    # "(no differences)" — UAT scenario g.3, drift bug #1 in docs/BACKLOG.md.
+    diff_fields: tuple[str, ...] = (
+        "description",
+        "tags",
+        "owner",
+        "dtype",
+        "column_name",
+        "definition",
+        "definition_type",
+        "generation_hints",
+        "status",
+        "status_notes",
+    )
+    for field in diff_fields:
         old = snap_v1.get(field)
         new = snap_v2.get(field)
         if old != new:

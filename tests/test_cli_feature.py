@@ -160,3 +160,90 @@ class TestFeatureUpdate:
         result = runner.invoke(app, ["feature", "update", "ghost.col", "--owner", "x"])
         assert result.exit_code == 1
         assert "ghost.col" in result.output
+
+
+class TestFeatureDiff:
+    """Regression for drift bug #1 in docs/BACKLOG.md (UAT scenario g.3):
+    ``featcat feature diff`` reported ``(no differences)`` between consecutive
+    versions even when only the ``definition`` field had changed, because the
+    diff comparator only inspected five fields and ignored the rest of the
+    snapshot.
+    """
+
+    def test_definition_change_is_reported(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        db = LocalBackend(str(tmp_path / "catalog.db"))
+        db.init_db()
+        src = DataSource(name="src", path=str(tmp_path / "data.parquet"))
+        db.add_source(src)
+        feat = Feature(
+            name="src.churn_flag",
+            data_source_id=src.id,
+            column_name="churn_flag",
+            dtype="int64",
+        )
+        db.upsert_feature(feat)
+        persisted = db.get_feature_by_name("src.churn_flag")
+        assert persisted is not None
+        # v1 -> v2 (initial definition).
+        db.set_feature_definition(
+            persisted.id,
+            "SELECT 1 FROM device_logs WHERE complaint_count > 5",
+            "sql",
+        )
+        # v2 -> v3 (modified definition).
+        db.set_feature_definition(
+            persisted.id,
+            "SELECT 1 FROM device_logs WHERE error_rate > 0.1",
+            "sql",
+        )
+        db.close()
+
+        result_12 = runner.invoke(app, ["feature", "diff", "src.churn_flag", "--v1", "1", "--v2", "2"])
+        assert result_12.exit_code == 0, result_12.output
+        assert "(no differences)" not in result_12.output
+        assert "definition:" in result_12.output
+        assert "complaint_count > 5" in result_12.output
+
+        result_23 = runner.invoke(app, ["feature", "diff", "src.churn_flag", "--v1", "2", "--v2", "3"])
+        assert result_23.exit_code == 0, result_23.output
+        assert "(no differences)" not in result_23.output
+        assert "complaint_count > 5" in result_23.output
+        assert "error_rate > 0.1" in result_23.output
+
+    def test_no_changes_reports_no_differences(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Sanity: identical-on-the-diff-fields versions still report
+        ``(no differences)`` so the fix only widens what counts as a
+        difference, it doesn't false-positive on snapshot churn (timestamps,
+        stats, embeddings) that the comparator intentionally ignores."""
+        monkeypatch.chdir(tmp_path)
+        db = LocalBackend(str(tmp_path / "catalog.db"))
+        db.init_db()
+        src = DataSource(name="src", path=str(tmp_path / "data.parquet"))
+        db.add_source(src)
+        feat = Feature(
+            name="src.unchanged",
+            data_source_id=src.id,
+            column_name="unchanged",
+            dtype="int64",
+        )
+        db.upsert_feature(feat)
+        persisted = db.get_feature_by_name("src.unchanged")
+        assert persisted is not None
+        # save_feature_doc snapshots a v2 that copies v1's user-editable
+        # fields unchanged (only the doc rows change; doc bodies are not part
+        # of the diff field list, intentionally).
+        db.save_feature_doc(persisted.id, {"short_description": "x"})
+        db.close()
+
+        result = runner.invoke(app, ["feature", "diff", "src.unchanged", "--v1", "1", "--v2", "2"])
+        assert result.exit_code == 0, result.output
+        assert "(no differences)" in result.output
