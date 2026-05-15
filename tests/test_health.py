@@ -64,6 +64,18 @@ class TestComputeHealthScore:
         r = compute_health_score(has_doc=False, has_hints=False, drift_status=None, views_30d=0, queries_30d=0)
         assert r["breakdown"]["drift"] == 30
 
+    def test_explicit_unknown_string_matches_none(self):
+        """A monitoring row with severity='unknown' must score the same 30 pts
+        as a feature that has no monitoring row at all — single source of
+        truth, no silent divergence between the two 'no signal' paths."""
+        from_none = compute_health_score(has_doc=False, has_hints=False, drift_status=None, views_30d=0, queries_30d=0)
+        from_unknown = compute_health_score(
+            has_doc=False, has_hints=False, drift_status="unknown", views_30d=0, queries_30d=0
+        )
+        assert from_none["breakdown"]["drift"] == from_unknown["breakdown"]["drift"] == 30
+        assert from_none["score"] == from_unknown["score"]
+        assert from_none["grade"] == from_unknown["grade"]
+
     def test_warning_drift_gets_20(self):
         r = compute_health_score(has_doc=False, has_hints=False, drift_status="warning", views_30d=0, queries_30d=0)
         assert r["breakdown"]["drift"] == 20

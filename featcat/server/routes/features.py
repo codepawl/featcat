@@ -159,7 +159,7 @@ def list_features(
     if health_grade:
         enriched = [d for d in enriched if d.get("health_grade") == health_grade]
     if drift_status:
-        enriched = [d for d in enriched if drift_map.get(d["id"], "healthy") == drift_status]
+        enriched = [d for d in enriched if drift_map.get(d["id"], "unknown") == drift_status]
     if has_doc is not None:
         enriched = [d for d in enriched if d.get("has_doc") == has_doc]
     if owner:
@@ -612,7 +612,7 @@ def similarity_graph(
                 "source": src,
                 "dtype": f.dtype,
                 "has_doc": f.id in all_docs,
-                "drift_status": drift_map.get(f.id, "healthy"),
+                "drift_status": drift_map.get(f.id, "unknown"),
                 "tags": f.tags or [],
             }
         )

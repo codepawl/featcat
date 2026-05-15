@@ -19,8 +19,16 @@ def compute_health_score(
     """
     doc_score = (25 if has_doc else 0) + (15 if has_hints else 0)
 
-    drift_scores = {"healthy": 40, "warning": 20, "critical": 0}
-    drift_score = drift_scores.get(drift_status, 30)  # type: ignore[arg-type]
+    # Single source of truth for drift→health-score mapping. "unknown"
+    # (no PSI signal yet) gets the same neutral 30 as a missing
+    # monitoring_checks row so the two cases are not silently divergent.
+    drift_scores: dict[str, int] = {
+        "healthy": 40,
+        "warning": 20,
+        "critical": 0,
+        "unknown": 30,
+    }
+    drift_score = drift_scores.get(drift_status or "", 30)
 
     usage_score = 0
     if queries_30d > 0:
