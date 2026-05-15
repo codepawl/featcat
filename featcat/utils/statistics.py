@@ -123,7 +123,14 @@ def check_zero_variance(current_stats: dict[str, Any]) -> dict[str, Any] | None:
 def classify_severity(psi: float | None, issues: list[dict[str, Any]]) -> str:
     """Classify overall severity for a feature.
 
-    Returns: "healthy", "warning", or "critical"
+    Returns one of:
+      "critical"  — PSI > 0.25 or a hard data-quality violation
+      "warning"   — PSI in (0.1, 0.25] or any softer data-quality issue
+      "healthy"   — PSI <= 0.1 and no issues (genuine "evaluated and fine")
+      "unknown"   — no PSI signal and no issues to evaluate (no data,
+                    not "evaluated and fine"). Callers MUST surface this
+                    distinctly so a feature that has never been measured
+                    is not silently bucketed as healthy on dashboards.
     """
     if psi is not None and psi > 0.25:
         return "critical"
@@ -137,5 +144,8 @@ def classify_severity(psi: float | None, issues: list[dict[str, Any]]) -> str:
 
     if issues:
         return "warning"
+
+    if psi is None:
+        return "unknown"
 
     return "healthy"

@@ -97,6 +97,7 @@ class MonitoringPlugin(BasePlugin):
         healthy = 0
         warnings = 0
         critical = 0
+        unknown = 0
 
         for f in features:
             try:
@@ -112,6 +113,8 @@ class MonitoringPlugin(BasePlugin):
                     healthy += 1
                 elif severity == "warning":
                     warnings += 1
+                elif severity == "unknown":
+                    unknown += 1
                 else:
                     critical += 1
 
@@ -172,7 +175,10 @@ class MonitoringPlugin(BasePlugin):
                 )
                 critical += 1
 
-        issues = [d for d in details if d["severity"] != "healthy"]
+        # "unknown" rows have no PSI / no issues — they are gaps in data,
+        # not actionable issues. Exclude from the LLM analysis fan-out so
+        # the model is not asked to interpret nothing.
+        issues = [d for d in details if d["severity"] not in ("healthy", "unknown")]
         if use_llm and issues:
             with contextlib.suppress(Exception):
                 self._add_llm_analysis(db, llm, issues, language=language)
@@ -187,6 +193,7 @@ class MonitoringPlugin(BasePlugin):
             "healthy": healthy,
             "warnings": warnings,
             "critical": critical,
+            "unknown": unknown,
             "details": details,
         }
 
@@ -195,9 +202,14 @@ class MonitoringPlugin(BasePlugin):
     def _check_feature(self, feature: Feature, baseline: dict) -> dict:
         current = feature.stats or {}
         if not current:
+            # No current stats to evaluate against the baseline — return
+            # "unknown" (not "healthy") so the data gap is visible on
+            # dashboards. Persisting "healthy" here was the root of UAT
+            # finding "monitoring rows missing PSI" and the parallel "score
+            # present but label unknown / healthy-while-grade-C" reports.
             return {
                 "feature": feature.name,
-                "severity": "healthy",
+                "severity": "unknown",
                 "psi": None,
                 "issues": [],
                 "baseline_stats": baseline,
@@ -321,11 +333,14 @@ def export_monitoring_report(report: dict) -> str:
         f"| Healthy | {report.get('healthy', 0)} |",
         f"| Warning | {report.get('warnings', 0)} |",
         f"| Critical | {report.get('critical', 0)} |",
+        f"| Unknown | {report.get('unknown', 0)} |",
         "",
     ]
 
     details = report.get("details", [])
-    issues = [d for d in details if d.get("severity") != "healthy"]
+    # Issues = warnings + critical only. "unknown" rows are data gaps, not
+    # actionable issues; the dashboard surfaces them separately.
+    issues = [d for d in details if d.get("severity") not in ("healthy", "unknown")]
 
     if issues:
         lines.append("## Issues")

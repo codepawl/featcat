@@ -116,6 +116,29 @@ class TestClassifySeverity:
     def test_critical_range(self):
         assert classify_severity(0.05, [{"issue": "range_violation"}]) == "critical"
 
+    def test_no_psi_no_issues_is_unknown(self):
+        """Regression for UAT 'monitoring rows missing PSI' / 'severity
+        unknown with numeric score' twin findings: the classifier must
+        not silently bucket no-signal cases as healthy."""
+        assert classify_severity(None, []) == "unknown"
+
+    def test_no_psi_with_issues_is_warning(self):
+        """When PSI is missing but issues fired, the issues are the
+        signal — not 'unknown'. (e.g. baseline missing std but null-spike
+        check still fired against null_ratio.)"""
+        assert classify_severity(None, [{"issue": "null_spike"}]) == "warning"
+        assert classify_severity(None, [{"issue": "range_violation"}]) == "critical"
+
+    def test_every_numeric_psi_maps_to_concrete_severity(self):
+        """Every numeric PSI in a representative grid must map to one of
+        {healthy, warning, critical} — never 'unknown', which is reserved
+        for no-signal cases."""
+        for psi in (0.0, 0.05, 0.099, 0.1, 0.11, 0.20, 0.24, 0.25, 0.26, 1.0, 10.0):
+            result = classify_severity(psi, [])
+            assert result in ("healthy", "warning", "critical"), (
+                f"PSI={psi} mapped to {result!r}; numeric PSI must never be 'unknown'"
+            )
+
 
 # --- Monitoring plugin tests ---
 
@@ -209,3 +232,72 @@ class TestMonitoringPlugin:
     def test_plugin_properties(self):
         plugin = MonitoringPlugin()
         assert plugin.name == "monitoring"
+
+
+class TestMonitoringUnknownSeverity:
+    """Regressions for UAT drift bug #1 — 'monitoring rows missing PSI'
+    and 'severity unknown / health-vs-monitoring inconsistency'.
+
+    Both symptoms trace to one root cause: features with no current stats
+    were silently labelled 'healthy' instead of 'unknown', persisting
+    psi=NULL rows that misled the dashboards.
+    """
+
+    def test_feature_without_current_stats_is_unknown(self, tmp_path: Path) -> None:
+        db = CatalogDB(str(tmp_path / "t.db"))
+        db.init_db()
+        src = DataSource(name="src", path="/data/t.parquet")
+        db.add_source(src)
+        # Feature with empty stats but a baseline saved (the column got
+        # removed from the source between baseline and check).
+        feat = Feature(
+            name="src.gone",
+            data_source_id=src.id,
+            column_name="gone",
+            dtype="float64",
+            stats={},
+        )
+        db.upsert_feature(feat)
+        persisted = db.get_feature_by_name("src.gone")
+        assert persisted is not None
+        db.save_baseline(persisted.id, {"mean": 5.0, "std": 1.0, "null_ratio": 0.0})
+
+        plugin = MonitoringPlugin()
+        result = plugin.execute(db, None, action="check")
+
+        details = result.data["details"]
+        gone = next(d for d in details if d["feature"] == "src.gone")
+        assert gone["severity"] == "unknown"
+        assert gone["psi"] is None
+        # Aggregate counters split the unknown out from healthy.
+        assert result.data["unknown"] >= 1
+
+    def test_unknown_rows_excluded_from_actionable_issues(self, tmp_path: Path) -> None:
+        """An 'unknown' row is a data gap, not an actionable issue —
+        export_monitoring_report's Issues section should skip it so the
+        operator doesn't get a false alarm asking the LLM to interpret
+        nothing."""
+        db = CatalogDB(str(tmp_path / "t.db"))
+        db.init_db()
+        src = DataSource(name="src", path="/data/t.parquet")
+        db.add_source(src)
+        db.upsert_feature(
+            Feature(
+                name="src.gone",
+                data_source_id=src.id,
+                column_name="gone",
+                dtype="float64",
+                stats={},
+            )
+        )
+        persisted = db.get_feature_by_name("src.gone")
+        assert persisted is not None
+        db.save_baseline(persisted.id, {"mean": 5.0, "std": 1.0, "null_ratio": 0.0})
+
+        plugin = MonitoringPlugin()
+        result = plugin.execute(db, None, action="check")
+        md = export_monitoring_report(result.data)
+        # The Unknown bucket count is surfaced in the summary table.
+        assert "| Unknown | 1 |" in md
+        # But the Issues section (warning/critical) does not include it.
+        assert "## Issues" not in md or "src.gone" not in md.split("## Issues", 1)[1]
