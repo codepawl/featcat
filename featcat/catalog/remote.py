@@ -166,9 +166,12 @@ class RemoteBackend(CatalogBackend):
         model_used: str = "unknown",
         hints_used: str | None = None,
         context_features: list[str] | None = None,
+        changed_by: str | None = None,
     ) -> None:
-        # Doc saving happens via generate endpoint on server
-        pass
+        # Doc saving happens via generate endpoint on server; the server
+        # attributes its own snapshot, so a remote-mode caller cannot
+        # forward a changed_by value. Accepted for ABC compatibility only.
+        del changed_by  # noqa: A001 — explicit no-op for the override
 
     def list_undocumented_features(self) -> list:
         # Get all features and doc stats to determine undocumented ones

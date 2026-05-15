@@ -212,12 +212,18 @@ class AutodocPlugin(BasePlugin):
             return None
 
         context_specs = [c.spec for c in context_features]
+        # Attribute the version snapshot to the LLM, not whoever happens to
+        # be logged in on the host running this process. Falls back to a
+        # plain "autodoc" tag when the LLM client did not expose a model
+        # name (test stubs, etc.).
+        changed_by = f"llm:{model_name}" if model_name and model_name != "unknown" else "autodoc"
         db.save_feature_doc(
             feature.id,
             doc,
             model_used=model_name,
             hints_used=hint,
             context_features=context_specs or None,
+            changed_by=changed_by,
         )
         return doc
 
