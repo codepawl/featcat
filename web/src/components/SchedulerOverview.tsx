@@ -20,6 +20,7 @@
  *    and can be dismissed.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { FloatingPanel } from './FloatingPanel'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import {
@@ -29,8 +30,10 @@ import {
   ChevronRight,
   Clock,
   Loader2,
+  MoreVertical,
   Pencil,
   Play,
+  Power,
   Timer,
   X,
 } from 'lucide-react'
@@ -45,7 +48,6 @@ import {
   type JobSummary,
 } from '../api'
 import { Badge } from './Badge'
-import { Modal } from './Modal'
 import { Skeleton } from './Skeleton'
 
 const POLL_INTERVAL_MS = 1500
@@ -309,11 +311,11 @@ export function SchedulerOverview({ jobLabel }: { jobLabel: (name: string) => st
         )}
       </div>
 
-      <Modal
+      <FloatingPanel
         open={!!detail || detailLoading}
         onClose={() => { setDetail(null); setExpandedRun(null) }}
         title={detail ? jobLabel(detail.name) : t('scheduler.detail.title')}
-        maxWidth="max-w-3xl"
+        size="large"
       >
         {detailLoading && !detail ? (
           <Skeleton className="h-40" />
@@ -325,13 +327,13 @@ export function SchedulerOverview({ jobLabel }: { jobLabel: (name: string) => st
             setExpandedRun={setExpandedRun}
           />
         ) : null}
-      </Modal>
+      </FloatingPanel>
 
-      <Modal
+      <FloatingPanel
         open={!!editing}
         onClose={closeEdit}
         title={t('schedule_modal.title')}
-        actions={
+        footer={
           <>
             <button
               onClick={closeEdit}
@@ -374,7 +376,7 @@ export function SchedulerOverview({ jobLabel }: { jobLabel: (name: string) => st
             </button>
           ))}
         </div>
-      </Modal>
+      </FloatingPanel>
     </section>
   )
 }
@@ -400,10 +402,29 @@ function SchedulerCard({
 }) {
   const { t } = useTranslation('jobs')
   const status = running ? 'running' : job.last_status
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!menuOpen) return
+    const onPointer = (e: PointerEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false)
+      }
+    }
+    document.addEventListener('pointerdown', onPointer)
+    return () => document.removeEventListener('pointerdown', onPointer)
+  }, [menuOpen])
+
+  const choose = (fn: () => void) => () => {
+    setMenuOpen(false)
+    fn()
+  }
+
   return (
-    <div className="bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-xl p-4 flex flex-col gap-2 hover:shadow-md transition-all">
+    <div className="bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-xl p-4 flex flex-col gap-2 hover:shadow-md transition-all relative">
       <div className="flex justify-between items-start gap-2">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="text-sm font-medium truncate">{jobLabel(job.name)}</div>
           <div className="mt-1 flex items-center gap-1.5 flex-wrap">
             <StatusBadge status={status} />
@@ -412,6 +433,52 @@ function SchedulerCard({
               {job.enabled ? t('job_card.actions.enable') : t('job_card.actions.disable')}
             </Badge>
           </div>
+        </div>
+        <div className="relative" ref={menuRef}>
+          <button
+            onClick={() => setMenuOpen((v) => !v)}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            aria-label={t('job_card.actions.menu', { defaultValue: 'More actions' })}
+            data-testid="job-card-menu-button"
+            className="p-1 -mt-1 -mr-1 rounded-md text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]"
+          >
+            <MoreVertical size={14} strokeWidth={1.8} />
+          </button>
+          {menuOpen && (
+            <div
+              role="menu"
+              data-testid="job-card-menu"
+              className="absolute right-0 top-7 z-20 min-w-[180px] bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg shadow-lg py-1"
+            >
+              <MenuItem icon={<Pencil size={12} />} onClick={choose(onEditSchedule)}>
+                {t('job_card.actions.edit_schedule')}
+              </MenuItem>
+              <MenuItem icon={<ChevronRight size={12} />} onClick={choose(onDetails)}>
+                {t('job_card.actions.view_details', {
+                  defaultValue: t('scheduler.card.details', { defaultValue: 'View details' }),
+                })}
+              </MenuItem>
+              <MenuItem
+                icon={running ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
+                onClick={choose(onRun)}
+                disabled={running}
+              >
+                {running
+                  ? t('scheduler.trigger.running')
+                  : t('job_card.actions.run_now')}
+              </MenuItem>
+              <MenuItem
+                icon={<Power size={12} />}
+                onClick={choose(onToggle)}
+                disabled={toggling}
+              >
+                {job.enabled
+                  ? t('job_card.actions.disable')
+                  : t('job_card.actions.enable')}
+              </MenuItem>
+            </div>
+          )}
         </div>
       </div>
 
@@ -433,42 +500,36 @@ function SchedulerCard({
           {timeUntil(job.next_run_at)}
         </dd>
       </dl>
-
-      <div className="flex gap-2 mt-1 flex-wrap">
-        <button
-          onClick={onRun}
-          disabled={running}
-          className="flex-1 min-w-[6rem] flex items-center justify-center gap-1 px-2.5 py-1.5 text-xs bg-brand text-white rounded-md disabled:opacity-50"
-        >
-          {running ? (
-            <><Loader2 size={12} className="animate-spin" /> {t('scheduler.trigger.running')}</>
-          ) : (
-            <><Play size={12} /> {t('job_card.actions.run_now')}</>
-          )}
-        </button>
-        <button
-          onClick={onToggle}
-          disabled={toggling}
-          className="flex items-center gap-1 px-2.5 py-1.5 text-xs border border-[var(--border-default)] rounded-md hover:bg-[var(--bg-secondary)] disabled:opacity-50"
-        >
-          {job.enabled ? t('job_card.actions.disable') : t('job_card.actions.enable')}
-        </button>
-        <button
-          onClick={onEditSchedule}
-          className="flex items-center gap-1 px-2.5 py-1.5 text-xs border border-[var(--border-default)] rounded-md hover:bg-[var(--bg-secondary)]"
-          aria-label={t('job_card.actions.edit_schedule')}
-          title={t('job_card.actions.edit_schedule')}
-        >
-          <Pencil size={12} />
-        </button>
-        <button
-          onClick={onDetails}
-          className="flex items-center gap-1 px-2.5 py-1.5 text-xs border border-[var(--border-default)] rounded-md hover:bg-[var(--bg-secondary)]"
-        >
-          {t('scheduler.card.details')} <ChevronRight size={12} />
-        </button>
-      </div>
     </div>
+  )
+}
+
+function MenuItem({
+  icon,
+  children,
+  onClick,
+  disabled,
+}: {
+  icon: React.ReactNode
+  children: React.ReactNode
+  onClick: () => void
+  disabled?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      disabled={disabled}
+      onClick={onClick}
+      className={`w-full text-left px-3 py-1.5 text-[12px] flex items-center gap-2 ${
+        disabled
+          ? 'text-[var(--text-tertiary)] cursor-not-allowed'
+          : 'text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]'
+      }`}
+    >
+      <span className="text-[var(--text-tertiary)]">{icon}</span>
+      <span>{children}</span>
+    </button>
   )
 }
 

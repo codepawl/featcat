@@ -16,6 +16,7 @@ import { FeatureSelector, toFeatureItems } from '../components/FeatureSelector'
 import { BatchProgressBanner, readActiveJob, writeActiveJob, type ActiveBatchJob } from '../components/BatchProgressBanner'
 import { Tag } from '../components/Tag'
 import { FeatureStatusTransition } from '../components/FeatureStatusTransition'
+import { FloatingPanel } from '../components/FloatingPanel'
 import { Modal } from '../components/Modal'
 import { SearchInput } from '../components/SearchInput'
 import { Skeleton } from '../components/Skeleton'
@@ -700,7 +701,7 @@ function FeatureDetailModal({ feature, onClose, onDocGenerated }: { feature: Fea
   const hasStats = statKeys.some((k) => stats[k] != null)
 
   return (
-    <Modal open={true} onClose={onClose} title={feature.name} maxWidth="max-w-2xl">
+    <FloatingPanel open={true} onClose={onClose} title={feature.name} size="medium">
       {/* Tab bar */}
       <div className="flex gap-4 border-b border-[var(--border-subtle)] mb-5">
         <button
@@ -968,7 +969,7 @@ function FeatureDetailModal({ feature, onClose, onDocGenerated }: { feature: Fea
         )}
       </Section>
       </>)}
-    </Modal>
+    </FloatingPanel>
   )
 }
 

@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { api } from '../api'
 import { Badge } from '../components/Badge'
 import { Card } from '../components/Card'
+import { DataTable } from '../components/DataTable'
+import { FloatingPanel } from '../components/FloatingPanel'
 import { PageHeader } from '../components/PageHeader'
 import { Skeleton } from '../components/Skeleton'
 import { SchedulerOverview } from '../components/SchedulerOverview'
@@ -28,8 +30,9 @@ export function Jobs() {
   const [filterJob, setFilterJob] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
   const [sort, setSort] = useState<SortKey>('started_desc')
-  const [expanded, setExpanded] = useState<number | null>(null)
-  const [page, setPage] = useState(0)
+  // Selected row → opens FloatingPanel with run detail. Replaces the prior
+  // bottom-docked inline panel so the UX matches Features detail.
+  const [selectedRun, setSelectedRun] = useState<JobLogRow | null>(null)
 
   useEffect(() => {
     setLoading(true)
@@ -65,9 +68,6 @@ export function Jobs() {
       if (bv == null) return -1
       return sort === 'duration_desc' ? bv - av : av - bv
     })
-  const PAGE_SIZE = 50
-  const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
-  const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
 
   // Job-name options for the history filter come from the log rows themselves —
   // avoids a second round-trip to /api/jobs now that SchedulerOverview owns
@@ -75,6 +75,12 @@ export function Jobs() {
   const jobOptions = [...new Set(logs.map((l) => l.job_name).filter(Boolean))].sort()
 
   const getJobLabel = (jobName: string) => t(`job_names.${jobName}`, { defaultValue: jobName })
+
+  const summarizeResult = (raw: unknown): string => {
+    if (typeof raw === 'string') return raw
+    if (raw == null) return ''
+    return JSON.stringify(raw)
+  }
 
   return (
     <div>
@@ -89,10 +95,7 @@ export function Jobs() {
           <>
             <select
               value={filterJob}
-              onChange={(e) => {
-                setFilterJob(e.target.value)
-                setPage(0)
-              }}
+              onChange={(e) => setFilterJob(e.target.value)}
               className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-2.5 py-1.5 text-xs"
             >
               <option value="">{t('history.filters.all_jobs')}</option>
@@ -102,10 +105,7 @@ export function Jobs() {
             </select>
             <select
               value={filterStatus}
-              onChange={(e) => {
-                setFilterStatus(e.target.value)
-                setPage(0)
-              }}
+              onChange={(e) => setFilterStatus(e.target.value)}
               className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-2.5 py-1.5 text-xs"
             >
               <option value="">{t('history.filters.all_statuses')}</option>
@@ -115,10 +115,7 @@ export function Jobs() {
             </select>
             <select
               value={sort}
-              onChange={(e) => {
-                setSort(e.target.value as SortKey)
-                setPage(0)
-              }}
+              onChange={(e) => setSort(e.target.value as SortKey)}
               className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-2.5 py-1.5 text-xs"
               aria-label={t('history.table.started')}
             >
@@ -129,78 +126,115 @@ export function Jobs() {
           </>
         }
       >
-        {loading ? <Skeleton className="h-40" /> : (
-          <>
-            <table className="w-full text-[13px]">
-              <thead>
-                <tr className="text-xs text-[var(--text-tertiary)] border-b border-[var(--border-default)]">
-                  <th className="text-left py-2 font-medium">{t('history.table.job')}</th>
-                  <th className="text-left py-2 font-medium">{t('history.table.status')}</th>
-                  <th className="text-left py-2 font-medium">{t('history.table.started')}</th>
-                  <th className="text-left py-2 font-medium">{t('history.table.duration')}</th>
-                  <th className="text-left py-2 font-medium">{t('history.table.result')}</th>
-                  <th className="text-left py-2 font-medium">{t('history.table.triggered_by')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {paged.map((l, i) => (
-                  <tr
-                    key={i}
-                    className="border-b border-[var(--border-subtle)] cursor-pointer hover:bg-[var(--bg-secondary)] transition-colors"
-                    onClick={() => setExpanded(expanded === i ? null : i)}
-                  >
-                    <td className="py-2 font-medium">{getJobLabel(l.job_name)}</td>
-                    <td className="py-2"><Badge variant={l.status}>{l.status}</Badge></td>
-                    <td className="py-2 text-[var(--text-secondary)]">
-                      {l.started_at ? new Date(l.started_at).toLocaleString() : '-'}
-                    </td>
-                    <td className="py-2 font-mono text-xs">
-                      {l.duration_seconds != null ? `${l.duration_seconds.toFixed(1)}s` : '-'}
-                    </td>
-                    <td className="py-2 text-xs text-[var(--text-secondary)] max-w-[200px] truncate">
-                      {typeof l.result_summary === 'string'
-                        ? l.result_summary
-                        : JSON.stringify(l.result_summary || '')}
-                    </td>
-                    <td className="py-2 text-xs text-[var(--text-tertiary)]">{l.triggered_by}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            {expanded !== null && paged[expanded] && (
-              <div className="mt-3 p-3 bg-[var(--bg-secondary)] rounded-lg text-xs font-mono animate-fade-in whitespace-pre-wrap">
-                {JSON.stringify(paged[expanded].result_summary, null, 2)}
-                {paged[expanded].error_message && (
-                  <p className="text-[var(--danger)] mt-2">{paged[expanded].error_message}</p>
-                )}
-              </div>
-            )}
-
-            {totalPages > 1 && (
-              <div className="flex gap-1 justify-center mt-4">
-                <button
-                  disabled={page === 0}
-                  onClick={() => setPage((p) => p - 1)}
-                  className="px-3 py-1.5 text-xs rounded-md border border-[var(--border-default)] bg-[var(--bg-primary)] disabled:opacity-40"
-                >
-                  {t('actions.previous', { ns: 'common' })}
-                </button>
-                <span className="px-3 py-1.5 text-xs text-[var(--text-secondary)]">
-                  {page + 1} / {totalPages}
-                </span>
-                <button
-                  disabled={page >= totalPages - 1}
-                  onClick={() => setPage((p) => p + 1)}
-                  className="px-3 py-1.5 text-xs rounded-md border border-[var(--border-default)] bg-[var(--bg-primary)] disabled:opacity-40"
-                >
-                  {t('actions.next', { ns: 'common' })}
-                </button>
-              </div>
-            )}
-          </>
+        {loading ? (
+          <Skeleton className="h-40" />
+        ) : (
+          <DataTable
+            columns={[
+              {
+                key: 'job_name',
+                label: t('history.table.job'),
+                render: (r) => <span className="font-medium">{getJobLabel(r.job_name)}</span>,
+              },
+              {
+                key: 'status',
+                label: t('history.table.status'),
+                sortable: false,
+                render: (r) => <Badge variant={r.status}>{r.status}</Badge>,
+              },
+              {
+                key: 'started_at',
+                label: t('history.table.started'),
+                render: (r) => (
+                  <span className="text-[var(--text-secondary)]">
+                    {r.started_at ? new Date(r.started_at).toLocaleString() : '-'}
+                  </span>
+                ),
+              },
+              {
+                key: 'duration_seconds',
+                label: t('history.table.duration'),
+                render: (r) => (
+                  <span className="font-mono text-xs">
+                    {r.duration_seconds != null ? `${r.duration_seconds.toFixed(1)}s` : '-'}
+                  </span>
+                ),
+              },
+              {
+                key: 'result_summary',
+                label: t('history.table.result'),
+                sortable: false,
+                render: (r) => (
+                  <span className="text-xs text-[var(--text-secondary)] max-w-[200px] truncate inline-block">
+                    {summarizeResult(r.result_summary)}
+                  </span>
+                ),
+              },
+              {
+                key: 'triggered_by',
+                label: t('history.table.triggered_by'),
+                render: (r) => (
+                  <span className="text-xs text-[var(--text-tertiary)]">{r.triggered_by}</span>
+                ),
+              },
+            ]}
+            data={filtered}
+            onRowClick={(r) => setSelectedRun(r)}
+            pageSize={50}
+          />
         )}
       </Card>
+
+      {selectedRun && (
+        <FloatingPanel
+          open={!!selectedRun}
+          onClose={() => setSelectedRun(null)}
+          title={getJobLabel(selectedRun.job_name)}
+          subtitle={
+            selectedRun.started_at
+              ? new Date(selectedRun.started_at).toLocaleString()
+              : undefined
+          }
+          headerActions={<Badge variant={selectedRun.status}>{selectedRun.status}</Badge>}
+          size="large"
+          data-testid="job-run-detail"
+        >
+          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-y-2 gap-x-6 text-[13px] mb-4">
+            <div>
+              <dt className="text-[11px] uppercase tracking-wider text-[var(--text-tertiary)] mb-0.5">
+                {t('history.table.duration')}
+              </dt>
+              <dd className="font-mono">
+                {selectedRun.duration_seconds != null ? `${selectedRun.duration_seconds.toFixed(1)}s` : '-'}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[11px] uppercase tracking-wider text-[var(--text-tertiary)] mb-0.5">
+                {t('history.table.triggered_by')}
+              </dt>
+              <dd>{selectedRun.triggered_by || '-'}</dd>
+            </div>
+          </dl>
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-tertiary)] mb-1">
+            {t('history.table.result')}
+          </h3>
+          <pre className="p-3 bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-lg text-xs font-mono whitespace-pre-wrap">
+            {typeof selectedRun.result_summary === 'string'
+              ? selectedRun.result_summary
+              : JSON.stringify(selectedRun.result_summary, null, 2)}
+          </pre>
+          {selectedRun.error_message && (
+            <>
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--danger)] mb-1 mt-4">
+                Error
+              </h3>
+              <pre className="p-3 bg-[var(--danger-subtle-bg)] border border-[var(--danger)] rounded-lg text-xs font-mono whitespace-pre-wrap text-[var(--danger)]">
+                {selectedRun.error_message}
+              </pre>
+            </>
+          )}
+        </FloatingPanel>
+      )}
     </div>
   )
 }
