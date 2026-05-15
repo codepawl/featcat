@@ -100,3 +100,18 @@ Sync README and CLI --help text to match shipped flags:
 - [ ] Feast-like online/offline store + registry (scope expansion beyond
       catalog — design doc first, defer to next quarter)
 - [ ] Featcat logo + favicon (needs design)
+
+## Coverage baseline 2026-05-15
+
+After P0 bug fixes (PRs #82-#88 merged), `uv run pytest --cov=featcat` reports:
+- Total: 69% (10887 stmts, 3427 miss)
+- Critical-path modules below 50%:
+  - featcat/server/routes/ai.py: 39%
+  - featcat/server/routes/docs.py: 42%
+  - featcat/server/routes/scan.py: 42%
+  - featcat/catalog/context_builder.py: 46%
+  - featcat/cli.py: 48%
+- TUI modules excluded from coverage focus (0% by design, not exercised in pytest)
+- featcat/catalog/remote.py at 27% acceptable (covered via integration in deployed setup)
+
+Baseline informs P1 coverage work selection.
