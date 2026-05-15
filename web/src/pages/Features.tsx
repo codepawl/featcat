@@ -13,6 +13,7 @@ import { VirtualizedTable } from '../components/VirtualizedTable'
 import { Badge } from '../components/Badge'
 import { ExportModal } from '../components/ExportModal'
 import { FeatureSelector, toFeatureItems } from '../components/FeatureSelector'
+import { BatchProgressBanner, readActiveJob, writeActiveJob, type ActiveBatchJob } from '../components/BatchProgressBanner'
 import { Tag } from '../components/Tag'
 import { Modal } from '../components/Modal'
 import { SearchInput } from '../components/SearchInput'
@@ -101,8 +102,11 @@ export function Features() {
   const [exportOpen, setExportOpen] = useState(false)
   const [scanModalOpen, setScanModalOpen] = useState(false)
   const [genModalOpen, setGenModalOpen] = useState(false)
-  const [genProgress, setGenProgress] = useState<string | null>(null)
-  const [batchJob, setBatchJob] = useState<{ jobId: string; total: number } | null>(null)
+  // batchJob is the *trigger* — the banner takes over from here, handles
+  // polling + localStorage persistence so a mid-run F5 doesn't lose progress
+  // (UAT finding "Auto-generate progress lost on F5/reload"). Lazy init reads
+  // localStorage so reloads pre-populate before the banner mounts.
+  const [batchJob, setBatchJob] = useState<ActiveBatchJob | null>(() => readActiveJob())
 
   // Bulk-select toolbar state (T1.3b). `selectedForExport` is also used as
   // the master selection set for bulk-tag, bulk-group, and bulk-delete flows.
@@ -202,30 +206,9 @@ export function Features() {
     )
   }, [statusFilter, setSearchParams])
 
-  // Poll batch job progress
-  useEffect(() => {
-    if (!batchJob) return
-    const interval = setInterval(async () => {
-      try {
-        const status = await api.docs.batchStatus(batchJob.jobId)
-        const done = status.completed + status.failed
-        setGenProgress(`Generating... (${done}/${status.total})`)
-        if (status.status === 'done') {
-          clearInterval(interval)
-          setGenProgress(null)
-          setBatchJob(null)
-          invalidateCache('/features')
-          invalidateCache('/docs')
-          load()
-        }
-      } catch {
-        clearInterval(interval)
-        setGenProgress(null)
-        setBatchJob(null)
-      }
-    }, 2000)
-    return () => clearInterval(interval)
-  }, [batchJob])
+  // BatchProgressBanner owns the polling loop and persists the active job id
+  // to localStorage so a reload mid-run restores the UI. We just react to its
+  // onComplete callback to refresh feature data once the batch settles.
 
   // Auto-open modal from URL param
   useEffect(() => {
@@ -449,13 +432,25 @@ export function Features() {
           {t('actions.undocumented_only')}
         </button>
         <FilterClearLink show={hasActiveFilters} onClick={clearAllFilters} label={t('actions.clear_all_filters')} />
-        {(undocCount > 0 || genProgress) && (
+        {(undocCount > 0 || batchJob !== null) && (
           <button
-            onClick={() => !genProgress && setGenModalOpen(true)}
-            disabled={!!genProgress}
+            onClick={() => !batchJob && setGenModalOpen(true)}
+            disabled={batchJob !== null}
             className="flex items-center gap-1.5 px-4 py-2 border border-[var(--border-default)] rounded-lg text-[13px] font-medium hover:bg-[var(--bg-secondary)] disabled:opacity-50 transition-colors"
           >
-            {genProgress ? <><RefreshCw size={14} className="animate-spin" /> {genProgress}</> : <><FileText size={14} /> {t('actions.generate_docs_remaining', { count: undocCount })}</>}
+            {batchJob ? (
+              <BatchProgressBanner
+                job={batchJob}
+                onComplete={() => {
+                  setBatchJob(null)
+                  invalidateCache('/features')
+                  invalidateCache('/docs')
+                  load()
+                }}
+              />
+            ) : (
+              <><FileText size={14} /> {t('actions.generate_docs_remaining', { count: undocCount })}</>
+            )}
           </button>
         )}
         <button onClick={() => setScanModalOpen(true)} className="flex items-center gap-1.5 px-4 py-2 border border-[var(--border-default)] rounded-lg text-[13px] font-medium hover:bg-[var(--bg-secondary)] transition-colors">
@@ -545,8 +540,9 @@ export function Features() {
         selectedSpecs={selectedForExport}
         onStarted={(jobId, total) => {
           setGenModalOpen(false)
-          setBatchJob({ jobId, total })
-          setGenProgress(`Generating... (0/${total})`)
+          const next: ActiveBatchJob = { jobId, total }
+          writeActiveJob(next)
+          setBatchJob(next)
         }}
       />
       <BulkScanModal open={scanModalOpen} onClose={() => setScanModalOpen(false)} onDone={() => { setScanModalOpen(false); load() }} />
