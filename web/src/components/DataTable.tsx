@@ -2,6 +2,58 @@ import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChevronUp, ChevronDown } from 'lucide-react'
 
+/**
+ * Shared table component for paginated, sortable lists.
+ *
+ * `DataTable` is the canonical table abstraction in the codebase.
+ * Already-shared consumers: Features (default unpaginated path), Groups
+ * (members), GroupDetail (members). This PR adds Audit (version history)
+ * as the 4th, migrating it off a hand-rolled `<table>` element.
+ *
+ * API design (chosen from existing usage, not from theory):
+ *   - `columns`: `{key, label, sortable?, render?, headerRender?}[]`.
+ *     `sortable` defaults to true; pass `false` for columns with mixed
+ *     types (badges, buttons). `render` returns ReactNode per row;
+ *     `headerRender` is used by FeatureSelector's tri-state checkbox.
+ *   - `data`: row records keyed by string. Sort uses `row[col.key]`
+ *     natively — numeric subtract for numbers, `localeCompare` for the rest.
+ *   - `onRowClick(row)`: optional. Adds cursor-pointer + hover styling.
+ *   - `pageSize`: default 25. Set higher when virtualisation would be
+ *     overkill but the row count is bounded (members lists).
+ *
+ * Empty state, sort indicator (Chevron up/down), and pagination
+ * (prev/next + "page / total") are built-in — call sites get them for
+ * free.
+ *
+ * Example:
+ *
+ *     <DataTable
+ *       columns={[
+ *         { key: 'when', label: t('table.when'),
+ *           render: (r) => timeAgo(r.created_at) },
+ *         { key: 'feature_name', label: t('table.feature'),
+ *           render: (r) => <span className="text-brand">{r.feature_name}</span> },
+ *       ]}
+ *       data={rows}
+ *       onRowClick={(r) => navigate(\`/features/\${r.feature_name}\`)}
+ *     />
+ *
+ * Variants observed during the audit (PR body lists each one) and
+ * supported by the current API:
+ *   - Plain (Features unpaginated): no row-click, default sort
+ *   - Row-clickable (Audit, Groups members): pass `onRowClick`
+ *   - Header-renderable cells (FeatureSelector, ExportModal): use
+ *     `headerRender`
+ *   - Sortable-some-columns (every consumer): `sortable: false` per col
+ *
+ * Variants NOT yet supported and deferred to a follow-up PR (paired
+ * with the FloatingPanel work):
+ *   - Expandable rows (Jobs history table — coupled to row-detail
+ *     overlay state)
+ *   - Selected-row side panel (Monitoring drift table — coupled to
+ *     framer-motion AnimatePresence)
+ */
+
 interface Column<T> {
   key: string
   label: string

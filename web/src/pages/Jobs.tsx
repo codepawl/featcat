@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api'
 import { Badge } from '../components/Badge'
+import { Card } from '../components/Card'
 import { PageHeader } from '../components/PageHeader'
 import { Skeleton } from '../components/Skeleton'
 import { SchedulerOverview } from '../components/SchedulerOverview'
@@ -82,10 +83,10 @@ export function Jobs() {
       <SchedulerOverview jobLabel={getJobLabel} />
 
       {/* Execution History */}
-      <div className="bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-xl p-5">
-        <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
-          <h3 className="text-sm font-semibold">{t('history.title')}</h3>
-          <div className="flex gap-2">
+      <Card
+        title={t('history.title')}
+        actions={
+          <>
             <select
               value={filterJob}
               onChange={(e) => {
@@ -125,9 +126,9 @@ export function Jobs() {
                 <option key={s} value={s}>{t(`history.filters.sort.${s}`)}</option>
               ))}
             </select>
-          </div>
-        </div>
-
+          </>
+        }
+      >
         {loading ? <Skeleton className="h-40" /> : (
           <>
             <table className="w-full text-[13px]">
@@ -199,7 +200,7 @@ export function Jobs() {
             )}
           </>
         )}
-      </div>
+      </Card>
     </div>
   )
 }
