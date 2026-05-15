@@ -27,7 +27,7 @@ It's not a replacement for the catalog browser — for "show me everything tagge
     ```bash
     curl -N -X POST http://localhost:8000/api/ai/chat \
         -H 'Content-Type: application/json' \
-        -d '{"messages": [{"role": "user", "content": "list features for churn"}]}'
+        -d '{"query": "list features for churn"}'
     ```
 
     Events: `thinking_start` / `thinking` / `thinking_end` / `tool_call` / `tool_result` / `token` / `done`.

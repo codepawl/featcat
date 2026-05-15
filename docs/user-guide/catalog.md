@@ -99,7 +99,7 @@ The catalog page handles 10k+ features without lag. Implementation details:
 
 ## Common questions
 
-- **"Why does my feature show 'no description'?"** — The autodoc batch hasn't run yet, or it was skipped. Run `featcat docs generate --feature <name>` to fix.
+- **"Why does my feature show 'no description'?"** — The autodoc batch hasn't run yet, or it was skipped. Run `featcat doc generate <name>` to fix.
 - **"Why is the dtype `unknown`?"** — The scanner couldn't open the parquet (path moved, permissions). Fix the path on the source and re-scan.
 - **"Search returns nothing for an obvious match."** — On PostgreSQL the `tsvector` column is a stored generated column. Run `alembic upgrade head` if you upgraded — older schemas won't have it.
 

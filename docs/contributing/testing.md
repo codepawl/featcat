@@ -72,7 +72,7 @@ For routes that call the LLM, inject `mock_llm` via the lifespan override:
 ```python
 def test_chat_streams_tokens(api_client_with_mock_llm):
     with api_client_with_mock_llm.stream("POST", "/api/ai/chat",
-                                          json={"messages": [{"role": "user", "content": "..."}]}) as r:
+                                          json={"query": "..."}) as r:
         events = list(r.iter_lines())
         assert any("token" in e for e in events)
 ```
@@ -160,7 +160,7 @@ def test_features_list(in_memory_backend, monkeypatch):
 ```python
 def test_chat_stream(api_client_with_mock_llm):
     with api_client_with_mock_llm.stream("POST", "/api/ai/chat",
-                                          json={"messages": [{"role": "user", "content": "hi"}]}) as r:
+                                          json={"query": "hi"}) as r:
         lines = [line for line in r.iter_lines() if line]
         assert any(line.startswith("event: token") for line in lines)
         assert any(line.startswith("event: done") for line in lines)
