@@ -25,6 +25,7 @@
     "retry": "Retry",
     "generate": "Generate",
     "generating": "Generating...",
+    "regenerate": "Regenerate",
     "edit": "Edit",
     "create": "Create",
     "done": "Done",

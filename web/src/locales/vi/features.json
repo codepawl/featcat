@@ -27,9 +27,9 @@
     "health_score": "Điểm sức khỏe",
     "metadata": "Thông tin",
     "statistics": "Thống kê",
-    "documentation": "Tài liệu",
+    "documentation": "Hồ sơ dữ liệu",
     "generation_hints": "Gợi ý generate tài liệu",
-    "definition": "Định nghĩa",
+    "definition": "Đặc tả",
     "usage": "Sử dụng",
     "monitoring": "Giám sát"
   },
@@ -50,6 +50,8 @@
   },
   "documentation": {
     "empty": "Chưa có tài liệu",
+    "empty_hint": "AI sẽ phân tích thống kê, gợi ý và lineage để tạo tài liệu.",
+    "ai_generated_label": "AI tạo",
     "expected_range": "Khoảng giá trị mong muốn:",
     "potential_issues": "Vấn đề tiềm ẩn:",
     "hints_used": "đã dùng gợi ý",

@@ -27,9 +27,9 @@
     "health_score": "Health Score",
     "metadata": "Metadata",
     "statistics": "Statistics",
-    "documentation": "Documentation",
+    "documentation": "Data Profile",
     "generation_hints": "Generation Hints",
-    "definition": "Definition",
+    "definition": "Specification",
     "usage": "Usage",
     "monitoring": "Monitoring"
   },
@@ -50,6 +50,8 @@
   },
   "documentation": {
     "empty": "No documentation yet",
+    "empty_hint": "AI will analyze stats, hints, and lineage to generate docs.",
+    "ai_generated_label": "AI-generated",
     "expected_range": "Expected range:",
     "potential_issues": "Potential issues:",
     "hints_used": "hints used",
