@@ -46,11 +46,15 @@ ENV HTTP_PROXY=${HTTP_PROXY} \
 # Install uv for fast dependency management
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-# Install featcat with server extras
+# Install featcat with server + embeddings extras. [embeddings] pulls in
+# sentence-transformers (≈torch, ~1 GB) so semantic similarity (the
+# /api/features/similarity-graph + matrix endpoints, and the web Similarity
+# page) works out of the box. UAT run 2026-05-15-024551 found the graph
+# returned 0 edges and the matrix was uniform without it.
 COPY . /app/
 # Copy built frontend into static directory
 COPY --from=frontend /web/dist /app/featcat/server/static/
-RUN uv pip install --system --no-cache-dir -e ".[server]"
+RUN uv pip install --system --no-cache-dir -e ".[server,embeddings]"
 
 # Clear proxy so the runtime container doesn't inherit it
 # (llm service is internal, talking to it via proxy would break)
