@@ -39,11 +39,22 @@ class AutodocPlugin(BasePlugin):
         language: str = kwargs.get("language", "en")
         regenerate_all: bool = kwargs.get("regenerate_all", False)
         context: str | None = kwargs.get("context")
+        source_name: str | None = kwargs.get("source_name")
+        limit: int | None = kwargs.get("limit")
         system = localize_system_prompt(AUTODOC_SYSTEM, language)
 
         if feature_name:
             return self._document_single(catalog_db, llm, feature_name, system, context=context)
-        return self._document_all(catalog_db, llm, progress_callback, system, regenerate_all, context=context)
+        return self._document_all(
+            catalog_db,
+            llm,
+            progress_callback,
+            system,
+            regenerate_all,
+            context=context,
+            source_name=source_name,
+            limit=limit,
+        )
 
     def _document_single(
         self,
@@ -73,6 +84,8 @@ class AutodocPlugin(BasePlugin):
         regenerate_all: bool = False,
         *,
         context: str | None = None,
+        source_name: str | None = None,
+        limit: int | None = None,
     ) -> PluginResult:
         if regenerate_all:
             to_process = db.list_features()
@@ -80,6 +93,16 @@ class AutodocPlugin(BasePlugin):
         else:
             to_process = db.list_undocumented_features()
             logger.info("Found %d undocumented features", len(to_process))
+
+        # Filter by source (matches the source prefix on dotted feature names)
+        # and cap by limit. Both filters are applied AFTER the regenerate_all /
+        # undocumented selection so the cap is on the work actually scheduled.
+        if source_name:
+            to_process = [f for f in to_process if f.name.split(".", 1)[0] == source_name]
+            logger.info("After source=%s filter: %d features", source_name, len(to_process))
+        if limit is not None and limit >= 0:
+            to_process = to_process[:limit]
+            logger.info("After limit=%d cap: %d features", limit, len(to_process))
 
         if not to_process:
             return PluginResult(status="success", data={"documented": 0, "message": "All features are documented"})

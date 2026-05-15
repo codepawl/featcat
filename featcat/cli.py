@@ -1555,6 +1555,17 @@ def doc_generate(
         "--context",
         help="Free-form organization/domain context injected into the LLM prompt.",
     ),
+    source: str | None = typer.Option(
+        None,
+        "--source",
+        help="Only generate docs for features from this source. Combines with --all.",
+    ),
+    limit: int | None = typer.Option(
+        None,
+        "--limit",
+        min=0,
+        help="Cap the number of features processed (after source filter).",
+    ),
 ) -> None:
     """Generate AI documentation for features."""
     from .catalog.remote import RemoteBackend
@@ -1574,6 +1585,8 @@ def doc_generate(
         console.print(f"[green]Done:[/green] {documented} features documented")
         if context:
             console.print("[yellow]Note:[/yellow] --context is ignored in remote mode (server uses its own context).")
+        if source or limit is not None:
+            console.print("[yellow]Note:[/yellow] --source / --limit are ignored in remote mode.")
         return
 
     llm = _get_llm(use_cache=not no_cache)
@@ -1589,6 +1602,10 @@ def doc_generate(
     plugin = AutodocPlugin()
 
     if name:
+        if source or limit is not None:
+            console.print(
+                "[yellow]Note:[/yellow] --source / --limit are ignored when a specific feature name is supplied."
+            )
         with console.status(f"[blue]Generating doc for {name}..."):
             result = plugin.execute(db, llm, feature_name=name, context=context)
     else:
@@ -1604,6 +1621,8 @@ def doc_generate(
                 progress_callback=on_progress,
                 regenerate_all=all_features,
                 context=context,
+                source_name=source,
+                limit=limit,
             )
 
     db.close()

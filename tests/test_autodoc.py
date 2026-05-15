@@ -144,6 +144,71 @@ class TestAutodoc:
         assert plugin.name == "autodoc"
 
 
+class TestAutodocSourceAndLimitFilters:
+    """Coverage for the --source / --limit flags surfaced on `featcat doc generate`."""
+
+    @pytest.fixture()
+    def db_two_sources(self, tmp_path: Path) -> CatalogDB:
+        db = CatalogDB(str(tmp_path / "twosrc.db"))
+        db.init_db()
+        for source_name in ("alpha", "beta"):
+            src = DataSource(name=source_name, path=f"/data/{source_name}.parquet")
+            db.add_source(src)
+            for col in ("one", "two", "three"):
+                db.upsert_feature(
+                    Feature(
+                        name=f"{source_name}.{col}",
+                        data_source_id=src.id,
+                        column_name=col,
+                        dtype="int64",
+                        stats={"mean": 5, "std": 1, "null_ratio": 0.0},
+                    )
+                )
+        return db
+
+    def test_source_filter_restricts_to_matching_prefix(self, db_two_sources: CatalogDB) -> None:
+        plugin = AutodocPlugin()
+        llm = MockAutodocLLM()
+        result = plugin.execute(db_two_sources, llm, source_name="alpha")
+        assert result.status in ("success", "partial")
+        documented_names = set(result.data["features"].keys())
+        # Every documented feature must come from the requested source.
+        assert documented_names <= {"alpha.one", "alpha.two", "alpha.three"}
+        # All three alpha features should be picked up when undocumented.
+        assert result.data["total"] == 3
+
+    def test_limit_caps_features_processed(self, db_two_sources: CatalogDB) -> None:
+        plugin = AutodocPlugin()
+        llm = MockAutodocLLM()
+        result = plugin.execute(db_two_sources, llm, limit=2)
+        assert result.status in ("success", "partial")
+        assert result.data["total"] == 2
+
+    def test_source_and_limit_combine(self, db_two_sources: CatalogDB) -> None:
+        plugin = AutodocPlugin()
+        llm = MockAutodocLLM()
+        result = plugin.execute(db_two_sources, llm, source_name="beta", limit=1)
+        assert result.status in ("success", "partial")
+        assert result.data["total"] == 1
+        documented_names = set(result.data["features"].keys())
+        assert documented_names <= {"beta.one", "beta.two", "beta.three"}
+
+    def test_limit_zero_means_zero_features(self, db_two_sources: CatalogDB) -> None:
+        """`--limit 0` is allowed (min=0 on the typer Option) and should be a no-op."""
+        plugin = AutodocPlugin()
+        llm = MockAutodocLLM()
+        result = plugin.execute(db_two_sources, llm, limit=0)
+        assert result.status == "success"
+        assert result.data["documented"] == 0
+
+    def test_unknown_source_filters_to_empty(self, db_two_sources: CatalogDB) -> None:
+        plugin = AutodocPlugin()
+        llm = MockAutodocLLM()
+        result = plugin.execute(db_two_sources, llm, source_name="nonexistent_source")
+        assert result.status == "success"
+        assert result.data["documented"] == 0
+
+
 class TestAutodocChangedBy:
     """Regression for drift bug #1 in docs/BACKLOG.md (UAT finding
     'feature_versions.changed_by is unknown for LLM-generated docs'):

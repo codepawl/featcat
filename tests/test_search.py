@@ -74,6 +74,41 @@ class TestSearchRanking:
         results = search_features("performance", SAMPLE_FEATURES)
         assert results[0][0]["name"] == "device_performance.cpu_usage"
 
+    def test_undocumented_feature_still_matches_by_name(self) -> None:
+        """Search must fall back to name + tags when short_description is missing.
+
+        Documents the BACKLOG P1 contract "Search fallback to features.name +
+        features.tags when feature_docs.short_description empty". The TF-IDF
+        path already includes name + column_name + tags in its corpus, so an
+        undocumented feature with a matching name or tag remains findable.
+        """
+        undocumented = [
+            {
+                "name": "raw_logs.error_count_30d",
+                "column_name": "error_count_30d",
+                "tags": ["reliability", "errors"],
+                # No short_description, no description — simulates a fresh
+                # source-scan with no autodoc run yet.
+                "description": "",
+                "short_description": "",
+                "generation_hints": None,
+            },
+            {
+                "name": "raw_logs.request_latency_p99",
+                "column_name": "request_latency_p99",
+                "tags": ["performance"],
+                "description": "",
+                "short_description": "",
+                "generation_hints": None,
+            },
+        ]
+        # Name-token hit
+        by_name = search_features("error count", undocumented)
+        assert by_name and by_name[0][0]["name"] == "raw_logs.error_count_30d"
+        # Tag-token hit
+        by_tag = search_features("reliability", undocumented)
+        assert by_tag and by_tag[0][0]["name"] == "raw_logs.error_count_30d"
+
 
 class TestHighlights:
     def test_matched_terms(self):
