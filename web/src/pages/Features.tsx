@@ -773,78 +773,7 @@ function FeatureDetailModal({ feature, onClose, onDocGenerated }: { feature: Fea
         </Section>
       )}
 
-      {/* Documentation */}
-      <Section title={t('sections.documentation')}>
-        {docLoading ? (
-          <Skeleton className="h-12" />
-        ) : doc ? (
-          <div className="space-y-2 text-sm">
-            <p>{String(doc.short_description || '')}</p>
-            {doc.long_description ? <p className="text-[var(--text-secondary)]">{String(doc.long_description)}</p> : null}
-            {doc.expected_range ? (
-              <p className="text-xs text-[var(--text-tertiary)]">
-                <span className="font-medium">{t('documentation.expected_range')}</span> {String(doc.expected_range)}
-              </p>
-            ) : null}
-            {doc.potential_issues ? (
-              <p className="text-xs text-[var(--text-tertiary)]">
-                <span className="font-medium">{t('documentation.potential_issues')}</span> {String(doc.potential_issues)}
-              </p>
-            ) : null}
-            {(doc.context_features || doc.hints_used) ? (
-              <div className="mt-2 pt-2 border-t border-[var(--border-subtle)] flex items-center gap-2 flex-wrap text-[11px] text-[var(--text-tertiary)]">
-                {doc.hints_used ? <Badge variant="info">{t('documentation.hints_used')}</Badge> : null}
-                {doc.context_features ? (
-                  <span>{t('documentation.context', { count: JSON.parse(String(doc.context_features)).length })}</span>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-        ) : (
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-[var(--text-tertiary)]">{t('documentation.empty')}</span>
-            <button onClick={generateDoc} disabled={generating} className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-brand text-white rounded-lg disabled:opacity-50">
-              <RefreshCw size={12} className={generating ? 'animate-spin' : ''} />
-              {generating ? t('actions.generating', { ns: 'common' }) : t('actions.generate', { ns: 'common' })}
-            </button>
-          </div>
-        )}
-      </Section>
-
-      {/* Generation Hints */}
-      <Section title={t('sections.generation_hints')}>
-        {hintEditing ? (
-          <div className="space-y-2">
-            <textarea value={hintDraft} onChange={(e) => setHintDraft(e.target.value)} rows={2}
-              placeholder=""
-              className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-xs focus:border-brand outline-none" />
-            <div className="flex gap-2">
-              <button onClick={async () => {
-                await api.hints.save(feature.name, hintDraft)
-                invalidateCache('/features')
-                setHintData({ hints: hintDraft })
-                setHintEditing(false)
-              }} className="px-3 py-1.5 text-xs bg-brand text-white rounded-lg">{t('actions.save', { ns: 'common' })}</button>
-              <button onClick={() => setHintEditing(false)} className="px-3 py-1.5 text-xs border border-[var(--border-default)] rounded-lg">{t('actions.cancel', { ns: 'common' })}</button>
-            </div>
-          </div>
-        ) : hintData?.hints ? (
-          <div>
-            <p className="text-sm text-[var(--text-secondary)] mb-1">{hintData.hints}</p>
-            <button onClick={() => { setHintDraft(hintData.hints || ''); setHintEditing(true) }}
-              className="text-xs text-brand hover:underline">{t('actions.edit', { ns: 'common' })}</button>
-          </div>
-        ) : (
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-[var(--text-tertiary)]">{t('hints.empty')}</span>
-            <button onClick={() => { setHintDraft(''); setHintEditing(true) }}
-              className="text-xs text-brand hover:underline">{t('hints.add')}</button>
-            <span className="text-[10px] text-[var(--text-tertiary)]" title={t('hints.info_tooltip')}>ℹ</span>
-          </div>
-        )}
-      </Section>
-
-      {/* Definition */}
+      {/* Specification (Definition) */}
       <Section title={t('sections.definition')}>
         {defLoading ? (
           <Skeleton className="h-10" />
@@ -883,6 +812,94 @@ function FeatureDetailModal({ feature, onClose, onDocGenerated }: { feature: Fea
             <span className="text-sm text-[var(--text-tertiary)]">{t('definition.empty')}</span>
             <button onClick={() => { setDefForm({ definition: '', definition_type: 'sql' }); setDefEditing(true) }}
               className="text-xs text-brand hover:underline">{t('definition.add')}</button>
+          </div>
+        )}
+      </Section>
+
+      {/* Data Profile (Documentation) */}
+      <Section title={t('sections.documentation')}>
+        {docLoading ? (
+          <Skeleton className="h-12" />
+        ) : doc ? (
+          <div className="space-y-2 text-sm">
+            <div className="mb-1 flex items-center gap-2 flex-wrap">
+              <Badge variant="info">
+                {t('documentation.ai_generated_label')}
+                {doc.generated_at ? ` · ${timeAgo(String(doc.generated_at))}` : ''}
+              </Badge>
+              <button
+                onClick={generateDoc}
+                disabled={generating}
+                className="inline-flex items-center gap-1 text-xs text-brand hover:underline disabled:opacity-50"
+              >
+                <RefreshCw size={11} className={generating ? 'animate-spin' : ''} />
+                {generating ? t('actions.generating', { ns: 'common' }) : t('actions.regenerate', { ns: 'common' })}
+              </button>
+            </div>
+            <p>{String(doc.short_description || '')}</p>
+            {doc.long_description ? <p className="text-[var(--text-secondary)]">{String(doc.long_description)}</p> : null}
+            {doc.expected_range ? (
+              <p className="text-xs text-[var(--text-tertiary)]">
+                <span className="font-medium">{t('documentation.expected_range')}</span> {String(doc.expected_range)}
+              </p>
+            ) : null}
+            {doc.potential_issues ? (
+              <p className="text-xs text-[var(--text-tertiary)]">
+                <span className="font-medium">{t('documentation.potential_issues')}</span> {String(doc.potential_issues)}
+              </p>
+            ) : null}
+            {(doc.context_features || doc.hints_used) ? (
+              <div className="mt-2 pt-2 border-t border-[var(--border-subtle)] flex items-center gap-2 flex-wrap text-[11px] text-[var(--text-tertiary)]">
+                {doc.hints_used ? <Badge variant="info">{t('documentation.hints_used')}</Badge> : null}
+                {doc.context_features ? (
+                  <span>{t('documentation.context', { count: JSON.parse(String(doc.context_features)).length })}</span>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <div className="flex items-center gap-3">
+            <div>
+              <div className="text-sm text-[var(--text-tertiary)]">{t('documentation.empty')}</div>
+              <div className="text-xs text-[var(--text-tertiary)] mt-0.5">{t('documentation.empty_hint')}</div>
+            </div>
+            <button onClick={generateDoc} disabled={generating} className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-brand text-white rounded-lg disabled:opacity-50">
+              <RefreshCw size={12} className={generating ? 'animate-spin' : ''} />
+              {generating ? t('actions.generating', { ns: 'common' }) : t('actions.generate', { ns: 'common' })}
+            </button>
+          </div>
+        )}
+      </Section>
+
+      {/* Generation Hints */}
+      <Section title={t('sections.generation_hints')}>
+        {hintEditing ? (
+          <div className="space-y-2">
+            <textarea value={hintDraft} onChange={(e) => setHintDraft(e.target.value)} rows={2}
+              placeholder=""
+              className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-xs focus:border-brand outline-none" />
+            <div className="flex gap-2">
+              <button onClick={async () => {
+                await api.hints.save(feature.name, hintDraft)
+                invalidateCache('/features')
+                setHintData({ hints: hintDraft })
+                setHintEditing(false)
+              }} className="px-3 py-1.5 text-xs bg-brand text-white rounded-lg">{t('actions.save', { ns: 'common' })}</button>
+              <button onClick={() => setHintEditing(false)} className="px-3 py-1.5 text-xs border border-[var(--border-default)] rounded-lg">{t('actions.cancel', { ns: 'common' })}</button>
+            </div>
+          </div>
+        ) : hintData?.hints ? (
+          <div>
+            <p className="text-sm text-[var(--text-secondary)] mb-1">{hintData.hints}</p>
+            <button onClick={() => { setHintDraft(hintData.hints || ''); setHintEditing(true) }}
+              className="text-xs text-brand hover:underline">{t('actions.edit', { ns: 'common' })}</button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-[var(--text-tertiary)]">{t('hints.empty')}</span>
+            <button onClick={() => { setHintDraft(''); setHintEditing(true) }}
+              className="text-xs text-brand hover:underline">{t('hints.add')}</button>
+            <span className="text-[10px] text-[var(--text-tertiary)]" title={t('hints.info_tooltip')}>ℹ</span>
           </div>
         )}
       </Section>
