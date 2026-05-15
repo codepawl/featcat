@@ -7,6 +7,43 @@
 
 > 🇻🇳 Tiếng Việt: see [README-vi.md](README-vi.md).
 
+## Building images
+
+`deploy/Dockerfile` is a single multi-stage build that produces **two image variants** via a `TORCH_VARIANT` build argument:
+
+```bash
+# CPU-only (default — ~1.5 GB compressed). Use this for any host
+# without a GPU; the similarity / embeddings path still works on CPU.
+docker build \
+    --build-arg TORCH_VARIANT=cpu \
+    --no-cache --network=host \
+    -t nxank4/featcat:latest \
+    -f deploy/Dockerfile .
+
+# CUDA 12.1 build (~6 GB compressed). Opt-in for hosts with an NVIDIA GPU.
+docker build \
+    --build-arg TORCH_VARIANT=gpu \
+    --no-cache --network=host \
+    -t nxank4/featcat:latest-gpu \
+    -f deploy/Dockerfile .
+```
+
+Tag convention:
+
+| Tag | Torch wheel | When to use |
+|-----|-------------|-------------|
+| `nxank4/featcat:latest`      | `torch+cpu` (PyTorch CPU index)  | Any host. Default for the bundled `docker-compose.yml`. |
+| `nxank4/featcat:latest-gpu`  | `torch` (CUDA 12.1)              | Hosts with an NVIDIA GPU and a CUDA 12.x driver. |
+
+The GPU image still works on a CPU-only host — `torch.cuda.is_available()` simply returns `False` and tensor ops fall back to the CPU kernel. The trade-off is disk space.
+
+After building, the operator pushes both tags manually:
+
+```bash
+docker push nxank4/featcat:latest
+docker push nxank4/featcat:latest-gpu
+```
+
 ## Pre-built Image
 
 Each GitHub Release automatically builds and publishes a multi-arch image
