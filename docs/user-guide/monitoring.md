@@ -124,6 +124,30 @@ Common culprits:
 - **PSI is feature-by-feature.** A model can degrade from joint shifts even when no single PSI trips. For that, monitor the model output too.
 - **PSI is a number; investigate before acting.** A warning isn't a bug; it's a flag.
 
+## KL Divergence and Wasserstein Distance
+
+PSI is the only metric that drives severity (still `healthy / warning / critical / unknown` on the same `0.1 / 0.25` thresholds). On every check the catalog also persists two supplementary distribution-shift metrics so the multi-metric chart can show *where* a shift hides when PSI alone is ambiguous.
+
+| Metric | What it catches that PSI misses | Unit |
+|---|---|---|
+| **PSI** | Binned shifts above ~10% of mass per bucket. Primary severity driver. | unitless (0..∞, log scale) |
+| **KL divergence** | Low-density tail shifts that PSI's bucketing flattens. Surprise score: "how unexpected is the new distribution given the baseline?" | nats (0..∞) |
+| **Wasserstein** | The *magnitude* of the shift in the feature's original units — read directly off the chart axis. | feature's own unit (e.g. ms, $, GB) |
+
+Example reading:
+
+```
+PSI=0.18 (warning), KL=0.04, Wasserstein=2.3 ms
+→ moderate binned shift, baseline-vs-current surprise is small,
+   the mean of latency moved by ~2.3 ms.
+```
+
+Same severity (PSI warning) but a much sharper picture: PSI says "something changed", Wasserstein says "by 2.3 ms" so the SRE can decide whether 2.3 ms is meaningful for the SLO. KL stays small here because the *shape* of the distribution barely moved — only its centre did.
+
+If you see PSI < 0.1 but KL spiking, look at the tail: a rare-but-important class (high-value customers, errored requests) is over- or under-represented even though the bulk of mass is unchanged.
+
+Both metrics are computed against a deterministic Gaussian proxy derived from the same summary stats PSI already uses (mean + std). The public functions `compute_kl_divergence` / `compute_wasserstein` in `featcat/utils/statistics.py` accept histograms / value arrays so a later swap to raw sample sets is a one-line plugin change.
+
 ## Related
 
 - **[Notifications](notifications.md)** — drift alerts surface here

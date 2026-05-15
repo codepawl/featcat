@@ -371,6 +371,8 @@ class RemoteBackend(CatalogBackend):
         null_ratio: float | None = None,
         mean_z_score: float | None = None,
         sample_size: int | None = None,
+        kl_divergence: float | None = None,
+        wasserstein: float | None = None,
     ) -> None:
         pass  # Server-side only
 

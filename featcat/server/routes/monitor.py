@@ -24,6 +24,13 @@ class MetricSeriesPoint(BaseModel):
     null_ratio: float | None = None
     mean_z_score: float | None = None
     sample_size: int | None = None
+    # T3.2 — supplementary distribution-shift metrics computed alongside PSI.
+    # Severity still driven by PSI only (see classify_severity in
+    # utils/statistics.py); these surface in the multi-metric chart as
+    # secondary signals (KL catches low-density region shifts PSI flattens,
+    # Wasserstein reports the shift in original units).
+    kl_divergence: float | None = None
+    wasserstein: float | None = None
 
 
 class DriftRatePoint(BaseModel):

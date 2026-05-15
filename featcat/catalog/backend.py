@@ -538,13 +538,16 @@ class CatalogBackend(ABC):
         null_ratio: float | None = None,
         mean_z_score: float | None = None,
         sample_size: int | None = None,
+        kl_divergence: float | None = None,
+        wasserstein: float | None = None,
     ) -> None:
         """Save a monitoring check result for history tracking.
 
-        ``null_ratio``/``mean_z_score``/``sample_size`` are optional auxiliary
-        metrics persisted alongside PSI for the multi-metric chart. They are
-        nullable so legacy callers and rows where the metric isn't computable
-        (e.g. non-numeric features for Z-score) still record correctly.
+        ``null_ratio``/``mean_z_score``/``sample_size``/``kl_divergence``/
+        ``wasserstein`` are optional auxiliary metrics persisted alongside
+        PSI for the multi-metric chart. They are nullable so legacy callers
+        and rows where the metric isn't computable (e.g. non-numeric
+        features for Z-score) still record correctly.
         """
 
     @abstractmethod

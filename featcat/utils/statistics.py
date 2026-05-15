@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 import math
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    import numpy as np
 
 
 def compute_psi(
@@ -149,3 +154,67 @@ def classify_severity(psi: float | None, issues: list[dict[str, Any]]) -> str:
         return "unknown"
 
     return "healthy"
+
+
+def compute_kl_divergence(
+    baseline_hist: Sequence[float] | np.ndarray,
+    current_hist: Sequence[float] | np.ndarray,
+    epsilon: float = 1e-6,
+) -> float | None:
+    """KL divergence D_KL(current || baseline) on two same-shaped histograms.
+
+    Applies Laplace smoothing (``epsilon``) so empty bins don't blow up the
+    log term, then normalises each histogram to a probability distribution
+    before calling ``scipy.stats.entropy``. Returns a non-negative float
+    (already in nats), or ``None`` on shape mismatch / empty input / non-
+    finite result.
+
+    Unlike PSI's symmetric two-direction KL, this is the one-direction
+    "how surprised would the baseline be by the current?" reading — a
+    supplementary signal to PSI, never a severity driver on its own.
+    """
+    import numpy as np
+    from scipy.stats import entropy
+
+    base = np.asarray(baseline_hist, dtype=float)
+    curr = np.asarray(current_hist, dtype=float)
+    if base.shape != curr.shape or base.size == 0:
+        return None
+
+    base = base + epsilon
+    curr = curr + epsilon
+    base_sum = base.sum()
+    curr_sum = curr.sum()
+    if base_sum <= 0 or curr_sum <= 0:
+        return None
+    base = base / base_sum
+    curr = curr / curr_sum
+    kl = float(entropy(curr, base))
+    if not np.isfinite(kl):
+        return None
+    return round(max(0.0, kl), 4)
+
+
+def compute_wasserstein(
+    baseline_values: Sequence[float] | np.ndarray,
+    current_values: Sequence[float] | np.ndarray,
+) -> float | None:
+    """1-Wasserstein (earth-mover's) distance between two value samples.
+
+    Returned in the original units of the values, so the operator can read
+    "the mean shifted by ~X" directly from the chart — PSI's unitless
+    score never gives that. Wrapper around
+    ``scipy.stats.wasserstein_distance``; returns ``None`` on empty input
+    or a non-finite result.
+    """
+    import numpy as np
+    from scipy.stats import wasserstein_distance
+
+    base = np.asarray(baseline_values, dtype=float)
+    curr = np.asarray(current_values, dtype=float)
+    if base.size == 0 or curr.size == 0:
+        return None
+    distance = float(wasserstein_distance(base, curr))
+    if not np.isfinite(distance):
+        return None
+    return round(max(0.0, distance), 4)

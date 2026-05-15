@@ -14,7 +14,9 @@ from featcat.utils.statistics import (
     check_range_violation,
     check_zero_variance,
     classify_severity,
+    compute_kl_divergence,
     compute_psi,
+    compute_wasserstein,
 )
 
 if TYPE_CHECKING:
@@ -138,6 +140,114 @@ class TestClassifySeverity:
             assert result in ("healthy", "warning", "critical"), (
                 f"PSI={psi} mapped to {result!r}; numeric PSI must never be 'unknown'"
             )
+
+
+class TestComputeKLDivergence:
+    """KL divergence is supplementary to PSI — exact value isn't a contract,
+    but the directional invariants (identical → 0, more shift → larger)
+    are."""
+
+    def test_compute_kl_divergence_known_distribution(self) -> None:
+        """KL of two identical histograms is 0 (up to Laplace-smoothing
+        floor — assert near-zero, not exact 0)."""
+        hist = [10.0, 20.0, 30.0, 25.0, 15.0]
+        kl = compute_kl_divergence(hist, hist)
+        assert kl is not None
+        assert kl < 1e-3
+
+    def test_kl_grows_with_distribution_shift(self) -> None:
+        baseline = [50.0, 30.0, 15.0, 5.0]
+        small_shift = [45.0, 32.0, 16.0, 7.0]
+        big_shift = [5.0, 15.0, 30.0, 50.0]
+        kl_small = compute_kl_divergence(baseline, small_shift)
+        kl_big = compute_kl_divergence(baseline, big_shift)
+        assert kl_small is not None and kl_big is not None
+        assert kl_big > kl_small > 0
+
+    def test_kl_returns_none_on_shape_mismatch(self) -> None:
+        assert compute_kl_divergence([1.0, 2.0], [1.0, 2.0, 3.0]) is None
+
+    def test_kl_returns_none_on_empty_input(self) -> None:
+        assert compute_kl_divergence([], []) is None
+
+    def test_kl_handles_zero_bins_without_blowing_up(self) -> None:
+        """Laplace smoothing must keep KL finite when current has empty bins
+        the baseline filled."""
+        baseline = [10.0, 10.0, 10.0, 10.0]
+        current = [40.0, 0.0, 0.0, 0.0]
+        kl = compute_kl_divergence(baseline, current)
+        assert kl is not None
+        assert kl > 0
+
+
+class TestComputeWasserstein:
+    def test_compute_wasserstein_known_shift(self) -> None:
+        """Wasserstein of [0]*100 vs [10]*100 returns 10 (each unit of
+        mass moves exactly 10 units along the value axis)."""
+        baseline = [0.0] * 100
+        current = [10.0] * 100
+        w = compute_wasserstein(baseline, current)
+        assert w is not None
+        assert abs(w - 10.0) < 1e-6
+
+    def test_wasserstein_identical_samples_is_zero(self) -> None:
+        samples = [1.0, 2.0, 3.0, 4.0, 5.0]
+        w = compute_wasserstein(samples, samples)
+        assert w == 0.0
+
+    def test_wasserstein_returns_none_on_empty(self) -> None:
+        assert compute_wasserstein([], [1.0, 2.0]) is None
+        assert compute_wasserstein([1.0, 2.0], []) is None
+
+
+class TestMonitoringCheckIncludesNewMetrics:
+    """End-to-end: a check on a drifted feature returns kl_divergence and
+    wasserstein keys in the detail row + persists them via
+    save_monitoring_result."""
+
+    def test_monitoring_check_includes_new_metrics(self, tmp_path: Path) -> None:
+        db = CatalogDB(str(tmp_path / "klw.db"))
+        db.init_db()
+        source = DataSource(name="src", path="/data/test.parquet")
+        db.add_source(source)
+        db.upsert_feature(
+            Feature(
+                name="src.shifted",
+                data_source_id=source.id,
+                column_name="shifted",
+                dtype="double",
+                stats={"mean": 50.0, "std": 8.0, "min": 30, "max": 70, "null_ratio": 0.05},
+            )
+        )
+        feat = db.get_feature_by_name("src.shifted")
+        assert feat is not None
+        db.save_baseline(
+            feat.id,
+            {"mean": 10.0, "std": 2.0, "min": 0, "max": 20, "null_ratio": 0.01},
+        )
+
+        try:
+            plugin = MonitoringPlugin()
+            result = plugin.execute(db, None, action="check")
+            assert result.status == "success"
+
+            row = next(d for d in result.data["details"] if d["feature"] == "src.shifted")
+            assert "kl_divergence" in row, "result row must surface kl_divergence"
+            assert "wasserstein" in row, "result row must surface wasserstein"
+            assert row["kl_divergence"] is not None
+            assert row["wasserstein"] is not None
+            # Severity logic must stay PSI-driven (constraint: no changes
+            # to severity enum / classifier).
+            assert row["severity"] in ("warning", "critical")
+
+            # Both metrics must round-trip through save → get_feature_metric_history.
+            history = db.get_feature_metric_history("src.shifted", days=1)
+            assert history, "history should contain the just-saved row"
+            latest = history[-1]
+            assert latest["kl_divergence"] is not None
+            assert latest["wasserstein"] is not None
+        finally:
+            db.close()
 
 
 # --- Monitoring plugin tests ---

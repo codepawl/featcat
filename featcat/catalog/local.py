@@ -268,6 +268,11 @@ class LocalBackend(CatalogBackend):
             "ALTER TABLE monitoring_checks ADD COLUMN null_ratio REAL",
             "ALTER TABLE monitoring_checks ADD COLUMN mean_z_score REAL",
             "ALTER TABLE monitoring_checks ADD COLUMN sample_size INTEGER",
+            # T3.2 — KL divergence and Wasserstein distance, computed alongside
+            # PSI on every check. Legacy rows stay NULL; the chart renders gaps
+            # where the metric wasn't recorded.
+            "ALTER TABLE monitoring_checks ADD COLUMN kl_divergence REAL",
+            "ALTER TABLE monitoring_checks ADD COLUMN wasserstein REAL",
             # Composite indexes for chart queries (feature timeline, catalog
             # drift-rate). CREATE INDEX IF NOT EXISTS is itself idempotent but
             # the suppress(OperationalError) wrapper covers older sqlites.
@@ -1955,14 +1960,16 @@ class LocalBackend(CatalogBackend):
         null_ratio: float | None = None,
         mean_z_score: float | None = None,
         sample_size: int | None = None,
+        kl_divergence: float | None = None,
+        wasserstein: float | None = None,
     ) -> None:
         with self.session() as s:
             s.execute(
                 text(
                     "INSERT INTO monitoring_checks "
                     "(id, feature_id, feature_name, psi, severity, checked_at, "
-                    " null_ratio, mean_z_score, sample_size) "
-                    "VALUES (:id, :fid, :name, :psi, :sev, :now, :nr, :mz, :ss)"
+                    " null_ratio, mean_z_score, sample_size, kl_divergence, wasserstein) "
+                    "VALUES (:id, :fid, :name, :psi, :sev, :now, :nr, :mz, :ss, :kl, :w)"
                 ),
                 {
                     "id": _new_id(),
@@ -1974,6 +1981,8 @@ class LocalBackend(CatalogBackend):
                     "nr": null_ratio,
                     "mz": mean_z_score,
                     "ss": sample_size,
+                    "kl": kl_divergence,
+                    "w": wasserstein,
                 },
             )
             s.commit()
@@ -1989,7 +1998,8 @@ class LocalBackend(CatalogBackend):
             rows = (
                 s.execute(
                     text(
-                        "SELECT checked_at, psi, severity, null_ratio, mean_z_score, sample_size "
+                        "SELECT checked_at, psi, severity, null_ratio, mean_z_score, sample_size, "
+                        "       kl_divergence, wasserstein "
                         "FROM monitoring_checks "
                         "WHERE feature_name = :name AND checked_at >= :cutoff "
                         "ORDER BY checked_at ASC"

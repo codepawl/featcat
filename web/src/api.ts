@@ -149,6 +149,8 @@ export interface MetricSeriesPoint {
   null_ratio: number | null
   mean_z_score: number | null
   sample_size: number | null
+  kl_divergence: number | null
+  wasserstein: number | null
 }
 
 export interface DriftMatrixCell {
