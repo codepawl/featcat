@@ -6,6 +6,7 @@ import { Card } from '../components/Card'
 import { DataTable } from '../components/DataTable'
 import { FloatingPanel } from '../components/FloatingPanel'
 import { PageHeader } from '../components/PageHeader'
+import { Select } from '../components/Select'
 import { Skeleton } from '../components/Skeleton'
 import { SchedulerOverview } from '../components/SchedulerOverview'
 
@@ -93,36 +94,33 @@ export function Jobs() {
         title={t('history.title')}
         actions={
           <>
-            <select
+            <Select<string>
               value={filterJob}
-              onChange={(e) => setFilterJob(e.target.value)}
-              className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-2.5 py-1.5 text-xs"
-            >
-              <option value="">{t('history.filters.all_jobs')}</option>
-              {jobOptions.map((j) => (
-                <option key={j} value={j}>{getJobLabel(j)}</option>
-              ))}
-            </select>
-            <select
+              onChange={setFilterJob}
+              ariaLabel={t('history.filters.all_jobs')}
+              options={[
+                { value: '', label: t('history.filters.all_jobs') },
+                ...jobOptions.map((j) => ({ value: j, label: getJobLabel(j) })),
+              ]}
+            />
+            <Select<string>
               value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-              className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-2.5 py-1.5 text-xs"
-            >
-              <option value="">{t('history.filters.all_statuses')}</option>
-              {['success', 'failed', 'warning', 'running'].map((s) => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
-            <select
+              onChange={setFilterStatus}
+              ariaLabel={t('history.filters.all_statuses')}
+              options={[
+                { value: '', label: t('history.filters.all_statuses') },
+                ...['success', 'failed', 'warning', 'running'].map((s) => ({ value: s, label: s })),
+              ]}
+            />
+            <Select<SortKey>
               value={sort}
-              onChange={(e) => setSort(e.target.value as SortKey)}
-              className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-2.5 py-1.5 text-xs"
-              aria-label={t('history.table.started')}
-            >
-              {SORT_OPTIONS.map((s) => (
-                <option key={s} value={s}>{t(`history.filters.sort.${s}`)}</option>
-              ))}
-            </select>
+              onChange={(v) => setSort(v)}
+              ariaLabel={t('history.table.started')}
+              options={SORT_OPTIONS.map((s) => ({
+                value: s,
+                label: t(`history.filters.sort.${s}`),
+              }))}
+            />
           </>
         }
       >

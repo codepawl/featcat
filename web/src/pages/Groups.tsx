@@ -6,6 +6,7 @@ import { GroupDriftHeatmap } from '../components/charts/GroupDriftHeatmap'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import { api, invalidateCache } from '../api'
 import { Badge } from '../components/Badge'
+import { Checkbox } from '../components/Checkbox'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { DataTable } from '../components/DataTable'
 import { ExportModal } from '../components/ExportModal'
@@ -769,13 +770,12 @@ export function GroupDocsTab({ groupName, memberCount }: { groupName: string; me
         {t('docs.help', { defaultValue: 'Generate AI documentation for every member in this group. Existing docs are skipped unless regenerate is on.' })}
       </p>
 
-      <label className="flex items-start gap-2 text-[13px] cursor-pointer">
-        <input type="checkbox" checked={regenerate} onChange={(e) => setRegenerate(e.target.checked)} className="mt-0.5" />
-        <span>
-          {t('docs.regenerate_label', { defaultValue: 'Regenerate existing docs' })}
-          <span className="block text-[11px] text-[var(--text-tertiary)]">{t('docs.regenerate_hint', { defaultValue: 'Overwrite docs for members that already have one.' })}</span>
-        </span>
-      </label>
+      <Checkbox
+        checked={regenerate}
+        onCheckedChange={setRegenerate}
+        label={t('docs.regenerate_label', { defaultValue: 'Regenerate existing docs' })}
+        description={t('docs.regenerate_hint', { defaultValue: 'Overwrite docs for members that already have one.' })}
+      />
 
       <div>
         <label className="block text-[12px] font-medium mb-1">{t('docs.hint_label', { defaultValue: 'Global hint (optional)' })}</label>

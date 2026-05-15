@@ -14,6 +14,8 @@ import { Badge } from '../components/Badge'
 import { ExportModal } from '../components/ExportModal'
 import { FeatureSelector, toFeatureItems } from '../components/FeatureSelector'
 import { BatchProgressBanner, readActiveJob, writeActiveJob, type ActiveBatchJob } from '../components/BatchProgressBanner'
+import { Checkbox } from '../components/Checkbox'
+import { Select } from '../components/Select'
 import { Tag } from '../components/Tag'
 import { FeatureStatusTransition } from '../components/FeatureStatusTransition'
 import { FloatingPanel } from '../components/FloatingPanel'
@@ -790,12 +792,16 @@ function FeatureDetailModal({ feature, onClose, onDocGenerated }: { feature: Fea
           <Skeleton className="h-10" />
         ) : defEditing ? (
           <div className="space-y-2">
-            <select value={defForm.definition_type} onChange={(e) => setDefForm((f) => ({ ...f, definition_type: e.target.value }))}
-              className="bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-2 py-1 text-xs">
-              <option value="sql">SQL</option>
-              <option value="python">{t('definition.types.python')}</option>
-              <option value="manual">{t('definition.types.manual')}</option>
-            </select>
+            <Select<string>
+              value={defForm.definition_type}
+              onChange={(v) => setDefForm((f) => ({ ...f, definition_type: v }))}
+              ariaLabel={t('definition.types.python')}
+              options={[
+                { value: 'sql', label: 'SQL' },
+                { value: 'python', label: t('definition.types.python') },
+                { value: 'manual', label: t('definition.types.manual') },
+              ]}
+            />
             <textarea value={defForm.definition} onChange={(e) => setDefForm((f) => ({ ...f, definition: e.target.value }))}
               rows={4} className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-xs font-mono focus:border-brand outline-none" />
             <div className="flex gap-2">
@@ -1346,14 +1352,16 @@ function BulkScanModal({ open, onClose, onDone }: { open: boolean; onClose: () =
               className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px] focus:border-brand outline-none" />
           </div>
           <div className="flex gap-4">
-            <label className="flex items-center gap-2 text-[13px] cursor-pointer">
-              <input type="checkbox" checked={form.recursive} onChange={(e) => setForm((f) => ({ ...f, recursive: e.target.checked }))} className="accent-accent" />
-              {t('bulk_scan_modal.recursive')}
-            </label>
-            <label className="flex items-center gap-2 text-[13px] cursor-pointer">
-              <input type="checkbox" checked={form.dry_run} onChange={(e) => setForm((f) => ({ ...f, dry_run: e.target.checked }))} className="accent-accent" />
-              {t('bulk_scan_modal.dry_run')}
-            </label>
+            <Checkbox
+              checked={form.recursive}
+              onCheckedChange={(v) => setForm((f) => ({ ...f, recursive: v }))}
+              label={t('bulk_scan_modal.recursive')}
+            />
+            <Checkbox
+              checked={form.dry_run}
+              onCheckedChange={(v) => setForm((f) => ({ ...f, dry_run: v }))}
+              label={t('bulk_scan_modal.dry_run')}
+            />
           </div>
           <div>
             <label className="block text-xs font-medium mb-1">{t('bulk_scan_modal.owner')}</label>
