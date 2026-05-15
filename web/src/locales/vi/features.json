@@ -19,6 +19,26 @@
     "certified": "Đã chứng nhận",
     "deprecated": "Đã ngừng dùng"
   },
+  "status_actions": {
+    "change": "Đổi trạng thái",
+    "current": "hiện tại",
+    "modal_title": "Đổi trạng thái sang {{status}}",
+    "applying": "Đang áp dụng…",
+    "confirm": "Xác nhận",
+    "notes_label": "Ghi chú (tuỳ chọn)",
+    "notes_placeholder": "Lý do thay đổi?",
+    "checking_readiness": "Đang kiểm tra điều kiện chứng nhận…",
+    "readiness_failed": "Không tải được danh sách kiểm tra",
+    "ready_intro": "Tất cả điều kiện đạt — sẵn sàng chứng nhận.",
+    "not_ready_intro": "Một số điều kiện chưa đạt. Khắc phục trước khi chứng nhận.",
+    "readiness_items": {
+      "documentation": "Đã có tài liệu",
+      "data_source": "Đã liên kết nguồn dữ liệu",
+      "baseline": "Có ít nhất một baseline giám sát",
+      "owner": "Đã đặt chủ sở hữu",
+      "group_membership_or_standalone": "Thuộc nhóm, hoặc gắn nhãn 'standalone'"
+    }
+  },
   "tabs": {
     "overview": "Tổng quan",
     "history": "Lịch sử"

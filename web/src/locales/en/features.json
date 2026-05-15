@@ -19,6 +19,26 @@
     "certified": "Certified",
     "deprecated": "Deprecated"
   },
+  "status_actions": {
+    "change": "Change status",
+    "current": "current",
+    "modal_title": "Change status to {{status}}",
+    "applying": "Applying…",
+    "confirm": "Confirm",
+    "notes_label": "Notes (optional)",
+    "notes_placeholder": "Why this transition?",
+    "checking_readiness": "Checking certification readiness…",
+    "readiness_failed": "Could not load readiness checklist",
+    "ready_intro": "All checks passed — ready to certify.",
+    "not_ready_intro": "Some checks are failing. Fix them before certifying.",
+    "readiness_items": {
+      "documentation": "Has documentation",
+      "data_source": "Linked to a data source",
+      "baseline": "Has at least one monitoring baseline",
+      "owner": "Owner is set",
+      "group_membership_or_standalone": "Belongs to a group, or tagged 'standalone'"
+    }
+  },
   "tabs": {
     "overview": "Overview",
     "history": "History"

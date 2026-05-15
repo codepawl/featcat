@@ -15,6 +15,7 @@ import { ExportModal } from '../components/ExportModal'
 import { FeatureSelector, toFeatureItems } from '../components/FeatureSelector'
 import { BatchProgressBanner, readActiveJob, writeActiveJob, type ActiveBatchJob } from '../components/BatchProgressBanner'
 import { Tag } from '../components/Tag'
+import { FeatureStatusTransition } from '../components/FeatureStatusTransition'
 import { Modal } from '../components/Modal'
 import { SearchInput } from '../components/SearchInput'
 import { Skeleton } from '../components/Skeleton'
@@ -716,10 +717,23 @@ function FeatureDetailModal({ feature, onClose, onDocGenerated }: { feature: Fea
         <VersionTimeline versions={versions} loading={versionsLoading} />
       ) : (<>
 
-      {/* Header badges */}
+      {/* Header badges + status transition */}
       <div className="flex items-center gap-2 flex-wrap mb-5">
         <Badge variant="info">{source}</Badge>
         {(feature.tags || []).map((t: string, i: number) => <Tag key={i}>{t}</Tag>)}
+        <div className="ml-auto" data-testid="feature-detail-status-transition">
+          <FeatureStatusTransition
+            featureName={feature.name}
+            current={feature.status}
+            onTransitioned={(newStatus) => {
+              // Update the feature's in-memory status so the badge re-renders
+              // immediately. The parent's `onDocGenerated` doubles as our
+              // generic "refetch the listing" hook here.
+              feature.status = newStatus
+              onDocGenerated()
+            }}
+          />
+        </div>
       </div>
 
       {/* Health Score */}

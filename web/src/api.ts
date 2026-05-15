@@ -244,6 +244,27 @@ export const api = {
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(30_000),
       }),
+    /**
+     * Returns `{ready, missing}` for a feature's certification gate.
+     * `missing` is a list of identifier strings (`documentation`,
+     * `data_source`, `baseline`, `owner`, `group_membership_or_standalone`).
+     * UI translates each identifier via i18n.
+     */
+    certificationReadiness: (name: string) =>
+      request<{ ready: boolean; missing: string[] }>(
+        `/features/by-name/certification-readiness?name=${encodeURIComponent(name)}`,
+      ),
+    /**
+     * Transition a feature's lifecycle status. The server validates the
+     * `certified` target against the readiness gate and returns 422 with
+     * `{detail: {message, missing}}` if any item is missing — the modal
+     * surfaces that detail unchanged.
+     */
+    setStatus: (name: string, body: { status: string; notes?: string | null }) =>
+      request<{ name: string; status: string }>(
+        `/features/by-name/status?name=${encodeURIComponent(name)}`,
+        { method: 'POST', body: JSON.stringify(body) },
+      ),
   },
   docs: {
     get: (name: string) => cachedRequest<Record<string, unknown>>(`/docs/by-name?name=${encodeURIComponent(name)}`),
