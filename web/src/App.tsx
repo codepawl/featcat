@@ -5,6 +5,7 @@ import { Layout } from './components/Layout'
 const Dashboard = lazy(() => import('./pages/Dashboard').then((m) => ({ default: m.Dashboard })))
 const Features = lazy(() => import('./pages/Features').then((m) => ({ default: m.Features })))
 const Groups = lazy(() => import('./pages/Groups').then((m) => ({ default: m.Groups })))
+const GroupDetail = lazy(() => import('./pages/GroupDetail').then((m) => ({ default: m.GroupDetail })))
 const Sources = lazy(() => import('./pages/Sources').then((m) => ({ default: m.Sources })))
 const Similarity = lazy(() => import('./pages/Similarity').then((m) => ({ default: m.Similarity })))
 const Lineage = lazy(() => import('./pages/Lineage').then((m) => ({ default: m.Lineage })))
@@ -42,6 +43,7 @@ export default function App() {
             <Route path="/features" element={<Features />} />
             <Route path="/features/:name" element={<Features />} />
             <Route path="/groups" element={<Groups />} />
+            <Route path="/groups/:name" element={<GroupDetail />} />
             <Route path="/sources" element={<Sources />} />
             <Route path="/sources/:name" element={<Sources />} />
             <Route path="/similarity" element={<Similarity />} />
