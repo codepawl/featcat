@@ -32,8 +32,13 @@ class StatsBar(Static):
         total_sources: int = 0,
         doc_coverage: float = 0.0,
         alerts: int = 0,
+        *,
+        name: str | None = None,
+        id: str | None = None,
+        classes: str | None = None,
+        disabled: bool = False,
     ) -> None:
-        super().__init__()
+        super().__init__(name=name, id=id, classes=classes, disabled=disabled)
         self.total_features = total_features
         self.total_sources = total_sources
         self.doc_coverage = doc_coverage

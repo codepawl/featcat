@@ -8,8 +8,15 @@ from textual.widgets import DataTable
 class FeatureTable(DataTable):
     """DataTable displaying features with sortable columns."""
 
-    def __init__(self) -> None:
-        super().__init__(cursor_type="row")
+    def __init__(
+        self,
+        *,
+        name: str | None = None,
+        id: str | None = None,
+        classes: str | None = None,
+        disabled: bool = False,
+    ) -> None:
+        super().__init__(cursor_type="row", name=name, id=id, classes=classes, disabled=disabled)
         self._all_rows: list[tuple] = []
 
     def setup_columns(self) -> None:
