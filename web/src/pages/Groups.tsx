@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Plus, Trash2, UserPlus, X, Download, Activity, HeartPulse, FileText, RefreshCw, Sparkles, History, Snowflake, AlertTriangle, Clock } from 'lucide-react'
 import { GroupDriftHeatmap } from '../components/charts/GroupDriftHeatmap'
@@ -125,20 +126,31 @@ export function Groups() {
                 <div
                   key={g.name}
                   data-testid="group-row"
-                  onClick={() => selectGroup(g)}
-                  className={`p-3 rounded-lg border cursor-pointer transition-all ${
+                  className={`p-3 rounded-lg border transition-all ${
                     selected?.name === g.name
                       ? 'border-brand bg-brand-muted'
                       : 'border-[var(--border-subtle)] bg-[var(--bg-primary)] hover:border-[var(--border-default)]'
                   }`}
                 >
-                  <div className="font-medium text-sm mb-1">{g.name}</div>
-                  <div className="flex items-center gap-2 text-xs text-[var(--text-tertiary)]">
-                    {g.project && <Badge variant="info">{g.project}</Badge>}
-                    <span>{t('list.members_count', { count: g.member_count ?? 0 })}</span>
-                    {g.owner && <span className="ml-auto">{g.owner}</span>}
-                  </div>
-                  {g.description && <p className="text-xs text-[var(--text-secondary)] mt-1 line-clamp-2">{g.description}</p>}
+                  <button
+                    onClick={() => selectGroup(g)}
+                    className="w-full text-left cursor-pointer"
+                  >
+                    <div className="font-medium text-sm mb-1">{g.name}</div>
+                    <div className="flex items-center gap-2 text-xs text-[var(--text-tertiary)]">
+                      {g.project && <Badge variant="info">{g.project}</Badge>}
+                      <span>{t('list.members_count', { count: g.member_count ?? 0 })}</span>
+                      {g.owner && <span className="ml-auto">{g.owner}</span>}
+                    </div>
+                    {g.description && <p className="text-xs text-[var(--text-secondary)] mt-1 line-clamp-2">{g.description}</p>}
+                  </button>
+                  <Link
+                    to={`/groups/${encodeURIComponent(g.name)}`}
+                    className="mt-2 inline-block text-[11px] text-brand hover:underline"
+                    data-testid="group-detail-link"
+                  >
+                    {t('list.open_detail', { defaultValue: 'Open detail page →' })}
+                  </Link>
                 </div>
               ))
             )}
@@ -285,7 +297,7 @@ function CreateGroupModal({ open, onClose, onCreated }: { open: boolean; onClose
 }
 
 
-function AddFeaturesModal({
+export function AddFeaturesModal({
   open,
   onClose,
   groupName,
@@ -347,7 +359,7 @@ function AddFeaturesModal({
 }
 
 
-function GroupHealthTab({ groupName }: { groupName: string }) {
+export function GroupHealthTab({ groupName }: { groupName: string }) {
   const { t } = useTranslation('groups')
   const [data, setData] = useState<Awaited<ReturnType<typeof api.groups.health>> | null>(null)
   const [loading, setLoading] = useState(true)
@@ -470,7 +482,7 @@ function SeverityTooltip({ active, payload }: { active?: boolean; payload?: { pa
 }
 
 
-function GroupMonitoringTab({ groupName }: { groupName: string }) {
+export function GroupMonitoringTab({ groupName }: { groupName: string }) {
   const { t } = useTranslation('groups')
   const [data, setData] = useState<Awaited<ReturnType<typeof api.groups.monitoring>> | null>(null)
   const [loading, setLoading] = useState(true)
@@ -574,7 +586,7 @@ function GroupMonitoringTab({ groupName }: { groupName: string }) {
 
 type VersionRow = Awaited<ReturnType<typeof api.groups.versions>>[number]
 
-function GroupVersionsTab({ groupName, memberCount }: { groupName: string; memberCount: number }) {
+export function GroupVersionsTab({ groupName, memberCount }: { groupName: string; memberCount: number }) {
   const { t } = useTranslation('groups')
   const [versions, setVersions] = useState<VersionRow[] | null>(null)
   const [loading, setLoading] = useState(true)
@@ -713,7 +725,7 @@ function GroupVersionsTab({ groupName, memberCount }: { groupName: string; membe
 }
 
 
-function GroupDocsTab({ groupName, memberCount }: { groupName: string; memberCount: number }) {
+export function GroupDocsTab({ groupName, memberCount }: { groupName: string; memberCount: number }) {
   const { t } = useTranslation('groups')
   const [regenerate, setRegenerate] = useState(false)
   const [hint, setHint] = useState('')
