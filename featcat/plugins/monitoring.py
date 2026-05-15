@@ -15,7 +15,9 @@ from ..utils.statistics import (
     check_range_violation,
     check_zero_variance,
     classify_severity,
+    compute_kl_divergence,
     compute_psi,
+    compute_wasserstein,
 )
 from .base import BasePlugin, PluginResult
 
@@ -138,6 +140,12 @@ class MonitoringPlugin(BasePlugin):
                 ):
                     mean_z_score = round((c_mean - b_mean) / b_std, 4)
 
+                kl_value, wasserstein_value = _supplementary_distribution_metrics(baseline_stats, current)
+                # Annotate the in-memory result so the API payload exposes the
+                # same supplementary signals the chart reads from history.
+                result["kl_divergence"] = kl_value
+                result["wasserstein"] = wasserstein_value
+
                 with contextlib.suppress(Exception):
                     db.save_monitoring_result(
                         f.id,
@@ -147,6 +155,8 @@ class MonitoringPlugin(BasePlugin):
                         null_ratio=null_ratio if isinstance(null_ratio, (int, float)) else None,
                         mean_z_score=mean_z_score,
                         sample_size=int(sample_size) if isinstance(sample_size, (int, float)) else None,
+                        kl_divergence=kl_value,
+                        wasserstein=wasserstein_value,
                     )
 
                 # T2.1 — emit an in-app notification on warning/critical drift.
@@ -317,6 +327,62 @@ class MonitoringPlugin(BasePlugin):
         first_line = text.splitlines()[0].strip()
         title = first_line[:120]
         return title, text
+
+
+def _stats_to_samples(stats: dict, n: int = 500) -> list[float] | None:
+    """Deterministic Gaussian proxy samples for KL + Wasserstein.
+
+    The baseline + current dicts carry only summary stats (mean / std / etc.),
+    not raw values. We synthesize a deterministic sample set using even
+    quantile spacing through the Gaussian inverse CDF — matches the
+    Gaussian assumption PSI already makes (`utils/statistics.compute_psi`)
+    so all three metrics describe the same distribution proxy.
+
+    Returns ``None`` when ``mean``/``std`` aren't usable numbers.
+    """
+    import numpy as np
+    from scipy.stats import norm
+
+    mean = stats.get("mean")
+    std = stats.get("std")
+    if not isinstance(mean, (int, float)) or not isinstance(std, (int, float)):
+        return None
+    if std <= 0:
+        return [float(mean)] * n
+    quantiles = np.linspace(1.0 / (n + 1), 1.0 - 1.0 / (n + 1), n)
+    return list(norm.ppf(quantiles, loc=float(mean), scale=float(std)))
+
+
+def _supplementary_distribution_metrics(baseline: dict, current: dict) -> tuple[float | None, float | None]:
+    """Compute (kl_divergence, wasserstein) alongside PSI from summary stats.
+
+    Returns ``(None, None)`` when either side lacks the mean/std needed to
+    build the Gaussian proxy. Severity is unchanged — these are
+    supplementary signals only (see `classify_severity` docstring).
+    """
+    import numpy as np
+
+    base_samples = _stats_to_samples(baseline)
+    curr_samples = _stats_to_samples(current)
+    if base_samples is None or curr_samples is None:
+        return None, None
+
+    base_arr = np.asarray(base_samples, dtype=float)
+    curr_arr = np.asarray(curr_samples, dtype=float)
+    edges = np.linspace(
+        float(min(base_arr.min(), curr_arr.min())),
+        float(max(base_arr.max(), curr_arr.max())),
+        21,  # 20 bins, matching the PSI bucket count convention
+    )
+    if edges[0] == edges[-1]:
+        # Degenerate: both samples sit on the same constant → no shift.
+        return 0.0, 0.0
+    base_hist, _ = np.histogram(base_arr, bins=edges)
+    curr_hist, _ = np.histogram(curr_arr, bins=edges)
+    return (
+        compute_kl_divergence(base_hist, curr_hist),
+        compute_wasserstein(base_arr, curr_arr),
+    )
 
 
 def export_monitoring_report(report: dict) -> str:

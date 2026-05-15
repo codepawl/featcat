@@ -28,6 +28,8 @@ const COLORS = {
   null_ratio: '#3B82F6',
   mean_z_score: '#A855F7',
   sample_size: '#F59E0B',
+  kl_divergence: '#0EA5E9',
+  wasserstein: '#EC4899',
 }
 
 const SEVERITY_THRESHOLDS = {
@@ -36,7 +38,13 @@ const SEVERITY_THRESHOLDS = {
   z_score_alert: 3.0,
 }
 
-type MetricKey = 'psi' | 'null_ratio' | 'mean_z_score' | 'sample_size'
+type MetricKey =
+  | 'psi'
+  | 'null_ratio'
+  | 'mean_z_score'
+  | 'sample_size'
+  | 'kl_divergence'
+  | 'wasserstein'
 
 interface AnomalyHit {
   index: number
@@ -92,6 +100,12 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: Toolti
       <p className="font-mono">
         <span style={{ color: COLORS.sample_size }}>●</span> {t('multi_metric.metric_sample_size', 'Sample size')}: {d.sample_size != null ? d.sample_size.toLocaleString() : '—'}
       </p>
+      <p className="font-mono">
+        <span style={{ color: COLORS.kl_divergence }}>●</span> {t('multi_metric.metric_kl', 'KL divergence')}: {d.kl_divergence != null ? d.kl_divergence.toFixed(4) : '—'}
+      </p>
+      <p className="font-mono">
+        <span style={{ color: COLORS.wasserstein }}>●</span> {t('multi_metric.metric_wasserstein', 'Wasserstein')}: {d.wasserstein != null ? d.wasserstein.toFixed(4) : '—'}
+      </p>
     </div>
   )
 }
@@ -132,9 +146,16 @@ export function MultiMetricTimeline({ data, loading, onRangeChange, days = 30 }:
     )
   }
 
-  // Y-axis scale for left side (PSI / null_ratio / Z-score) — pad on top.
+  // Y-axis scale for left side (PSI / null_ratio / Z-score / KL) — pad on top.
+  // Wasserstein lives on the right axis because its unit is the feature's
+  // original unit, not the [0, ~1] range PSI / null_ratio / KL share.
   const leftMax = Math.max(
-    ...data.map(d => Math.max(d.psi ?? 0, d.null_ratio ?? 0, Math.abs(d.mean_z_score ?? 0))),
+    ...data.map(d => Math.max(
+      d.psi ?? 0,
+      d.null_ratio ?? 0,
+      Math.abs(d.mean_z_score ?? 0),
+      d.kl_divergence ?? 0,
+    )),
     SEVERITY_THRESHOLDS.psi_critical,
   ) + 0.05
 
@@ -244,6 +265,37 @@ export function MultiMetricTimeline({ data, loading, onRangeChange, days = 30 }:
             activeDot={{ r: 4 }}
             hide={isHidden('sample_size')}
           />
+          {/* KL divergence shares the left axis (unitless, ~[0, leftMax])
+              and renders dashed so it visually separates from PSI's solid line. */}
+          <Line
+            yAxisId="left"
+            type="monotone"
+            dataKey="kl_divergence"
+            name={t('multi_metric.metric_kl', 'KL divergence')}
+            stroke={COLORS.kl_divergence}
+            strokeWidth={1.5}
+            strokeDasharray="6 3"
+            connectNulls={false}
+            dot={false}
+            activeDot={{ r: 4 }}
+            hide={isHidden('kl_divergence')}
+          />
+          {/* Wasserstein lives on the right axis because it's in the feature's
+              original units. Rendered dotted to distinguish from sample_size's
+              dashed line on the same axis. */}
+          <Line
+            yAxisId="right"
+            type="monotone"
+            dataKey="wasserstein"
+            name={t('multi_metric.metric_wasserstein', 'Wasserstein')}
+            stroke={COLORS.wasserstein}
+            strokeWidth={1.5}
+            strokeDasharray="2 3"
+            connectNulls={false}
+            dot={false}
+            activeDot={{ r: 4 }}
+            hide={isHidden('wasserstein')}
+          />
 
           {/* Anomaly markers — small red dots on the PSI line at threshold crossings.
               Skipped when PSI is hidden so the tooltip content makes sense. */}
@@ -271,7 +323,14 @@ export function MultiMetricTimeline({ data, loading, onRangeChange, days = 30 }:
               // LegendPayload — it's a string for our Lines, so coerce defensively.
               const raw = entry.dataKey
               const key = typeof raw === 'string' ? raw : ''
-              if (key === 'psi' || key === 'null_ratio' || key === 'mean_z_score' || key === 'sample_size') {
+              if (
+                key === 'psi' ||
+                key === 'null_ratio' ||
+                key === 'mean_z_score' ||
+                key === 'sample_size' ||
+                key === 'kl_divergence' ||
+                key === 'wasserstein'
+              ) {
                 toggle(key)
               }
             }}
