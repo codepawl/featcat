@@ -12,7 +12,7 @@ class FeatureTable(DataTable):
         self,
         *,
         name: str | None = None,
-        id: str | None = None,
+        id: str | None = None,  # noqa: A002 — Textual widget standard kwarg
         classes: str | None = None,
         disabled: bool = False,
     ) -> None:
