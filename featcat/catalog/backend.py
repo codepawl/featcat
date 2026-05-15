@@ -130,8 +130,18 @@ class CatalogBackend(ABC):
         model_used: str = "unknown",
         hints_used: str | None = None,
         context_features: list[str] | None = None,
+        changed_by: str | None = None,
     ) -> None:
-        """Save or replace documentation for a feature."""
+        """Save or replace documentation for a feature.
+
+        ``changed_by`` is an optional attribution string for the
+        version-snapshot row created alongside the doc. ``None`` (the
+        default) preserves the legacy behaviour of attributing the
+        snapshot to ``resolve_user()``; the autodoc plugin passes
+        ``"llm:<model>"`` so LLM-authored saves do not appear as
+        ``changed_by="unknown"`` when running on a host whose
+        ``os.getlogin()`` is unset.
+        """
 
     @abstractmethod
     def list_undocumented_features(self) -> list:

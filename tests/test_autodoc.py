@@ -142,3 +142,74 @@ class TestAutodoc:
     def test_plugin_properties(self):
         plugin = AutodocPlugin()
         assert plugin.name == "autodoc"
+
+
+class TestAutodocChangedBy:
+    """Regression for drift bug #1 in docs/BACKLOG.md (UAT finding
+    'feature_versions.changed_by is unknown for LLM-generated docs'):
+    a save triggered by AutodocPlugin must attribute the version snapshot
+    to the LLM, not whoever happens to be logged in on the host.
+    """
+
+    def test_changed_by_is_llm_model(self, db_with_features: CatalogDB) -> None:
+        plugin = AutodocPlugin()
+        llm = MockAutodocLLM()
+        # MockAutodocLLM does not set a model attribute; autodoc falls back
+        # to "unknown" model_name → use the LLM's class name to make the
+        # test deterministic without depending on environment.
+        llm.model = "test-stub-llm"  # type: ignore[attr-defined]
+
+        result = plugin.execute(db_with_features, llm, feature_name="src.age")
+        assert result.status == "success"
+
+        feature = db_with_features.get_feature_by_name("src.age")
+        assert feature is not None
+        versions = db_with_features.list_feature_versions(feature.id)
+        doc_versions = [v for v in versions if v.get("change_type") == "doc"]
+        assert doc_versions, "autodoc save should produce a 'doc' version row"
+        latest_doc = doc_versions[0]
+        assert latest_doc["changed_by"] == "llm:test-stub-llm", (
+            f"expected 'llm:test-stub-llm', got {latest_doc['changed_by']!r}"
+        )
+        assert latest_doc["changed_by"] != "unknown"
+
+    def test_changed_by_falls_back_to_autodoc_when_no_model(self, db_with_features: CatalogDB) -> None:
+        """If the LLM client does not expose a model name (older stubs),
+        the autodoc path should still produce a meaningful attribution
+        rather than the generic 'unknown'."""
+        plugin = AutodocPlugin()
+        llm = MockAutodocLLM()
+        # Force getattr(llm, "model", "unknown") to return "unknown".
+        # The class has no `model` attribute by default, but verify
+        # explicitly by deleting if a parent set one.
+        if hasattr(llm, "model"):
+            del llm.model
+
+        result = plugin.execute(db_with_features, llm, feature_name="src.age")
+        assert result.status == "success"
+
+        feature = db_with_features.get_feature_by_name("src.age")
+        assert feature is not None
+        versions = db_with_features.list_feature_versions(feature.id)
+        doc_versions = [v for v in versions if v.get("change_type") == "doc"]
+        assert doc_versions
+        latest_doc = doc_versions[0]
+        assert latest_doc["changed_by"] == "autodoc", f"expected 'autodoc' fallback, got {latest_doc['changed_by']!r}"
+
+    def test_explicit_changed_by_overrides_resolve_user(self, db_with_features: CatalogDB) -> None:
+        """Save-side regression: save_feature_doc must honour an explicit
+        ``changed_by`` kwarg from any caller (not only the autodoc plugin),
+        so the catalog-layer fix is verifiable in isolation from the LLM
+        client wiring above."""
+        feature = db_with_features.get_feature_by_name("src.age")
+        assert feature is not None
+        db_with_features.save_feature_doc(
+            feature.id,
+            {"short_description": "stub"},
+            model_used="m",
+            changed_by="llm:custom",
+        )
+        versions = db_with_features.list_feature_versions(feature.id)
+        doc_versions = [v for v in versions if v.get("change_type") == "doc"]
+        assert doc_versions
+        assert doc_versions[0]["changed_by"] == "llm:custom"

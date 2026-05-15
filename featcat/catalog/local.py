@@ -1204,7 +1204,19 @@ class LocalBackend(CatalogBackend):
         model_used: str = "unknown",
         hints_used: str | None = None,
         context_features: list[str] | None = None,
+        changed_by: str | None = None,
     ) -> None:
+        """Persist ``doc`` and snapshot a new feature version.
+
+        ``changed_by`` defaults to ``None`` which preserves the legacy
+        behaviour of attributing the snapshot to ``resolve_user()`` (env var
+        or OS login, falling back to ``"unknown"``). The autodoc path passes
+        an explicit ``"llm:<model>"`` string so LLM-authored doc rows are
+        not attributed to whoever happens to be logged in on the host —
+        UAT finding "feature_versions.changed_by is 'unknown' for
+        LLM-generated docs" (drift bug #1 in docs/BACKLOG.md).
+        """
+
         def _str(val: object) -> str:
             if isinstance(val, list):
                 return "; ".join(str(v) for v in val)
@@ -1241,10 +1253,11 @@ class LocalBackend(CatalogBackend):
 
         changes = {"short_description": (old_short, new_short)}
         summary = "Updated short_description" if old_short else "Generated documentation"
+        author = changed_by if changed_by else resolve_user()
         self._snapshot_feature(
             feature_id,
             changes,
-            changed_by=resolve_user(),
+            changed_by=author,
             change_type="doc",
         )
         with self.session() as s:
