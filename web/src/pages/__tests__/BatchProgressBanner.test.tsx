@@ -123,4 +123,60 @@ describe('BatchProgressBanner — reload resume', () => {
     await waitFor(() => expect(onComplete).toHaveBeenCalledOnce())
     expect(window.localStorage.getItem(ACTIVE_JOB_KEY)).toBeNull()
   })
+
+  it('starting a new batch overwrites a stale job id from a prior run', async () => {
+    // Simulate the user reloading after a partial run, then immediately
+    // kicking off a fresh batch. The banner must follow the *new* job
+    // (passed via the `job` prop), not keep polling the stale id that the
+    // previous tab left in localStorage.
+    window.localStorage.setItem(
+      ACTIVE_JOB_KEY,
+      JSON.stringify({ jobId: 'stale-1', total: 1 }),
+    )
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString()
+      // Only the new job id should be polled. If the banner ever hits
+      // /generate-batch/stale-1/status we fail the test by responding 500.
+      if (url.includes('stale-1')) {
+        return new Response('stale-id leaked into poll', { status: 500 })
+      }
+      return new Response(
+        JSON.stringify({
+          job_id: 'fresh-2',
+          total: 5,
+          completed: 2,
+          failed: 0,
+          status: 'running',
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      )
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const onComplete = vi.fn()
+    render(
+      <BatchProgressBanner
+        job={{ jobId: 'fresh-2', total: 5 }}
+        onComplete={onComplete}
+        pollMs={20}
+      />,
+    )
+
+    const banner = await screen.findByTestId('batch-progress-banner')
+    await waitFor(() => {
+      expect(banner).toHaveTextContent('Generating... (2/5)')
+    })
+
+    // Persisted entry should now reflect the new job, not the stale one.
+    const stored = window.localStorage.getItem(ACTIVE_JOB_KEY)
+    expect(stored).not.toBeNull()
+    const parsed = JSON.parse(stored ?? 'null') as { jobId: string; total: number }
+    expect(parsed.jobId).toBe('fresh-2')
+    expect(parsed.total).toBe(5)
+
+    // None of the polls hit the stale id.
+    const calls = fetchMock.mock.calls.map((c) => String(c[0]))
+    expect(calls.every((u) => !u.includes('stale-1'))).toBe(true)
+  })
 })
