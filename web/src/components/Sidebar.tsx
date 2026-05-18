@@ -210,7 +210,7 @@ function NavItemRow({
   )
 }
 
-export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
+export function Sidebar({ onNavigate, embedded = false }: { onNavigate?: () => void; embedded?: boolean }) {
   const { t } = useTranslation('sidebar')
   const location = useLocation()
   const [llm, setLlm] = useState<{ ok: boolean; model: string | null; checked: boolean }>({
@@ -293,7 +293,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 
   return (
     <nav
-      className={`shrink-0 sticky top-0 h-screen overflow-y-auto flex flex-col bg-[var(--bg-primary)] border-r border-[var(--border-subtle)] py-4 transition-[width] duration-200 ease-out ${
+      className={`shrink-0 ${embedded ? 'h-full' : 'sticky top-14 h-[calc(100vh-3.5rem)]'} overflow-y-auto flex flex-col bg-[var(--bg-primary)] border-r border-[var(--border-subtle)] py-4 transition-[width] duration-200 ease-out ${
         collapsed ? 'w-16' : 'w-[220px]'
       }`}
       aria-label="Primary navigation"

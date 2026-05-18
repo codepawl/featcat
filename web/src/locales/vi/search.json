@@ -24,5 +24,8 @@
     "prompt": "Nhập từ khóa để tìm theo tên, tag và tài liệu.",
     "no_match": "Không có kết quả cho \"{{query}}\".",
     "suggest": "Thử từ khóa rộng hơn hoặc bỏ bớt bộ lọc."
+  },
+  "dropdown": {
+    "see_all": "Xem tất cả kết quả cho \"{{query}}\""
   }
 }

@@ -24,5 +24,8 @@
     "prompt": "Type a query to search across features, tags, and documentation.",
     "no_match": "No matches for \"{{query}}\".",
     "suggest": "Try a broader query, or remove some filters."
+  },
+  "dropdown": {
+    "see_all": "See all results for \"{{query}}\""
   }
 }
