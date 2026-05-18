@@ -37,8 +37,8 @@ featcat is a lightweight Feature Catalog for data teams. It is **not** a Feature
 | **FTS5 Search** | SQLite full-text search with BM25 ranking and Vietnamese diacritic folding |
 | **Lineage** | Track parent/child relationships between features; auto-detect from SQL definitions |
 | **Similarity** | TF-IDF + embedding-backed feature similarity matrix and graph; duplicate detection |
-| **Monitoring** | PSI drift detection, null spikes, range violations, scheduled checks |
-| **Web UI** | React SPA: dashboard, feature browser, chat, lineage graph, similarity matrix, audit log |
+| **Monitoring** | PSI / KL-divergence / Wasserstein drift metrics, null spikes, range violations, scheduled checks |
+| **Web UI** | React SPA with a sticky top-bar global search (autocomplete + keyboard nav on every route): dashboard, feature browser, chat, lineage graph, similarity matrix, audit log |
 | **TUI** | Terminal UI with dashboard, feature browser, AI chat |
 | **REST API** | FastAPI server; every CLI/TUI/Web operation goes through the same endpoints |
 | **S3 / MinIO** | Read Parquet directly from S3 — metadata only, never copies data locally |
