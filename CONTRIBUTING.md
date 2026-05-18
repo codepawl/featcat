@@ -12,10 +12,10 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 git clone https://github.com/codepawl/featcat.git
 cd featcat
 
-# Create virtual environment
-uv venv && source .venv/bin/activate
-
-# Install with dev dependencies + pre-commit hooks
+# Install with dev dependencies + pre-commit hooks.
+# No venv activation needed — `make install` and the wrapped `uv run`
+# targets manage `.venv/` for you. `./dev.sh` is the same: it auto-
+# bootstraps `.venv` on first run.
 make install
 ```
 

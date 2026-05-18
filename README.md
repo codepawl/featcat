@@ -99,31 +99,30 @@ All four call into the same `CatalogBackend` abstraction (`featcat/catalog/backe
 ## Quick Start
 
 ```bash
-# 1. Clone and install
+# 1. Clone and install (no venv activation needed — uv handles it)
 git clone https://github.com/codepawl/featcat.git && cd featcat
-uv venv && source .venv/bin/activate
-uv pip install -e ".[dev,tui,s3,server]"
+make install
 
 # 2. Initialize catalog
-featcat init
+uv run featcat init
 
 # 3. Register and scan a data source
-featcat source add device_perf /data/features/device_performance.parquet
-featcat source scan device_perf
+uv run featcat source add device_perf /data/features/device_performance.parquet
+uv run featcat source scan device_perf
 
 # 4. Browse features (CLI)
-featcat feature list
-featcat feature info device_perf.cpu_usage
+uv run featcat feature list
+uv run featcat feature info device_perf.cpu_usage
 
 # 5. (Optional) Enable AI — requires llama.cpp running at :8080
 #    The repo ships a docker-compose for a Gemma GGUF backend; see deploy/.
 docker compose -f deploy/docker-compose.yml up -d llama
 
-featcat discover "customer churn prediction"
-featcat ask "features related to user engagement"
+uv run featcat discover "customer churn prediction"
+uv run featcat ask "features related to user engagement"
 
 # 6. Start the server (REST API + Web UI at http://localhost:8000)
-featcat serve
+uv run featcat serve
 ```
 
 The bundled `./dev.sh` script does the full local stack (LLM container + backend + Vite dev server) in one go.
