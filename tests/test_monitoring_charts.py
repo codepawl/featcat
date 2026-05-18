@@ -221,6 +221,7 @@ class TestGroupDriftMatrix:
         # critical < warning < healthy by priority; ties broken alphabetically.
         assert names == ["src.beta", "src.gamma", "src.alpha"]
 
+    @pytest.mark.timeout(30)
     def test_truncates_at_200_features(self, db: LocalBackend) -> None:
         src = db.add_source(DataSource(name="big", path="/big.parquet"))
         for i in range(220):
