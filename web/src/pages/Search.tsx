@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Search as SearchIcon, X } from 'lucide-react'
@@ -29,8 +29,6 @@ interface FacetResponse {
 const FACET_KEYS = ['source', 'tag', 'dtype'] as const
 type FacetKey = (typeof FACET_KEYS)[number]
 
-const SUGGEST_DEBOUNCE_MS = 200
-
 /** Read all values for a repeated query-string key (?source=a&source=b). */
 function readMulti(params: URLSearchParams, key: string): string[] {
   return params.getAll(key)
@@ -48,13 +46,9 @@ export function Search() {
   const tagFilter = useMemo(() => readMulti(params, 'tag'), [params])
   const dtypeFilter = useMemo(() => readMulti(params, 'dtype'), [params])
 
-  const [input, setInput] = useState(q)
   const [results, setResults] = useState<SearchHit[]>([])
   const [facets, setFacets] = useState<FacetResponse | null>(null)
   const [loading, setLoading] = useState(false)
-
-  // Keep input in sync if the URL changes from elsewhere (back/forward nav).
-  useEffect(() => { setInput(q) }, [q])
 
   const hasDocParam = docOnly ? true : undocOnly ? false : null
 
@@ -66,13 +60,6 @@ export function Search() {
     invalidateCache('/search')
     setParams(next, { replace: true })
   }, [params, setParams])
-
-  const setQuery = useCallback((value: string) => {
-    updateParams((next) => {
-      if (value) next.set('q', value)
-      else next.delete('q')
-    })
-  }, [updateParams])
 
   const toggleFacet = useCallback((key: FacetKey, value: string) => {
     updateParams((next) => {
@@ -146,24 +133,12 @@ export function Search() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q, sourceFilter.join(','), tagFilter.join(','), dtypeFilter.join(','), hasDocParam])
 
-  const submitSearch = (value: string) => {
-    setQuery(value.trim())
-  }
-
   const activeFilterCount =
     sourceFilter.length + tagFilter.length + dtypeFilter.length + (hasDocParam != null ? 1 : 0)
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold mb-3">{t('page.title')}</h1>
-        <SearchAutocomplete
-          value={input}
-          onChange={setInput}
-          onSubmit={submitSearch}
-          onPick={(name) => navigate(`/features/${encodeURIComponent(name)}`)}
-        />
-      </div>
+      <h1 className="text-2xl font-semibold mb-6">{t('page.title')}</h1>
 
       {!q ? (
         <div className="text-center py-16 text-[var(--text-tertiary)]">
@@ -400,132 +375,3 @@ function ActiveFilterChips({
   )
 }
 
-/* -------- Autocomplete input -------- */
-
-interface AutocompleteProps {
-  value: string
-  onChange: (v: string) => void
-  onSubmit: (v: string) => void
-  onPick: (name: string) => void
-}
-
-function SearchAutocomplete({ value, onChange, onSubmit, onPick }: AutocompleteProps) {
-  const { t } = useTranslation('search')
-  const [open, setOpen] = useState(false)
-  const [suggestions, setSuggestions] = useState<SearchHit[]>([])
-  const [active, setActive] = useState(-1)
-  const wrapRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-
-  // Debounced suggest fetch.
-  useEffect(() => {
-    clearTimeout(debounceRef.current)
-    if (!value.trim() || value.trim().length < 2) {
-      setSuggestions([])
-      return
-    }
-    debounceRef.current = setTimeout(() => {
-      api.search.suggest(value.trim(), 10)
-        .then((res) => {
-          setSuggestions(res)
-          setActive(-1)
-        })
-        .catch(() => setSuggestions([]))
-    }, SUGGEST_DEBOUNCE_MS)
-    return () => clearTimeout(debounceRef.current)
-  }, [value])
-
-  // Close dropdown on outside click.
-  useEffect(() => {
-    const onDocClick = (e: MouseEvent) => {
-      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', onDocClick)
-    return () => document.removeEventListener('mousedown', onDocClick)
-  }, [])
-
-  const handleKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (!open || suggestions.length === 0) {
-      if (e.key === 'Enter') {
-        onSubmit(value)
-        setOpen(false)
-      }
-      return
-    }
-    if (e.key === 'ArrowDown') {
-      e.preventDefault()
-      setActive((i) => Math.min(i + 1, suggestions.length - 1))
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault()
-      setActive((i) => Math.max(i - 1, -1))
-    } else if (e.key === 'Enter') {
-      e.preventDefault()
-      if (active >= 0 && active < suggestions.length) {
-        onPick(suggestions[active].name)
-        setOpen(false)
-      } else {
-        onSubmit(value)
-        setOpen(false)
-      }
-    } else if (e.key === 'Escape') {
-      setOpen(false)
-    }
-  }
-
-  const showDropdown = open && suggestions.length > 0
-
-  return (
-    <div ref={wrapRef} className="relative max-w-2xl">
-      <SearchIcon
-        size={16}
-        strokeWidth={1.8}
-        className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)]"
-      />
-      <input
-        ref={inputRef}
-        type="text"
-        value={value}
-        onChange={(e) => { onChange(e.target.value); setOpen(true) }}
-        onFocus={() => setOpen(true)}
-        onKeyDown={handleKey}
-        placeholder={t('input.placeholder')}
-        role="combobox"
-        aria-expanded={showDropdown}
-        aria-autocomplete="list"
-        className="w-full bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-lg pl-9 pr-3 py-2.5 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:border-brand focus:ring-2 focus:ring-brand/15 outline-none transition-all"
-      />
-      {showDropdown && (
-        <ul
-          role="listbox"
-          className="absolute z-30 left-0 right-0 mt-1 bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-lg shadow-lg max-h-80 overflow-y-auto"
-        >
-          {suggestions.map((s, i) => (
-            <li
-              key={s.id}
-              role="option"
-              aria-selected={i === active}
-              onMouseEnter={() => setActive(i)}
-              onMouseDown={(e) => {
-                // mousedown so the click registers before the input blur
-                // closes the dropdown.
-                e.preventDefault()
-                onPick(s.name)
-                setOpen(false)
-              }}
-              className={`px-3 py-2 cursor-pointer text-sm border-b border-[var(--border-subtle)] last:border-b-0 ${
-                i === active ? 'bg-brand-muted text-brand' : 'hover:bg-[var(--bg-secondary)]'
-              }`}
-            >
-              <div className="flex items-center justify-between gap-3">
-                <span className="font-mono truncate">{s.name}</span>
-                <span className="text-[11px] text-[var(--text-tertiary)] shrink-0 font-mono">{s.dtype}</span>
-              </div>
-              <div className="text-[11px] text-[var(--text-tertiary)] truncate">{s.source}</div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  )
-}

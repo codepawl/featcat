@@ -1,24 +1,17 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Menu, X } from 'lucide-react'
+import { Menu, Search as SearchIcon, X } from 'lucide-react'
 import { Sidebar } from './Sidebar'
+import { SearchBar } from './SearchBar'
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const { t } = useTranslation('common')
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false)
 
   return (
-    <div className="flex min-h-screen">
-      {/* Mobile menu button */}
-      <button
-        onClick={() => setMobileOpen(true)}
-        className="fixed top-3 left-3 z-40 p-2 rounded-lg bg-[var(--bg-primary)] border border-[var(--border-subtle)] shadow-sm md:hidden"
-        aria-label={t('actions.open_menu')}
-      >
-        <Menu size={20} />
-      </button>
-
-      {/* Mobile overlay */}
+    <div className="min-h-screen flex flex-col">
+      {/* Mobile sidebar overlay */}
       {mobileOpen && (
         <div className="fixed inset-0 z-40 md:hidden" onClick={() => setMobileOpen(false)}>
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
@@ -29,19 +22,62 @@ export function Layout({ children }: { children: React.ReactNode }) {
             >
               <X size={18} />
             </button>
-            <Sidebar onNavigate={() => setMobileOpen(false)} />
+            <Sidebar onNavigate={() => setMobileOpen(false)} embedded />
           </div>
         </div>
       )}
 
-      {/* Desktop sidebar */}
-      <div className="hidden md:block">
-        <Sidebar />
-      </div>
+      {/* Sticky top bar */}
+      <header
+        role="banner"
+        className="sticky top-0 z-30 h-14 shrink-0 flex items-center gap-2 px-3 md:px-4 bg-[var(--bg-primary)] border-b border-[var(--border-subtle)]"
+      >
+        {mobileSearchOpen ? (
+          <>
+            <SearchBar className="flex-1" onSubmit={() => setMobileSearchOpen(false)} />
+            <button
+              onClick={() => setMobileSearchOpen(false)}
+              className="p-2 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-primary)] md:hidden"
+              aria-label={t('actions.close')}
+            >
+              <X size={18} />
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              onClick={() => setMobileOpen(true)}
+              className="p-2 rounded-lg hover:bg-[var(--bg-secondary)] md:hidden"
+              aria-label={t('actions.open_menu')}
+            >
+              <Menu size={20} />
+            </button>
+            <div className="hidden md:block w-[208px] shrink-0" />
+            <div className="hidden md:block flex-1 max-w-xl">
+              <SearchBar />
+            </div>
+            <div className="flex-1 md:hidden" />
+            <button
+              onClick={() => setMobileSearchOpen(true)}
+              className="p-2 rounded-lg hover:bg-[var(--bg-secondary)] md:hidden"
+              aria-label={t('actions.search')}
+            >
+              <SearchIcon size={20} />
+            </button>
+          </>
+        )}
+      </header>
 
-      <main className="flex-1 min-w-0 p-4 pt-14 md:p-6 lg:p-8 md:pt-6 lg:pt-8 overflow-y-auto animate-fade-in">
-        {children}
-      </main>
+      <div className="flex flex-1 min-h-0">
+        {/* Desktop sidebar */}
+        <div className="hidden md:block">
+          <Sidebar />
+        </div>
+
+        <main className="flex-1 min-w-0 p-4 md:p-6 lg:p-8 animate-fade-in">
+          {children}
+        </main>
+      </div>
     </div>
   )
 }
