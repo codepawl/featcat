@@ -110,6 +110,13 @@ Sync README and CLI --help text to match shipped flags:
 ## Infrastructure (P2)
 
 - [ ] CI auto-rebuild nxank4/featcat:latest on tag/main push
+  - PARTIAL: `.github/workflows/docker-publish.yml` exists and pushes
+    `latest` to `ghcr.io/${owner}/featcat` on `release: published` +
+    `workflow_dispatch`. Differs from this item in two ways: target
+    registry is GHCR (not Docker Hub `nxank4/featcat`), and trigger is
+    release publish (not raw tag/main push). Operator to confirm whether
+    GHCR-on-release satisfies intent or whether Docker Hub publishing is
+    still required.
 - [ ] Walk sandbox scenarios j-o (PSI timeline, distribution shift chart,
       doc debt heatmap, health score, export to DataFrame, versioning
       rollback E2E, teardown reproduce)
@@ -126,6 +133,54 @@ Sync README and CLI --help text to match shipped flags:
 - [ ] Feast-like online/offline store + registry (scope expansion beyond
       catalog — design doc first, defer to next quarter)
 - [ ] Featcat logo + favicon (needs design)
+
+## Audit log 2026-05-18
+
+Re-audit of the 13 still-unchecked items below the sprint queue. (The
+sprint-queue P0 items and Documentation drift sync rows were already
+ticked in PR #98; this pass re-verified them and the evidence holds — no
+re-ticking needed.)
+
+- Items audited: 13
+- DONE (newly ticked this pass): 0
+- PARTIAL: 1 — `CI auto-rebuild nxank4/featcat:latest` (see sub-bullet
+  under Infrastructure P2: GHCR workflow exists but target/trigger
+  differ from item intent)
+- PENDING: 12 — Frontend P1 search/dashboard items (3), remaining
+  Infrastructure P2 rows (2), and the entire Deferred P2 list (7)
+- OUT_OF_DATE: 0
+
+Spot-check evidence for the items the operator called out as
+high-importance during this audit:
+
+- `web/src/components/BatchProgressBanner.tsx` line 17 defines
+  `ACTIVE_JOB_KEY = 'featcat:autodoc:active_job'` — auto-generate
+  progress resume confirmed (PR #82, #86).
+- `featcat/plugins/monitoring.py` lines 117-222 emit `severity =
+  "unknown"` on no-signal rows and exclude them from issue counts —
+  classifier consistency confirmed (PR #87).
+- `featcat/plugins/autodoc.py` line 242 sets `changed_by =
+  f"llm:{model_name}" if model_name and model_name != "unknown" else
+  "autodoc"` — version snapshot attribution confirmed (PR #85).
+- `featcat/cli.py` lines 1259-1270 add `definition`, `definition_type`,
+  `generation_hints`, `status`, `status_notes` to the diff field tuple
+  — `feature diff` comparator fix confirmed (PR #83).
+- `deploy/Dockerfile` line 90: `uv pip install --system --no-cache-dir
+  -e ".[server,embeddings]"` — embeddings extra in default image
+  confirmed (PR #81, #84).
+- `uv run pytest --cov=featcat.server.routes.actions
+  --cov=featcat.plugins.monitoring` reports
+  `featcat/plugins/monitoring.py 99%` and
+  `featcat/server/routes/actions.py 100%` — coverage baseline confirmed
+  (PR #90).
+- Grep across `README.md docs/ deploy/` for the old flag forms
+  (`--feature`, `--confirm`, `--type sql`, `--from`, `--to`,
+  `{"messages"}`) returns only matches on unrelated new commands
+  (`features delete-bulk --confirm`, `lineage detect --from`); no
+  occurrences of the old `group delete --confirm`, `feature
+  set-definition --type sql`, `feature diff --from/--to`, or chat body
+  `{"messages": [...]}` remain — documentation drift sync confirmed
+  (PR #88).
 
 ## Coverage baseline 2026-05-15
 
