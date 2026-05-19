@@ -120,9 +120,7 @@ class TestSearchFeaturesHybridMerge:
                 s.execute(stmt, {"vec": vec, "name": name})
             s.commit()
 
-    def test_semantic_lifts_match_when_lexical_misses(
-        self, db_with_finance_features: LocalBackend
-    ) -> None:
+    def test_semantic_lifts_match_when_lexical_misses(self, db_with_finance_features: LocalBackend) -> None:
         """Lexical can't match 'payment' against any feature here (no token
         overlap), but the semantic branch points at billing.invoice_amount.
         The hybrid result must surface it via the embedding-only signal."""
@@ -151,9 +149,7 @@ class TestSearchFeaturesHybridMerge:
         assert "billing.invoice_amount" in names
         assert names[0] == "billing.invoice_amount"
 
-    def test_embedding_load_failure_falls_back_to_lexical(
-        self, db_with_finance_features: LocalBackend
-    ) -> None:
+    def test_embedding_load_failure_falls_back_to_lexical(self, db_with_finance_features: LocalBackend) -> None:
         """``embed_text`` raising RuntimeError (model download failed, etc.)
         must not crash the search — it logs and keeps the lexical half."""
         with (
@@ -172,15 +168,11 @@ class TestSearchByEmbeddingSqlite:
     """Sanity-check the new SQLite cosine override directly so a regression
     on the matrix multiply is caught independently of the hybrid wrapper."""
 
-    def test_returns_empty_when_no_row_has_embedding(
-        self, db_with_finance_features: LocalBackend
-    ) -> None:
+    def test_returns_empty_when_no_row_has_embedding(self, db_with_finance_features: LocalBackend) -> None:
         vec = [0.0] * EMBEDDING_DIM
         assert db_with_finance_features.search_by_embedding(vec, top_k=5) == []
 
-    def test_ranks_nearest_embedding_first(
-        self, db_with_finance_features: LocalBackend
-    ) -> None:
+    def test_ranks_nearest_embedding_first(self, db_with_finance_features: LocalBackend) -> None:
         stmt = text("UPDATE features SET embedding = :vec WHERE name = :name").bindparams(
             bindparam("vec", type_=Embedding(EMBEDDING_DIM))
         )
