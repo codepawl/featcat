@@ -391,6 +391,7 @@ export function Sources() {
             </div>
           ) : detail ? (
             <SourceDetail
+              key={detail.source.name}
               detail={detail}
               scanning={scanning}
               onScan={scanSelected}
@@ -708,6 +709,7 @@ function SourceDetail({
   const documentedCount = features.filter((f) => !!f.has_doc).length
   const docCoverage = featureCount > 0 ? Math.round((documentedCount / featureCount) * 100) : 0
   const featureItems = useMemo(() => toFeatureItems(features), [features])
+  const [selectedFeatures, setSelectedFeatures] = useState<Set<string>>(new Set())
 
   return (
     <div className="p-5 space-y-5">
@@ -775,7 +777,7 @@ function SourceDetail({
         />
       </div>
 
-      {/* Extracted features (read-only FeatureSelector) */}
+      {/* Extracted features */}
       <section>
         <h3 className="text-sm font-semibold mb-2">{t('detail.features_section')}</h3>
         {featureItems.length === 0 ? (
@@ -785,8 +787,8 @@ function SourceDetail({
         ) : (
           <FeatureSelector
             features={featureItems}
-            selected={EMPTY_SELECTION}
-            onChange={NOOP_ON_CHANGE}
+            selected={selectedFeatures}
+            onChange={setSelectedFeatures}
             showAISuggest={false}
             maxHeight="280px"
           />
@@ -807,10 +809,6 @@ function SourceDetail({
     </div>
   )
 }
-
-// Stable references so the read-only FeatureSelector doesn't churn on re-render.
-const EMPTY_SELECTION: Set<string> = new Set()
-const NOOP_ON_CHANGE = (): void => {}
 
 function MetaRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
