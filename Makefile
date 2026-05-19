@@ -4,29 +4,30 @@ DOCKER_IMAGE ?= nxank4/featcat
 VERSION := $(shell grep '^__version__' featcat/__init__.py | cut -d'"' -f2)
 
 install:
+	@if [ ! -d .venv ]; then echo "Creating .venv..."; uv venv; fi
 	uv pip install -e ".[dev,tui,s3,server]"
-	pre-commit install
+	uv run pre-commit install
 
 lint:
-	ruff check .
-	ruff format --check .
+	uv run ruff check .
+	uv run ruff format --check .
 
 format:
-	ruff check --fix .
-	ruff format .
+	uv run ruff check --fix .
+	uv run ruff format .
 
 type-check:
-	mypy featcat/
+	uv run mypy featcat/
 
 test:
-	pytest
+	uv run pytest
 
 test-cov:
-	pytest --cov=featcat --cov-report=html
+	uv run pytest --cov=featcat --cov-report=html
 	@echo "Open htmlcov/index.html to view coverage report"
 
 build:
-	python -m build
+	uv run python -m build
 
 clean:
 	rm -rf dist/ build/ *.egg-info .pytest_cache .mypy_cache .ruff_cache htmlcov .coverage coverage.xml
@@ -52,7 +53,7 @@ bench:
 	  uv run pytest tests/perf -m perf --bench -v --no-cov --timeout=600
 
 release-check: clean check build
-	twine check dist/*
+	uv run twine check dist/*
 
 # Docker image build + push. Version flows from featcat/__init__.py so it
 # stays in lockstep with the PyPI release (Hatch reads the same file).

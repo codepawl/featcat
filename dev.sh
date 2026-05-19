@@ -2,18 +2,36 @@
 set -e
 
 # Find node from nvm without sourcing nvm.sh (avoids recursive function bug)
-NODE_DIR="$(ls -d "$HOME/.nvm/versions/node/"* 2>/dev/null | sort -V | tail -1)"
+NODE_DIR="$(find "$HOME/.nvm/versions/node" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | sort -V | tail -1)"
 if [ -n "$NODE_DIR" ]; then
   export PATH="$NODE_DIR/bin:$PATH"
 fi
 
-# Verify required CLI tools
-if ! command -v featcat >/dev/null 2>&1; then
-  echo "error: 'featcat' not on PATH. Run 'make install' (or activate your venv) first." >&2
+# uv is the bootstrap tool; everything else runs inside the project venv
+# via `uv run`, so the user never needs to activate it manually.
+if ! command -v uv >/dev/null 2>&1; then
+  echo "error: 'uv' not on PATH. Install uv: https://docs.astral.sh/uv/" >&2
   exit 1
 fi
 if ! command -v bun >/dev/null 2>&1; then
   echo "error: 'bun' not on PATH. Install bun: https://bun.sh" >&2
+  exit 1
+fi
+
+# Auto-bootstrap project venv on a fresh clone so a single ./dev.sh run is
+# enough to get going. `uv sync --all-extras` is idempotent and a no-op
+# once the lockfile is satisfied, so the cost on subsequent runs is the
+# ~50 ms uv takes to check.
+if [ ! -d .venv ]; then
+  echo "First run detected: bootstrapping .venv via 'uv sync --all-extras'..."
+  uv sync --all-extras
+fi
+
+# Verify featcat is callable inside the venv (the CLI exposes no --version,
+# so we probe with --help which exits 0 iff the entry point loads). `uv run`
+# will sync if the lockfile is out of date, so this also acts as a self-heal.
+if ! uv run featcat --help >/dev/null 2>&1; then
+  echo "error: 'uv run featcat --help' failed. Try 'make install' to diagnose." >&2
   exit 1
 fi
 
@@ -38,7 +56,9 @@ check_port_free() {
       owners="$(lsof -ti:"${port}" 2>/dev/null | xargs -I{} ps -p {} -o pid=,comm= 2>/dev/null)"
       if [ -n "$owners" ]; then
         echo "  holders:" >&2
-        echo "${owners}" | sed 's/^/    /' >&2
+        while IFS= read -r owner; do
+          echo "    $owner" >&2
+        done <<< "$owners"
       fi
     fi
     echo "" >&2
@@ -56,12 +76,17 @@ MODEL_FILE="deploy/models/gemma-4-E2B-it-Q4_K_M.gguf"
 if [ ! -f "$MODEL_FILE" ]; then
   echo "Downloading GGUF model..."
   mkdir -p deploy/models
-  PROXY_FLAG=""
+  # Array form so a proxy URL containing spaces survives and an unset
+  # HTTP_PROXY passes zero extra arguments (no empty-string positional).
+  PROXY_FLAG=()
   if [ -n "$HTTP_PROXY" ]; then
-    PROXY_FLAG="-x $HTTP_PROXY"
+    PROXY_FLAG=(-x "$HTTP_PROXY")
   fi
-  curl --fail $PROXY_FLAG -L -o "${MODEL_FILE}.part" \
-    "https://huggingface.co/google/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q4_K_M.gguf"
+  # Use unsloth/ mirror: google/ namespace on HF hosts safetensors only and
+  # returns HTTP 401 on the GGUF path. unsloth/gemma-4-E2B-it-GGUF is the
+  # community Apache-2.0 GGUF distribution; no auth required.
+  curl --fail "${PROXY_FLAG[@]}" -L -o "${MODEL_FILE}.part" \
+    "https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q4_K_M.gguf"
   mv "${MODEL_FILE}.part" "$MODEL_FILE"
 fi
 
@@ -96,10 +121,10 @@ fi
 # Init catalog + import sample data on first run only.
 if [ ! -f catalog.db ]; then
   echo "Initializing catalog..."
-  featcat init
+  uv run featcat init
   echo "Importing sample data..."
-  featcat add tests/fixtures/user_behavior_30d.parquet --owner dev --skip-docs
-  featcat add tests/fixtures/device_performance.parquet --owner dev --skip-docs
+  uv run featcat add tests/fixtures/user_behavior_30d.parquet --owner dev --skip-docs
+  uv run featcat add tests/fixtures/device_performance.parquet --owner dev --skip-docs
 fi
 
 # Install frontend deps on first run
@@ -111,7 +136,7 @@ fi
 # --- Start services ---
 
 echo "Starting backend (port 8000)..."
-featcat serve --reload --port 8000 &
+uv run featcat serve --reload --port 8000 &
 
 echo "Starting frontend (port 5173)..."
 (cd web && bun run dev) &
