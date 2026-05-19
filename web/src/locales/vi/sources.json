@@ -27,8 +27,16 @@
     "scan_now": "Quét ngay",
     "scanning": "Đang quét…",
     "delete": "Xóa",
+    "delete_selected": "Xóa",
     "edit": "Sửa",
     "scan_selected": "Quét {{count}} đã chọn"
+  },
+  "bulk_delete_modal": {
+    "title": "Xóa {{count}} nguồn?",
+    "body": "Mọi feature trong các nguồn này sẽ bị xóa cùng tài liệu, baseline và lịch sử giám sát.",
+    "warning": "Hành động này không thể hoàn tác.",
+    "confirm": "Xóa",
+    "deleting": "Đang xóa…"
   },
   "detail": {
     "select_hint": "Chọn một nguồn để xem chi tiết",

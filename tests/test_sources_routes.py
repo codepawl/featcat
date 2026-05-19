@@ -82,6 +82,68 @@ class TestDeleteSource:
         assert resp.json() == {"deleted": "empty_src", "features_removed": 0}
 
 
+class TestBulkDeleteSources:
+    """POST /api/sources/bulk/delete — mirrors the features bulk-delete shape."""
+
+    def test_bulk_delete_cascades_features_for_each_source(self, client, parquet_file):
+        _add_source(client, "bulk_a", parquet_file)
+        _add_source(client, "bulk_b", parquet_file)
+        client.post("/api/sources/bulk_a/scan")
+        client.post("/api/sources/bulk_b/scan")
+        # Each parquet file has 2 columns → 2 features per source = 4 total.
+        feats_before = client.get("/api/features").json()
+        assert len([f for f in feats_before if f["name"].startswith(("bulk_a.", "bulk_b."))]) == 4
+
+        resp = client.post(
+            "/api/sources/bulk/delete",
+            json={"names": ["bulk_a", "bulk_b"], "confirm": True},
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert sorted(body["deleted"]) == ["bulk_a", "bulk_b"]
+        assert body["features_removed"] == 4
+        assert body["requested"] == 2
+
+        # Both sources gone, features cascade-removed.
+        assert client.get("/api/sources/bulk_a").status_code == 404
+        assert client.get("/api/sources/bulk_b").status_code == 404
+        feats_after = client.get("/api/features").json()
+        assert [f for f in feats_after if f["name"].startswith(("bulk_a.", "bulk_b."))] == []
+
+    def test_bulk_delete_unknown_name_aborts_with_400(self, client, parquet_file):
+        """All-or-nothing: an unknown name in the batch must not delete the
+        valid sources in the same payload."""
+        _add_source(client, "bulk_keep", parquet_file)
+        resp = client.post(
+            "/api/sources/bulk/delete",
+            json={"names": ["bulk_keep", "does_not_exist"], "confirm": True},
+        )
+        assert resp.status_code == 400
+        detail = resp.json()["detail"]
+        assert detail["invalid_names"] == ["does_not_exist"]
+        # The valid source is still present.
+        assert client.get("/api/sources/bulk_keep").status_code == 200
+
+    def test_bulk_delete_without_confirm_returns_400(self, client, parquet_file):
+        _add_source(client, "bulk_safe", parquet_file)
+        resp = client.post(
+            "/api/sources/bulk/delete",
+            json={"names": ["bulk_safe"], "confirm": False},
+        )
+        assert resp.status_code == 400
+        assert "confirm" in resp.json()["detail"]
+        # Confirms it actually didn't delete the source.
+        assert client.get("/api/sources/bulk_safe").status_code == 200
+
+    def test_bulk_delete_empty_names_returns_422(self, client):
+        """Pydantic ``min_length=1`` on ``names`` rejects an empty list."""
+        resp = client.post(
+            "/api/sources/bulk/delete",
+            json={"names": [], "confirm": True},
+        )
+        assert resp.status_code == 422
+
+
 class TestUpdateSource:
     def test_update_description(self, client, tmp_path):
         _add_source(client, "upd_src", str(tmp_path / "u.parquet"))

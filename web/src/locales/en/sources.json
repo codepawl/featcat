@@ -28,8 +28,16 @@
     "scan_now": "Scan now",
     "scanning": "Scanning…",
     "delete": "Delete",
+    "delete_selected": "Delete",
     "edit": "Edit",
     "scan_selected": "Scan {{count}} selected"
+  },
+  "bulk_delete_modal": {
+    "title": "Delete {{count}} sources?",
+    "body": "All features in these sources will be removed along with their docs, baselines, and monitoring history.",
+    "warning": "This action cannot be undone.",
+    "confirm": "Delete",
+    "deleting": "Deleting…"
   },
   "detail": {
     "select_hint": "Select a source to see details",
