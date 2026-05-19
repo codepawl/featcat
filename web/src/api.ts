@@ -92,6 +92,12 @@ export interface DeleteSourceResult {
   features_removed: number
 }
 
+export interface BulkDeleteSourcesResult {
+  deleted: string[]
+  features_removed: number
+  requested: number
+}
+
 export interface ScanLog {
   id: string
   source_id: string
@@ -190,6 +196,11 @@ export const api = {
       }),
     delete: (name: string) =>
       request<DeleteSourceResult>(`/sources/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+    deleteBulk: (data: { names: string[]; confirm: boolean }) =>
+      request<BulkDeleteSourcesResult>('/sources/bulk/delete', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
     scan: (name: string) =>
       request<ScanResult>(`/sources/${encodeURIComponent(name)}/scan`, { method: 'POST' }),
     impact: (name: string) =>

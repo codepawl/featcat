@@ -71,6 +71,7 @@ export function Sources() {
   const [detailLoading, setDetailLoading] = useState(false)
   const [scanning, setScanning] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const [selectedForScan, setSelectedForScan] = useState<Set<string>>(new Set())
   const [scanningRows, setScanningRows] = useState<Set<string>>(new Set())
 
@@ -190,6 +191,27 @@ export function Sources() {
     })
   }
 
+  const deleteBulkConfirmed = async () => {
+    const names = Array.from(selectedForScan)
+    if (names.length === 0) return
+    try {
+      await api.sources.deleteBulk({ names, confirm: true })
+    } catch (e) {
+      setError(t('errors.delete_failed', { message: e instanceof Error ? e.message : String(e) }))
+      return
+    }
+    invalidateCache('/sources')
+    invalidateCache('/features')
+    invalidateCache('/stats/by-source')
+    setSelectedForScan(new Set())
+    setBulkDeleteOpen(false)
+    if (selectedName && names.includes(selectedName)) {
+      setSelectedName(null)
+      setDetail(null)
+    }
+    load()
+  }
+
   const scanBulk = async () => {
     if (selectedForScan.size === 0) return
     const names = Array.from(selectedForScan)
@@ -276,7 +298,7 @@ export function Sources() {
       <div className="flex flex-col md:flex-row gap-4" style={{ minHeight: '500px' }}>
         {/* Left: source list */}
         <div className="w-full md:w-1/3 bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-xl p-3 flex flex-col">
-          {/* Bulk-scan banner — appears only when at least one row is checked. */}
+          {/* Bulk-action banner — appears only when at least one row is checked. */}
           {selectedForScan.size > 0 && (
             <div className="mb-3 flex items-center justify-between gap-2 rounded-lg border border-brand bg-brand-muted px-3 py-2 text-[12px]">
               <span className="text-[var(--text-primary)]">
@@ -289,6 +311,14 @@ export function Sources() {
                   className="px-2 py-1 text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-50"
                 >
                   {t('actions.cancel', { ns: 'common' })}
+                </button>
+                <button
+                  onClick={() => setBulkDeleteOpen(true)}
+                  disabled={scanningRows.size > 0}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-[var(--danger)] border border-[var(--danger)] rounded hover:bg-[var(--danger-subtle-bg)] disabled:opacity-50"
+                >
+                  <Trash2 size={12} />
+                  {t('actions.delete_selected')}
                 </button>
                 <button
                   onClick={scanBulk}
@@ -422,6 +452,17 @@ export function Sources() {
           onDeleted={onDeleted}
         />
       )}
+
+      <ConfirmDialog
+        open={bulkDeleteOpen}
+        onClose={() => setBulkDeleteOpen(false)}
+        title={t('bulk_delete_modal.title', { count: selectedForScan.size })}
+        message={t('bulk_delete_modal.body')}
+        warning={t('bulk_delete_modal.warning')}
+        confirmLabel={t('bulk_delete_modal.confirm')}
+        pendingLabel={t('bulk_delete_modal.deleting')}
+        onConfirm={deleteBulkConfirmed}
+      />
     </div>
   )
 }

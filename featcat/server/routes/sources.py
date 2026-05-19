@@ -6,7 +6,7 @@ import time
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ...catalog.models import DataSource, ScanLog
 from ...catalog.scanner import scan_source
@@ -53,6 +53,17 @@ class SourceImpactResponse(BaseModel):
 class DeleteResponse(BaseModel):
     deleted: str
     features_removed: int
+
+
+class BulkDeleteSourcesRequest(BaseModel):
+    names: list[str] = Field(..., min_length=1)
+    confirm: bool = Field(False, description="Must be true to actually delete")
+
+
+class BulkDeleteSourcesResponse(BaseModel):
+    deleted: list[str]
+    features_removed: int
+    requested: int
 
 
 class ScanResponse(BaseModel):
@@ -234,3 +245,39 @@ def delete_source(name: str, db=Depends(get_db)):
     invalidate(prefix="features:")
     invalidate(prefix="dashboard:")
     return {"deleted": name, "features_removed": removed}
+
+
+@router.post("/bulk/delete", response_model=BulkDeleteSourcesResponse)
+def bulk_delete_sources(body: BulkDeleteSourcesRequest, db=Depends(get_db)):  # noqa: B008
+    """Hard-delete N sources and cascade-remove their features.
+
+    All-or-nothing validation: if any name is unknown the endpoint returns
+    400 with the invalid list and performs no deletions. Cascade rules
+    match the single-source endpoint (see ``LocalBackend.delete_source``).
+    Requires ``confirm: true`` so an accidental empty-confirm POST can't
+    wipe sources.
+    """
+    if not body.confirm:
+        raise HTTPException(
+            status_code=400,
+            detail="Bulk source delete requires `confirm: true` to prevent accidental destruction.",
+        )
+    invalid = [name for name in body.names if db.get_source_by_name(name) is None]
+    if invalid:
+        raise HTTPException(
+            status_code=400,
+            detail={"message": "Some sources do not exist.", "invalid_names": invalid},
+        )
+    features_removed = 0
+    deleted: list[str] = []
+    for name in body.names:
+        features_removed += db.delete_source(name)
+        deleted.append(name)
+    invalidate(prefix="sources:")
+    invalidate(prefix="features:")
+    invalidate(prefix="dashboard:")
+    return {
+        "deleted": deleted,
+        "features_removed": features_removed,
+        "requested": len(body.names),
+    }
