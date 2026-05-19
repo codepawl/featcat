@@ -46,7 +46,7 @@ you MUST call the appropriate tool immediately. Do NOT describe tools or ask wha
 wants — just use them.
 
 Tool picking guide:
-- Keyword/topic search ("features về churn"): search_features(query=...)
+- Hybrid lexical+semantic search ("features về churn", "tìm về tiền", "billing"): search_features(query=...)
 - Structured filter ("chưa có doc", "trong source X", "dtype float64"): \
 list_features(has_doc=False, source=..., dtype=...)
 - Counting ("có bao nhiêu feature ..."): count_features(...)

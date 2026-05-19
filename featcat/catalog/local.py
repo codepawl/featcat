@@ -1106,22 +1106,62 @@ class LocalBackend(CatalogBackend):
             "has_doc": has_doc_counts,
         }
 
-    def search_features(self, query: str) -> list[Feature]:
-        """Keyword search across features, ranked by BM25 (FTS5) or token-hit
-        score (legacy fallback). Returns Feature objects in rank order.
+    def search_features(self, query: str, limit: int = 10) -> list[Feature]:
+        """Hybrid lexical+semantic search over the catalog.
 
-        Delegates to ``full_text_search`` so SQLite and postgres go through
-        the same code path. Pre-FTS5 callers expected substring matches on
-        name/description/tags/column_name — FTS5 with the OR fallback in
-        :func:`_build_fts5_query` keeps that recall while adding ranking.
+        Delegates to :meth:`hybrid_search` — see that method for the merge
+        behaviour, RRF constant, and graceful-degrade guarantees when
+        embeddings aren't available.
         """
-        hits = self.full_text_search(query, limit=200)
-        if not hits:
+        return self.hybrid_search(query, limit=limit)
+
+    def hybrid_search(self, query: str, limit: int = 10) -> list[Feature]:
+        """Hybrid lexical (FTS5/tsvector) + semantic (cosine) search.
+
+        The two candidate lists are merged via Reciprocal Rank Fusion (RRF)
+        with the standard k=60 constant. RRF only consumes ordinal ranks, so
+        the lexical BM25 scores and cosine similarities never need to be
+        normalized onto a shared scale.
+
+        Semantic recall is best-effort: if ``sentence-transformers`` is not
+        installed, the embedding model fails to load, or no feature row has
+        an embedding yet, the hybrid result reduces to lexical-only. Rows
+        without an embedding still contribute via the lexical list — never
+        block the search. Run ``featcat embeddings backfill`` to populate
+        embeddings on legacy catalogs.
+
+        ``limit`` is the final cap. Each underlying list pulls ``max(limit*3, 30)``
+        candidates so the RRF merge has room to reorder.
+        """
+        if not query.strip():
             return []
-        ids = [h["id"] for h in hits]
-        by_id = self._features_by_ids(ids)
-        # Preserve rank order — full_text_search already sorted by relevance.
-        return [by_id[i] for i in ids if i in by_id]
+        pool = max(limit * 3, 30)
+        lex_hits = self.full_text_search(query, limit=pool)
+
+        sem_hits: list[dict] = []
+        # Lazy import — ``ai.embeddings`` imports ``catalog.local._row_to_feature``
+        # inside a function, so top-level reverse imports would create a cycle.
+        from ..ai.embeddings import embed_text, embeddings_available
+
+        if embeddings_available():
+            try:
+                query_vec = embed_text(query)
+            except RuntimeError as exc:
+                logger.warning("Semantic search disabled (embedding model failed to load): %s", exc)
+            else:
+                sem_hits = self.search_by_embedding(query_vec, top_k=pool)
+
+        rrf_k = 60
+        scores: dict[str, float] = defaultdict(float)
+        for rank, hit in enumerate(lex_hits):
+            scores[hit["id"]] += 1.0 / (rrf_k + rank + 1)
+        for rank, hit in enumerate(sem_hits):
+            scores[hit["id"]] += 1.0 / (rrf_k + rank + 1)
+        if not scores:
+            return []
+        ordered_ids = sorted(scores, key=lambda fid: scores[fid], reverse=True)[:limit]
+        by_id = self._features_by_ids(ordered_ids)
+        return [by_id[fid] for fid in ordered_ids if fid in by_id]
 
     @staticmethod
     def _parse_version_row(d: dict) -> dict:
@@ -2353,21 +2393,31 @@ class LocalBackend(CatalogBackend):
         ]
 
     def search_by_embedding(self, query_vec: list[float], top_k: int = 50) -> list[dict]:
-        """pgvector top-K cosine search by an arbitrary query vector (T1.2c).
+        """Top-K cosine search by an arbitrary query vector (T1.2c + hybrid).
 
-        Used by the NL query embeds-first path: caller embeds the user's
-        natural-language query, then this returns the closest features for
-        the LLM to rerank/explain. Postgres-only — sqlite has no pgvector
-        operator. Returns ``[]`` on non-postgres backends so callers can
-        fall through to a different retrieval path without branching.
+        Used by ``hybrid_search`` and the NL-query embeds-first path: caller
+        embeds the user's natural-language query, then this returns the
+        closest features for the LLM to rerank/explain.
+
+        - **Postgres**: pgvector ``<=>`` operator on the HNSW index. Sub-100ms
+          even at 5k+ features.
+        - **SQLite**: in-process numpy dot product over rows where
+          ``embedding IS NOT NULL``. Embeddings written by
+          :func:`featcat.ai.embeddings.embed_batch` are L2-normalized, so
+          cosine reduces to a dot product. Acceptable up to a few thousand
+          features (a 5k × 384 float32 matrix is ~7.5 MB); operators with
+          larger catalogs should run on postgres.
 
         Each result: ``{id, name, dtype, similarity}`` — same shape as
-        ``find_similar_features`` for consistency.
+        :meth:`find_similar_features`. Returns ``[]`` when no row has an
+        embedding so callers can fall through to alternate retrieval.
         """
-        if self.backend != "postgres":
-            return []
-        from sqlalchemy import bindparam
+        if self.backend == "postgres":
+            return self._search_by_embedding_pg(query_vec, top_k)
+        return self._search_by_embedding_sqlite(query_vec, top_k)
 
+    def _search_by_embedding_pg(self, query_vec: list[float], top_k: int) -> list[dict]:
+        """pgvector ``<=>`` cosine top-K. Postgres-only."""
         from ..db.embedding_type import Embedding
         from ..db.models import EMBEDDING_DIM
 
@@ -2389,6 +2439,49 @@ class LocalBackend(CatalogBackend):
                 "similarity": float(r["similarity"]) if r["similarity"] is not None else 0.0,
             }
             for r in rows
+        ]
+
+    def _search_by_embedding_sqlite(self, query_vec: list[float], top_k: int) -> list[dict]:
+        """In-process cosine top-K over SQLite-stored embeddings.
+
+        Embeddings on SQLite live as JSON text; we read through the ORM so
+        the :class:`featcat.db.embedding_type.Embedding` TypeDecorator decodes
+        them to ``list[float]``. The query vector is L2-normalized to keep
+        the dot-product = cosine identity even if a caller forgets to
+        normalize. Returns an empty list when the catalog has no embeddings,
+        so :meth:`hybrid_search` cleanly falls back to lexical-only.
+        """
+        import numpy as np
+        from sqlalchemy import select
+
+        from ..db.models import Feature as FeatureORM
+
+        with self.session() as s:
+            rows = s.execute(
+                select(FeatureORM.id, FeatureORM.name, FeatureORM.dtype, FeatureORM.embedding).where(
+                    FeatureORM.embedding.is_not(None)
+                )
+            ).all()
+        if not rows:
+            return []
+        ids = [r[0] for r in rows]
+        names = [r[1] for r in rows]
+        dtypes = [r[2] for r in rows]
+        matrix = np.asarray([r[3] for r in rows], dtype=np.float32)
+        qv = np.asarray(query_vec, dtype=np.float32)
+        q_norm = float(np.linalg.norm(qv))
+        if q_norm > 0:
+            qv = qv / q_norm
+        sims = matrix @ qv
+        order = np.argsort(-sims)[:top_k]
+        return [
+            {
+                "id": ids[i],
+                "name": names[i],
+                "dtype": dtypes[i],
+                "similarity": float(sims[i]),
+            }
+            for i in order
         ]
 
     def _build_corpus(self, rows: list[dict]) -> tuple[Any, Any, list[str]]:

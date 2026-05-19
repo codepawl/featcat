@@ -8,14 +8,20 @@ CATALOG_TOOLS: list[dict] = [
         "function": {
             "name": "search_features",
             "description": (
-                "Keyword search across feature names, descriptions, and tags. "
-                "Use for fuzzy 'find features about X' queries. "
-                "For structured filters (by source / has_doc / dtype) use list_features instead."
+                "Hybrid lexical + semantic search across feature names, descriptions, tags, "
+                "and column names. Accepts free-form Vietnamese or English queries — does NOT "
+                "require exact match, partial phrases work. Examples: 'tiền', 'billing', "
+                "'doanh thu', 'churn risk', 'cpu usage'. Returns the top matches ranked by "
+                "combined relevance. For structured filters (by source / has_doc / dtype) "
+                "use list_features instead."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string", "description": "Search keyword or phrase"},
+                    "query": {
+                        "type": "string",
+                        "description": "Free-form query in any language; partial phrases are fine.",
+                    },
                 },
                 "required": ["query"],
             },
