@@ -46,6 +46,9 @@ def source_payload() -> dict[str, Any]:
         "storage_type": "local",
         "format": "parquet",
         "description": "",
+        "entity_key": "user_id",
+        "event_timestamp_column": "event_ts",
+        "created_timestamp_column": "created_at",
         "created_at": _now_iso(),
         "updated_at": _now_iso(),
     }

@@ -16,6 +16,7 @@ import pytest
 
 from featcat_client import (
     ConnectionError,
+    DataSource,
     FeatCatClient,
     Feature,
     FeatureGroupDetail,
@@ -51,6 +52,21 @@ def test_list_features_passes_filters(feature_payload: dict[str, Any]) -> None:
     assert seen_params["source"] == "user_behavior"
     assert seen_params["tag"] == "churn"
     assert seen_params["dtype"] == "int64"
+
+
+def test_list_sources_preserves_join_metadata(source_payload: dict[str, Any]) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/sources"
+        return httpx.Response(200, json=[source_payload])
+
+    with _client_with_handler(handler) as client:
+        sources = client.list_sources()
+
+    assert len(sources) == 1
+    assert isinstance(sources[0], DataSource)
+    assert sources[0].entity_key == "user_id"
+    assert sources[0].event_timestamp_column == "event_ts"
+    assert sources[0].created_timestamp_column == "created_at"
 
 
 def test_get_feature_404_raises_feature_not_found() -> None:

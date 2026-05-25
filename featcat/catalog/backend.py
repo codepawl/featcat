@@ -332,16 +332,20 @@ class CatalogBackend(ABC):
         *,
         description: str | None = None,
         format: str | None = None,  # noqa: A002 — mirrors DataSource.format
+        entity_key: str | None = None,
+        event_timestamp_column: str | None = None,
+        created_timestamp_column: str | None = None,
     ) -> Any:
         """Update mutable fields on a registered source. Currently
-        ``description`` and ``format`` only — ``name``, ``path`` and
-        ``storage_type`` are immutable (renaming a source would invalidate
-        every dependent feature's name prefix and is intentionally deferred).
+        ``description``, ``format`` and optional join metadata only —
+        ``name``, ``path`` and ``storage_type`` are immutable (renaming a
+        source would invalidate every dependent feature's name prefix and is
+        intentionally deferred).
 
         Default no-op so backends without persistence still satisfy the
         interface; LocalBackend overrides with a real UPDATE.
         """
-        del description, format
+        del description, format, entity_key, event_timestamp_column, created_timestamp_column
         raise NotImplementedError(f"{type(self).__name__} does not support update_source ({name!r})")
 
     def delete_source(self, name: str) -> int:

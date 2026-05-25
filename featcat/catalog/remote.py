@@ -60,12 +60,21 @@ class RemoteBackend(CatalogBackend):
         *,
         description: str | None = None,
         format: str | None = None,  # noqa: A002 — mirrors DataSource.format
+        entity_key: str | None = None,
+        event_timestamp_column: str | None = None,
+        created_timestamp_column: str | None = None,
     ) -> Any:
         body: dict[str, Any] = {}
         if description is not None:
             body["description"] = description
         if format is not None:
             body["format"] = format
+        if entity_key is not None:
+            body["entity_key"] = entity_key
+        if event_timestamp_column is not None:
+            body["event_timestamp_column"] = event_timestamp_column
+        if created_timestamp_column is not None:
+            body["created_timestamp_column"] = created_timestamp_column
         result = self._request("PATCH", f"/api/sources/{name}", json=body)
         return DataSource.model_validate(result)
 

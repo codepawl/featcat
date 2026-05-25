@@ -23,6 +23,9 @@ class SourceCreate(BaseModel):
     storage_type: str | None = None  # auto-derived from path if unset
     format: str = "parquet"
     description: str = ""
+    entity_key: str | None = None
+    event_timestamp_column: str | None = None
+    created_timestamp_column: str | None = None
 
 
 class SourceUpdate(BaseModel):
@@ -30,12 +33,15 @@ class SourceUpdate(BaseModel):
 
     ``name``, ``path`` and ``storage_type`` are intentionally absent — renaming
     a source would invalidate every dependent feature's name prefix, so it's
-    deferred (see plan's open-risks section). Description and format are the
-    only fields a user can edit safely from the UI.
+    deferred. Description, format, and join metadata are safe metadata-only
+    edits.
     """
 
     description: str | None = None
     format: str | None = None
+    entity_key: str | None = None
+    event_timestamp_column: str | None = None
+    created_timestamp_column: str | None = None
 
 
 class SourceImpactGroup(BaseModel):
@@ -123,7 +129,14 @@ def get_source(name: str, db=Depends(get_db)):
 def update_source(name: str, body: SourceUpdate, db=Depends(get_db)):
     """Update mutable fields on a registered source."""
     try:
-        updated = db.update_source(name, description=body.description, format=body.format)
+        updated = db.update_source(
+            name,
+            description=body.description,
+            format=body.format,
+            entity_key=body.entity_key,
+            event_timestamp_column=body.event_timestamp_column,
+            created_timestamp_column=body.created_timestamp_column,
+        )
     except KeyError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     invalidate(prefix="sources:")

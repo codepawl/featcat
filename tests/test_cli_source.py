@@ -178,6 +178,35 @@ class TestSourceUpdate:
         assert src.format == "csv"
         db.close()
 
+    def test_update_join_metadata(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.chdir(tmp_path)
+        db = _seed(tmp_path)
+        db.close()
+
+        result = runner.invoke(
+            app,
+            [
+                "source",
+                "update",
+                "test_src",
+                "--entity-key",
+                "user_id",
+                "--event-timestamp-column",
+                "event_ts",
+                "--created-timestamp-column",
+                "created_ts",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+
+        db = LocalBackend(str(tmp_path / "catalog.db"))
+        src = db.get_source_by_name("test_src")
+        assert src is not None
+        assert src.entity_key == "user_id"
+        assert src.event_timestamp_column == "event_ts"
+        assert src.created_timestamp_column == "created_ts"
+        db.close()
+
     def test_no_fields_exits_one(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Calling update with no fields is an error, not a silent no-op."""
         monkeypatch.chdir(tmp_path)
@@ -213,7 +242,16 @@ class TestSourceListJson:
         payload = _json.loads(result.stdout)
         assert isinstance(payload, list) and len(payload) == 1
         row = payload[0]
-        assert {"name", "path", "storage_type", "format", "description"} <= set(row)
+        assert {
+            "name",
+            "path",
+            "storage_type",
+            "format",
+            "description",
+            "entity_key",
+            "event_timestamp_column",
+            "created_timestamp_column",
+        } <= set(row)
         assert row["name"] == "test_src"
 
     def test_json_output_empty(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

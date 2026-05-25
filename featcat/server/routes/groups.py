@@ -477,6 +477,9 @@ def export_group_version(  # noqa: PLR0911
         "source_name",
         "source_path",
         "source_format",
+        "source_entity_key",
+        "source_event_timestamp_column",
+        "source_created_timestamp_column",
         "owner",
         "deleted_after_freeze",
     ]

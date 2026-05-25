@@ -48,6 +48,9 @@ class DataSource(_Base):
     storage_type: str = "local"
     format: str = "parquet"
     description: str = ""
+    entity_key: str | None = None
+    event_timestamp_column: str | None = None
+    created_timestamp_column: str | None = None
     created_at: datetime
     updated_at: datetime
 

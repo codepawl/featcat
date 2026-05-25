@@ -26,6 +26,9 @@ class DataSource(BaseModel):
     storage_type: str = "local"  # "local" | "s3"; auto-derived from path scheme when caller omits it
     format: str = "parquet"  # "parquet" | "csv"
     description: str = ""
+    entity_key: str | None = None
+    event_timestamp_column: str | None = None
+    created_timestamp_column: str | None = None
     created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)
 

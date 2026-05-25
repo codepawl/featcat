@@ -31,6 +31,9 @@ class TestModels:
         assert ds.id
         assert ds.storage_type == "local"
         assert ds.format == "parquet"
+        assert ds.entity_key is None
+        assert ds.event_timestamp_column is None
+        assert ds.created_timestamp_column is None
 
     def test_feature_defaults(self):
         f = Feature(name="test.col", data_source_id="abc", column_name="col")
@@ -48,12 +51,21 @@ class TestModels:
 
 class TestDB:
     def test_add_and_get_source(self, db: CatalogDB):
-        source = DataSource(name="s1", path="/data/test.parquet")
+        source = DataSource(
+            name="s1",
+            path="/data/test.parquet",
+            entity_key="user_id",
+            event_timestamp_column="event_ts",
+            created_timestamp_column="created_at",
+        )
         db.add_source(source)
         got = db.get_source_by_name("s1")
         assert got is not None
         assert got.name == "s1"
         assert got.id == source.id
+        assert got.entity_key == "user_id"
+        assert got.event_timestamp_column == "event_ts"
+        assert got.created_timestamp_column == "created_at"
 
     def test_duplicate_source_fails(self, db: CatalogDB):
         db.add_source(DataSource(name="dup", path="/a"))
@@ -202,6 +214,25 @@ class TestSourceMutations:
         db.add_source(DataSource(name="fmt_src", path="/tmp/f.csv"))
         updated = db.update_source("fmt_src", format="csv")
         assert updated.format == "csv"
+
+    def test_update_source_join_metadata(self, db: CatalogDB):
+        db.add_source(DataSource(name="join_src", path="/tmp/j.parquet"))
+
+        updated = db.update_source(
+            "join_src",
+            entity_key="account_id",
+            event_timestamp_column="event_ts",
+            created_timestamp_column="created_ts",
+        )
+
+        assert updated.entity_key == "account_id"
+        assert updated.event_timestamp_column == "event_ts"
+        assert updated.created_timestamp_column == "created_ts"
+        reread = db.get_source_by_name("join_src")
+        assert reread is not None
+        assert reread.entity_key == "account_id"
+        assert reread.event_timestamp_column == "event_ts"
+        assert reread.created_timestamp_column == "created_ts"
 
     def test_update_source_no_fields_is_noop(self, db: CatalogDB):
         original = DataSource(name="noop", path="/tmp/n.parquet", description="d")
@@ -364,9 +395,11 @@ class TestLegacyDbMigration:
         backend.init_db()
 
         with backend.session() as s:
+            source_cols = {row["name"] for row in s.execute(text("PRAGMA table_info(data_sources)")).mappings()}
             features_cols = {row["name"] for row in s.execute(text("PRAGMA table_info(features)")).mappings()}
             lineage_cols = {row["name"] for row in s.execute(text("PRAGMA table_info(feature_lineage)")).mappings()}
 
+        assert {"entity_key", "event_timestamp_column", "created_timestamp_column"} <= source_cols
         assert {"status", "status_changed_at", "status_notes"} <= features_cols
         assert {"parent_type", "parent_source_id", "parent_column", "transform", "detected_method"} <= lineage_cols
 

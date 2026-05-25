@@ -239,6 +239,9 @@ class LocalBackend(CatalogBackend):
             return
         legacy_alters = (
             "ALTER TABLE data_sources ADD COLUMN auto_refresh INTEGER DEFAULT 0",
+            "ALTER TABLE data_sources ADD COLUMN entity_key TEXT",
+            "ALTER TABLE data_sources ADD COLUMN event_timestamp_column TEXT",
+            "ALTER TABLE data_sources ADD COLUMN created_timestamp_column TEXT",
             "ALTER TABLE features ADD COLUMN definition TEXT",
             "ALTER TABLE features ADD COLUMN definition_type TEXT",
             "ALTER TABLE features ADD COLUMN definition_updated_at TIMESTAMP",
@@ -322,8 +325,9 @@ class LocalBackend(CatalogBackend):
             s.execute(
                 text(
                     "INSERT INTO data_sources (id, name, path, storage_type, format, description, "
-                    "created_at, updated_at) "
-                    "VALUES (:id, :name, :path, :storage_type, :format, :description, :created_at, :updated_at)"
+                    "entity_key, event_timestamp_column, created_timestamp_column, created_at, updated_at) "
+                    "VALUES (:id, :name, :path, :storage_type, :format, :description, "
+                    ":entity_key, :event_timestamp_column, :created_timestamp_column, :created_at, :updated_at)"
                 ),
                 {
                     "id": source.id,
@@ -332,6 +336,9 @@ class LocalBackend(CatalogBackend):
                     "storage_type": source.storage_type,
                     "format": source.format,
                     "description": source.description,
+                    "entity_key": source.entity_key,
+                    "event_timestamp_column": source.event_timestamp_column,
+                    "created_timestamp_column": source.created_timestamp_column,
                     "created_at": source.created_at,
                     "updated_at": source.updated_at,
                 },
@@ -360,6 +367,9 @@ class LocalBackend(CatalogBackend):
         *,
         description: str | None = None,
         format: str | None = None,  # noqa: A002 — mirrors DataSource.format
+        entity_key: str | None = None,
+        event_timestamp_column: str | None = None,
+        created_timestamp_column: str | None = None,
     ) -> DataSource:
         """Update mutable metadata. Path/storage_type/name are immutable —
         renaming would invalidate every dependent feature's name prefix.
@@ -378,6 +388,15 @@ class LocalBackend(CatalogBackend):
         if format is not None:
             sets.append("format = :format")
             params["format"] = format
+        if entity_key is not None:
+            sets.append("entity_key = :entity_key")
+            params["entity_key"] = entity_key or None
+        if event_timestamp_column is not None:
+            sets.append("event_timestamp_column = :event_timestamp_column")
+            params["event_timestamp_column"] = event_timestamp_column or None
+        if created_timestamp_column is not None:
+            sets.append("created_timestamp_column = :created_timestamp_column")
+            params["created_timestamp_column"] = created_timestamp_column or None
         if not sets:
             return source  # no-op
         sets.append("updated_at = :now")
@@ -1557,7 +1576,10 @@ class LocalBackend(CatalogBackend):
                     text(
                         "SELECT f.id, f.name, f.dtype, f.description, f.tags, f.owner, f.stats, "
                         "       f.definition, f.definition_type, f.column_name, "
-                        "       ds.path AS source_path, ds.format AS source_format, ds.name AS source_name "
+                        "       ds.path AS source_path, ds.format AS source_format, ds.name AS source_name, "
+                        "       ds.entity_key AS source_entity_key, "
+                        "       ds.event_timestamp_column AS source_event_timestamp_column, "
+                        "       ds.created_timestamp_column AS source_created_timestamp_column "
                         "FROM features f "
                         "JOIN feature_group_members gm ON f.id = gm.feature_id "
                         "LEFT JOIN data_sources ds ON ds.id = f.data_source_id "
@@ -1589,6 +1611,9 @@ class LocalBackend(CatalogBackend):
                         "source_path": r.get("source_path") or "",
                         "source_format": r.get("source_format") or "",
                         "source_name": r.get("source_name") or "",
+                        "source_entity_key": r.get("source_entity_key"),
+                        "source_event_timestamp_column": r.get("source_event_timestamp_column"),
+                        "source_created_timestamp_column": r.get("source_created_timestamp_column"),
                     }
                 )
 

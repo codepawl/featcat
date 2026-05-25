@@ -27,7 +27,16 @@ if TYPE_CHECKING:
 def db_with_group(tmp_path: Path) -> LocalBackend:
     db = LocalBackend(str(tmp_path / "freeze.db"))
     db.init_db()
-    src = db.add_source(DataSource(name="src", path="/data/src.parquet", format="parquet"))
+    src = db.add_source(
+        DataSource(
+            name="src",
+            path="/data/src.parquet",
+            format="parquet",
+            entity_key="user_id",
+            event_timestamp_column="event_ts",
+            created_timestamp_column="created_ts",
+        )
+    )
     f1 = db.upsert_feature(
         Feature(
             name="src.user_age",
@@ -99,6 +108,9 @@ class TestFreezeGroup:
         assert age["dtype"] == "int64"
         assert age["source_path"] == "/data/src.parquet"
         assert age["source_format"] == "parquet"
+        assert age["source_entity_key"] == "user_id"
+        assert age["source_event_timestamp_column"] == "event_ts"
+        assert age["source_created_timestamp_column"] == "created_ts"
         assert age["tags"] == ["user", "demographic"]
         assert age["stats"]["mean"] == 35.2
 

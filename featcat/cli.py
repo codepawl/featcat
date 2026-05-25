@@ -618,6 +618,17 @@ def source_add(
     path: str = typer.Argument(help="Local path or s3:// URI"),
     fmt: str = typer.Option("parquet", "--format", help="File format: parquet or csv"),
     description: str = typer.Option("", help="Optional description"),
+    entity_key: str | None = typer.Option(None, "--entity-key", help="Entity/join key column for offline joins"),
+    event_timestamp_column: str | None = typer.Option(
+        None,
+        "--event-timestamp-column",
+        help="Event timestamp column for future point-in-time joins",
+    ),
+    created_timestamp_column: str | None = typer.Option(
+        None,
+        "--created-timestamp-column",
+        help="Created timestamp column used as a future point-in-time tie-breaker",
+    ),
 ) -> None:
     """Register a new data source."""
     storage_type = "s3" if path.startswith("s3://") else "local"
@@ -631,6 +642,9 @@ def source_add(
         storage_type=storage_type,
         format=fmt,
         description=description,
+        entity_key=entity_key,
+        event_timestamp_column=event_timestamp_column,
+        created_timestamp_column=created_timestamp_column,
     )
     db = _get_db()
     try:
@@ -659,6 +673,9 @@ def source_list(
             "storage_type": s.storage_type,
             "format": s.format,
             "description": s.description,
+            "entity_key": s.entity_key,
+            "event_timestamp_column": s.event_timestamp_column,
+            "created_timestamp_column": s.created_timestamp_column,
         }
         for s in sources
     ]
@@ -777,14 +794,31 @@ def source_update(
     name: str = typer.Argument(help="Source name"),
     description: str | None = typer.Option(None, "--description", "-d", help="New description"),
     fmt: str | None = typer.Option(None, "--format", help="New file format (parquet|csv)"),
+    entity_key: str | None = typer.Option(None, "--entity-key", help="Entity/join key column for offline joins"),
+    event_timestamp_column: str | None = typer.Option(
+        None,
+        "--event-timestamp-column",
+        help="Event timestamp column for future point-in-time joins",
+    ),
+    created_timestamp_column: str | None = typer.Option(
+        None,
+        "--created-timestamp-column",
+        help="Created timestamp column used as a future point-in-time tie-breaker",
+    ),
 ) -> None:
-    """Update mutable fields on a source (description, format).
+    """Update mutable fields on a source (description, format, join metadata).
 
     Mirrors ``PATCH /api/sources/{name}``. ``name``, ``path``, and
     ``storage_type`` are immutable — rename is intentionally not supported.
     """
-    if description is None and fmt is None:
-        console.print("[red]Nothing to update.[/red] Pass --description and/or --format.")
+    if (
+        description is None
+        and fmt is None
+        and entity_key is None
+        and event_timestamp_column is None
+        and created_timestamp_column is None
+    ):
+        console.print("[red]Nothing to update.[/red] Pass --description, --format, or a join metadata option.")
         raise typer.Exit(1)
 
     db = _get_db()
@@ -792,7 +826,14 @@ def source_update(
         if db.get_source_by_name(name) is None:
             console.print(f"[red]Source not found:[/red] {name}")
             raise typer.Exit(1)
-        db.update_source(name, description=description, format=fmt)
+        db.update_source(
+            name,
+            description=description,
+            format=fmt,
+            entity_key=entity_key,
+            event_timestamp_column=event_timestamp_column,
+            created_timestamp_column=created_timestamp_column,
+        )
         console.print(f"[green]Updated source:[/green] {name}")
     finally:
         db.close()
