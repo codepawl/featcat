@@ -38,7 +38,20 @@ from sqlalchemy.exc import OperationalError
 from ..db.connection import make_engine, make_session_factory, resolve_backend
 from ..db.models import Base
 from .backend import CatalogBackend
-from .models import DatasetBuildAudit, DataSource, Feature, FeatureGroup, FeatureGroupVersion, ScanLog, _new_id
+from .models import (
+    DatasetBuildAudit,
+    DataSource,
+    Feature,
+    FeatureGroup,
+    FeatureGroupVersion,
+    OnlineFeatureReadMetadata,
+    OnlineFeatureReadResult,
+    OnlineFeatureReadRow,
+    OnlineFeatureWrite,
+    OnlineFeatureWriteResult,
+    ScanLog,
+    _new_id,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -202,6 +215,16 @@ def _row_to_feature(row: Any) -> Feature:
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _coerce_utc_datetime(value: Any) -> datetime:
+    if isinstance(value, str):
+        value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if not isinstance(value, datetime):
+        raise TypeError(f"Expected datetime, got {type(value).__name__}")
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 class LocalBackend(CatalogBackend):
@@ -647,6 +670,186 @@ class LocalBackend(CatalogBackend):
             data["warnings"] = json.loads(data.get("warnings") or "[]")
             audits.append(DatasetBuildAudit(**data))
         return audits
+
+    def _should_overwrite_online_value(self, existing: dict[str, Any], incoming: dict[str, Any]) -> tuple[bool, str]:
+        existing_event = _coerce_utc_datetime(existing["event_timestamp"])
+        incoming_event = _coerce_utc_datetime(incoming["event_timestamp"])
+        if incoming_event > existing_event:
+            return True, "newer_event"
+        if incoming_event < existing_event:
+            return False, "older_event"
+
+        existing_created_raw = existing.get("created_timestamp")
+        incoming_created_raw = incoming.get("created_timestamp")
+        existing_created = _coerce_utc_datetime(existing_created_raw) if existing_created_raw is not None else None
+        incoming_created = _coerce_utc_datetime(incoming_created_raw) if incoming_created_raw is not None else None
+        if incoming_created is not None and (existing_created is None or incoming_created > existing_created):
+            return True, "newer_created"
+        if existing_created is not None and (incoming_created is None or incoming_created < existing_created):
+            return False, "same_timestamp"
+
+        if str(incoming["write_id"]) > str(existing["write_id"]):
+            return True, "higher_write_id"
+        return False, "same_timestamp"
+
+    def write_online_features(
+        self,
+        rows: list[OnlineFeatureWrite],
+        *,
+        project: str = "",
+        feature_view: str = "",
+    ) -> OnlineFeatureWriteResult:
+        """Write latest online feature values with deterministic conflict handling."""
+        from .online_store import prepare_online_write_records
+
+        writes = [
+            row if isinstance(row, OnlineFeatureWrite) else OnlineFeatureWrite.model_validate(row) for row in rows
+        ]
+        records, errors = prepare_online_write_records(self, rows=writes, project=project, feature_view=feature_view)
+        result = OnlineFeatureWriteResult(requested=len(rows), errors=errors)
+        if not records:
+            return result
+
+        with self.session() as s:
+            for record in records:
+                existing = (
+                    s.execute(
+                        text(
+                            "SELECT event_timestamp, created_timestamp, write_id "
+                            "FROM online_feature_values "
+                            "WHERE project = :project "
+                            "AND feature_view = :feature_view "
+                            "AND feature_ref = :feature_ref "
+                            "AND entity_key_hash = :entity_key_hash"
+                        ),
+                        record,
+                    )
+                    .mappings()
+                    .first()
+                )
+                if existing is None:
+                    s.execute(
+                        text(
+                            "INSERT INTO online_feature_values ("
+                            "project, feature_view, feature_ref, entity_key_hash, entity_key_json, "
+                            "value_json, value_dtype, event_timestamp, created_timestamp, source_name, "
+                            "source_path, written_at, write_id"
+                            ") VALUES ("
+                            ":project, :feature_view, :feature_ref, :entity_key_hash, :entity_key_json, "
+                            ":value_json, :value_dtype, :event_timestamp, :created_timestamp, :source_name, "
+                            ":source_path, :written_at, :write_id"
+                            ")"
+                        ),
+                        record,
+                    )
+                    result.written += 1
+                    continue
+
+                should_write, reason = self._should_overwrite_online_value(dict(existing), record)
+                if not should_write:
+                    if reason == "older_event":
+                        result.skipped_older += 1
+                    else:
+                        result.skipped_same_timestamp += 1
+                    continue
+
+                s.execute(
+                    text(
+                        "UPDATE online_feature_values SET "
+                        "entity_key_json = :entity_key_json, "
+                        "value_json = :value_json, "
+                        "value_dtype = :value_dtype, "
+                        "event_timestamp = :event_timestamp, "
+                        "created_timestamp = :created_timestamp, "
+                        "source_name = :source_name, "
+                        "source_path = :source_path, "
+                        "written_at = :written_at, "
+                        "write_id = :write_id "
+                        "WHERE project = :project "
+                        "AND feature_view = :feature_view "
+                        "AND feature_ref = :feature_ref "
+                        "AND entity_key_hash = :entity_key_hash"
+                    ),
+                    record,
+                )
+                result.written += 1
+            s.commit()
+        return result
+
+    def get_online_features(
+        self,
+        *,
+        entity_keys: list[dict[str, Any]],
+        feature_refs: list[str],
+        project: str = "",
+        feature_view: str = "",
+    ) -> OnlineFeatureReadResult:
+        """Read latest online feature values preserving entity and feature order."""
+        from .online_store import canonical_entity_key, entity_key_hash
+
+        canonical_entities = []
+        errors: list[ValueError] = []
+        for entity_key in entity_keys:
+            try:
+                canonical_entities.append((entity_key, canonical_entity_key(entity_key), entity_key_hash(entity_key)))
+            except ValueError as exc:
+                errors.append(exc)
+        if errors:
+            raise errors[0]
+
+        if not canonical_entities or not feature_refs:
+            return OnlineFeatureReadResult(
+                rows=[
+                    OnlineFeatureReadRow(
+                        entity_key=entity_key,
+                        features={feature_ref: None for feature_ref in feature_refs},
+                        metadata={feature_ref: OnlineFeatureReadMetadata(found=False) for feature_ref in feature_refs},
+                    )
+                    for entity_key, _entity_json, _entity_hash in canonical_entities
+                ]
+            )
+
+        hashes = [entity_hash for _entity_key, _entity_json, entity_hash in canonical_entities]
+        stmt = text(
+            "SELECT * FROM online_feature_values "
+            "WHERE project = :project "
+            "AND feature_view = :feature_view "
+            "AND entity_key_hash IN :hashes "
+            "AND feature_ref IN :feature_refs"
+        ).bindparams(bindparam("hashes", expanding=True), bindparam("feature_refs", expanding=True))
+        with self.session() as s:
+            rows = (
+                s.execute(
+                    stmt,
+                    {
+                        "project": project,
+                        "feature_view": feature_view,
+                        "hashes": hashes,
+                        "feature_refs": feature_refs,
+                    },
+                )
+                .mappings()
+                .all()
+            )
+
+        by_key = {(row["entity_key_hash"], row["feature_ref"]): dict(row) for row in rows}
+        result_rows: list[OnlineFeatureReadRow] = []
+        for entity_key, _entity_json, entity_hash in canonical_entities:
+            features: dict[str, Any] = {}
+            metadata: dict[str, OnlineFeatureReadMetadata] = {}
+            for feature_ref in feature_refs:
+                stored = by_key.get((entity_hash, feature_ref))
+                if stored is None:
+                    features[feature_ref] = None
+                    metadata[feature_ref] = OnlineFeatureReadMetadata(found=False)
+                    continue
+                features[feature_ref] = json.loads(stored["value_json"]) if stored["value_json"] is not None else None
+                metadata[feature_ref] = OnlineFeatureReadMetadata(
+                    found=True,
+                    event_timestamp=_coerce_utc_datetime(stored["event_timestamp"]),
+                )
+            result_rows.append(OnlineFeatureReadRow(entity_key=entity_key, features=features, metadata=metadata))
+        return OnlineFeatureReadResult(rows=result_rows)
 
     # --- Features ---
 

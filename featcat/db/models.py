@@ -191,6 +191,37 @@ class DatasetBuildAudit(Base):
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
 
 
+class OnlineFeatureValue(Base):
+    """Latest online feature value for one entity-feature pair."""
+
+    __tablename__ = "online_feature_values"
+    __table_args__ = (
+        PrimaryKeyConstraint(
+            "project",
+            "feature_view",
+            "feature_ref",
+            "entity_key_hash",
+            name="pk_online_feature_values",
+        ),
+        Index("idx_online_feature_values_lookup", "project", "feature_view", "entity_key_hash"),
+        Index("idx_online_feature_values_feature", "project", "feature_view", "feature_ref"),
+    )
+
+    project: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    feature_view: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    feature_ref: Mapped[str] = mapped_column(Text, nullable=False)
+    entity_key_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    entity_key_json: Mapped[str] = mapped_column(Text, nullable=False)
+    value_json: Mapped[str | None] = mapped_column(Text)
+    value_dtype: Mapped[str | None] = mapped_column(Text)
+    event_timestamp: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    created_timestamp: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    source_name: Mapped[str | None] = mapped_column(Text)
+    source_path: Mapped[str | None] = mapped_column(Text)
+    written_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    write_id: Mapped[str] = mapped_column(Text, nullable=False)
+
+
 class JobSchedule(Base):
     __tablename__ = "job_schedules"
 

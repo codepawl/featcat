@@ -193,3 +193,57 @@ class DatasetBuildAudit(BaseModel):
     warnings: list[dict[str, Any]] = Field(default_factory=list)
     actor: str | None = None
     created_at: datetime = Field(default_factory=_utcnow)
+
+
+class OnlineFeatureWrite(BaseModel):
+    """One latest-value write into the PostgreSQL online store."""
+
+    entity_key: dict[str, Any]
+    feature_ref: str
+    value: Any = None
+    value_dtype: str | None = None
+    event_timestamp: datetime
+    created_timestamp: datetime | None = None
+    source_name: str | None = None
+    source_path: str | None = None
+    write_id: str | None = None
+
+
+class OnlineFeatureWriteError(BaseModel):
+    """Structured per-row validation/write error."""
+
+    index: int
+    code: str
+    message: str
+    field: str | None = None
+
+
+class OnlineFeatureWriteResult(BaseModel):
+    """Summary of a batch online-store write."""
+
+    requested: int
+    written: int = 0
+    skipped_older: int = 0
+    skipped_same_timestamp: int = 0
+    errors: list[OnlineFeatureWriteError] = Field(default_factory=list)
+
+
+class OnlineFeatureReadMetadata(BaseModel):
+    """Per-feature online read metadata."""
+
+    found: bool
+    event_timestamp: datetime | None = None
+
+
+class OnlineFeatureReadRow(BaseModel):
+    """Online read result for one requested entity."""
+
+    entity_key: dict[str, Any]
+    features: dict[str, Any]
+    metadata: dict[str, OnlineFeatureReadMetadata]
+
+
+class OnlineFeatureReadResult(BaseModel):
+    """Batch online-store read result preserving request order."""
+
+    rows: list[OnlineFeatureReadRow]

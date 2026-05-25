@@ -461,6 +461,29 @@ class CatalogBackend(ABC):
         del limit, status
         return []
 
+    def write_online_features(
+        self,
+        rows: list[Any],
+        *,
+        project: str = "",
+        feature_view: str = "",
+    ) -> Any:
+        """Write latest online feature values. LocalBackend overrides."""
+        del rows, project, feature_view
+        raise NotImplementedError(f"{type(self).__name__} does not support write_online_features")
+
+    def get_online_features(
+        self,
+        *,
+        entity_keys: list[dict[str, Any]],
+        feature_refs: list[str],
+        project: str = "",
+        feature_view: str = "",
+    ) -> Any:
+        """Read latest online feature values. LocalBackend overrides."""
+        del entity_keys, feature_refs, project, feature_view
+        raise NotImplementedError(f"{type(self).__name__} does not support get_online_features")
+
     # --- Feature Groups ---
 
     @abstractmethod
