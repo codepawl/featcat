@@ -13,6 +13,8 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 if TYPE_CHECKING:
+    import polars as pl
+
     from .backend import CatalogBackend
 
 
@@ -67,6 +69,17 @@ def _read_source_columns(
 ) -> pa.Table:
     """Read specific columns from a parquet file."""
     return pq.read_table(path, columns=columns)
+
+
+def _to_polars_dataframe(table: pa.Table) -> pl.DataFrame:
+    """Convert an Arrow table to a Polars DataFrame."""
+    import polars as pl
+
+    frame = pl.from_arrow(table)
+    if isinstance(frame, pl.Series):
+        msg = "Expected Polars DataFrame from Arrow table."
+        raise TypeError(msg)
+    return frame
 
 
 def _generate_snippet(
@@ -170,10 +183,8 @@ def export_features(
         table = tables[0]
         for t in tables[1:]:
             try:
-                import polars as pl
-
-                left = pl.from_arrow(table)
-                right = pl.from_arrow(t)
+                left = _to_polars_dataframe(table)
+                right = _to_polars_dataframe(t)
                 merged = left.join(right, on=join_on, how="inner")
                 table = merged.to_arrow()
             except ImportError:
