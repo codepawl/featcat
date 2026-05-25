@@ -15,6 +15,7 @@ Server endpoints actually used (verified against ``featcat/server/routes/``):
 - ``GET  /api/groups``                    — list groups
 - ``GET  /api/groups/{name}``             — group with members
 - ``POST /api/datasets/build``            — build local PIT training dataset
+- ``GET  /api/datasets/builds``           — list recent dataset build audits
 - ``GET  /api/usage/feature?name=X``      — usage stats for a feature
 
 The server *auto-logs* a ``view`` action on every ``GET /api/features/by-name``
@@ -43,6 +44,7 @@ from .models import (
     FeatureGroup,
     FeatureGroupDetail,
     FeatureUsage,
+    TrainingDatasetBuildAudit,
     TrainingDatasetBuildResult,
 )
 
@@ -343,6 +345,19 @@ class FeatCatClient:
 
         row = self._request("POST", "/api/datasets/build", json_body=body)
         return TrainingDatasetBuildResult.model_validate(row)
+
+    def list_training_dataset_builds(
+        self,
+        *,
+        limit: int = 20,
+        status: str | None = None,
+    ) -> list[TrainingDatasetBuildAudit]:
+        """List recent training dataset build audit records."""
+        params: dict[str, Any] = {"limit": limit}
+        if status is not None:
+            params["status"] = status
+        rows = self._request("GET", "/api/datasets/builds", params=params)
+        return [TrainingDatasetBuildAudit.model_validate(row) for row in rows]
 
     # --- DataFrame helpers ---
 

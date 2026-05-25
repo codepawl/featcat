@@ -128,3 +128,26 @@ class TrainingDatasetBuildResult(_Base):
     feature_count: int = 0
     unresolved_row_count: int = 0
     missing_feature_value_count: int = 0
+
+
+class TrainingDatasetBuildAudit(_Base):
+    """Shape returned by ``GET /api/datasets/builds``."""
+
+    id: str
+    status: str
+    entity_df_path: str
+    source_path: str | None = None
+    source_name: str | None = None
+    output_path: str | None = None
+    entity_key: str | None = None
+    entity_timestamp_column: str | None = None
+    source_event_timestamp_column: str | None = None
+    feature_columns: list[str] = []
+    row_count: int = 0
+    feature_count: int = 0
+    unresolved_row_count: int = 0
+    missing_feature_value_count: int = 0
+    errors: list[TrainingDatasetIssue] = []
+    warnings: list[TrainingDatasetIssue] = []
+    actor: str | None = None
+    created_at: datetime

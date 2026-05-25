@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
@@ -15,6 +17,9 @@ from ...catalog.training_dataset import (
 from ..deps import get_db
 
 router = APIRouter()
+
+if TYPE_CHECKING:
+    from ...catalog.models import DatasetBuildAudit
 
 
 class DatasetBuildRequest(BaseModel):
@@ -51,8 +56,45 @@ class DatasetBuildResponse(BaseModel):
     missing_feature_value_count: int
 
 
+class DatasetBuildAuditResponse(BaseModel):
+    id: str
+    status: str
+    entity_df_path: str
+    source_path: str | None = None
+    source_name: str | None = None
+    output_path: str | None = None
+    entity_key: str | None = None
+    entity_timestamp_column: str | None = None
+    source_event_timestamp_column: str | None = None
+    feature_columns: list[str]
+    row_count: int
+    feature_count: int
+    unresolved_row_count: int
+    missing_feature_value_count: int
+    errors: list[dict]
+    warnings: list[dict]
+    actor: str | None = None
+    created_at: str
+
+
 def _response_from_result(result: TrainingDatasetBuildResult) -> DatasetBuildResponse:
     return DatasetBuildResponse.model_validate(training_dataset_result_to_dict(result))
+
+
+def _audit_response(row: DatasetBuildAudit) -> DatasetBuildAuditResponse:
+    payload = row.model_dump()
+    payload["created_at"] = row.created_at.isoformat()
+    return DatasetBuildAuditResponse.model_validate(payload)
+
+
+@router.get("/builds", response_model=list[DatasetBuildAuditResponse])
+def list_dataset_builds(
+    limit: int = 20,
+    status: str | None = None,
+    db=Depends(get_db),
+) -> list[DatasetBuildAuditResponse]:
+    """List recent training dataset build audit rows."""
+    return [_audit_response(row) for row in db.list_dataset_build_audits(limit=limit, status=status)]
 
 
 @router.post("/build", response_model=DatasetBuildResponse)

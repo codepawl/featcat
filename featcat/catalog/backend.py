@@ -456,9 +456,9 @@ class CatalogBackend(ABC):
         )
         return ""
 
-    def list_dataset_build_audits(self, limit: int = 10) -> list:
+    def list_dataset_build_audits(self, limit: int = 20, status: str | None = None) -> list:
         """Return recent dataset-build audit rows, newest first."""
-        del limit
+        del limit, status
         return []
 
     # --- Feature Groups ---

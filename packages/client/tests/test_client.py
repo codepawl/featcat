@@ -24,6 +24,7 @@ from featcat_client import (
     FeatureNotFound,
     GroupNotFound,
     ServerError,
+    TrainingDatasetBuildAudit,
     TrainingDatasetBuildResult,
 )
 
@@ -240,6 +241,29 @@ def _dataset_success_payload() -> dict[str, Any]:
     }
 
 
+def _dataset_audit_payload() -> dict[str, Any]:
+    return {
+        "id": "audit-1",
+        "status": "success",
+        "entity_df_path": "labels.parquet",
+        "source_path": "features.parquet",
+        "source_name": None,
+        "output_path": "training.parquet",
+        "entity_key": "customer_id",
+        "entity_timestamp_column": "event_ts",
+        "source_event_timestamp_column": "feature_ts",
+        "feature_columns": ["avg_spend_30d", "txn_count_30d"],
+        "row_count": 10,
+        "feature_count": 2,
+        "unresolved_row_count": 1,
+        "missing_feature_value_count": 2,
+        "errors": [],
+        "warnings": [],
+        "actor": "api",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 def test_build_training_dataset_posts_expected_body() -> None:
     captured: dict[str, Any] = {}
 
@@ -356,6 +380,57 @@ def test_build_training_dataset_supports_source_name() -> None:
         "entity_timestamp_column": "event_ts",
     }
     assert result.source_path == "/data/features.parquet"
+
+
+def test_list_training_dataset_builds_sends_expected_request() -> None:
+    captured: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        captured["params"] = dict(request.url.params)
+        return httpx.Response(200, json=[_dataset_audit_payload()])
+
+    with _client_with_handler(handler) as client:
+        rows = client.list_training_dataset_builds(limit=20, status="success")
+
+    assert isinstance(rows[0], TrainingDatasetBuildAudit)
+    assert captured == {
+        "method": "GET",
+        "path": "/api/datasets/builds",
+        "params": {"limit": "20", "status": "success"},
+    }
+
+
+def test_list_training_dataset_builds_parses_response() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json=[
+                _dataset_audit_payload(),
+                {
+                    **_dataset_audit_payload(),
+                    "id": "audit-2",
+                    "status": "validation_failed",
+                    "errors": [
+                        {
+                            "code": "source_dataframe_missing_entity_key",
+                            "message": "Source dataframe is missing entity key column: customer_id",
+                            "field": "entity_key",
+                        }
+                    ],
+                },
+            ],
+        )
+
+    with _client_with_handler(handler) as client:
+        rows = client.list_training_dataset_builds()
+
+    assert [row.id for row in rows] == ["audit-1", "audit-2"]
+    assert rows[0].status == "success"
+    assert rows[0].feature_columns == ["avg_spend_30d", "txn_count_30d"]
+    assert rows[1].status == "validation_failed"
+    assert rows[1].errors[0].code == "source_dataframe_missing_entity_key"
 
 
 # --------------------------------------------------------------------------- #

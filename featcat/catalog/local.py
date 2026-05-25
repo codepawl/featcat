@@ -619,13 +619,22 @@ class LocalBackend(CatalogBackend):
             s.commit()
         return audit_id
 
-    def list_dataset_build_audits(self, limit: int = 10) -> list[DatasetBuildAudit]:
+    def list_dataset_build_audits(self, limit: int = 20, status: str | None = None) -> list[DatasetBuildAudit]:
         """Return dataset-build audit rows, newest first."""
+        if status is not None and status not in {"success", "validation_failed", "error"}:
+            raise ValueError(f"Unsupported dataset build audit status: {status}")
+        safe_limit = min(max(limit, 1), 100)
+        query = "SELECT * FROM dataset_build_audits"
+        params: dict[str, object] = {"limit": safe_limit}
+        if status is not None:
+            query += " WHERE status = :status"
+            params["status"] = status
+        query += " ORDER BY created_at DESC LIMIT :limit"
         with self.session() as s:
             rows = (
                 s.execute(
-                    text("SELECT * FROM dataset_build_audits ORDER BY created_at DESC LIMIT :limit"),
-                    {"limit": limit},
+                    text(query),
+                    params,
                 )
                 .mappings()
                 .all()
