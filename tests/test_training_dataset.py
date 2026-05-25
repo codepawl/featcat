@@ -204,3 +204,224 @@ def test_requested_feature_column_missing_returns_clear_error(local_parquet_path
 
     assert result.is_valid is False
     assert "requested_feature_columns_missing" in _codes(result)
+
+
+def _write_table(path: Path, data: dict) -> Path:
+    pq.write_table(pa.table(data), path)
+    return path
+
+
+def _pit_result(tmp_path: Path, entity_data: dict, source_data: dict, feature_columns: list[str] | None = None):
+    entity_path = _write_table(tmp_path / "pit_entities.parquet", entity_data)
+    source_path = _write_table(tmp_path / "pit_source.parquet", source_data)
+    return build_training_dataset(
+        entity_df_path=str(entity_path),
+        feature_columns=feature_columns or ["score"],
+        data_source=_source(source_path),
+    )
+
+
+def test_point_in_time_join_exact_timestamp_match(tmp_path: Path) -> None:
+    result = _pit_result(
+        tmp_path,
+        {"user_id": pa.array([1]), "event_ts": pa.array(["2026-01-02"])},
+        {"user_id": pa.array([1]), "event_ts": pa.array(["2026-01-02"]), "score": pa.array([20])},
+    )
+
+    assert result.is_valid is True
+    assert result.dataframe is not None
+    assert result.dataframe["score"].to_list() == [20]
+
+
+def test_point_in_time_join_latest_prior_timestamp_is_selected(tmp_path: Path) -> None:
+    result = _pit_result(
+        tmp_path,
+        {"user_id": pa.array([1]), "event_ts": pa.array(["2026-01-05"])},
+        {
+            "user_id": pa.array([1, 1]),
+            "event_ts": pa.array(["2026-01-01", "2026-01-04"]),
+            "score": pa.array([10, 40]),
+        },
+    )
+
+    assert result.dataframe is not None
+    assert result.dataframe["score"].to_list() == [40]
+
+
+def test_point_in_time_join_future_values_do_not_leak(tmp_path: Path) -> None:
+    result = _pit_result(
+        tmp_path,
+        {"user_id": pa.array([1]), "event_ts": pa.array(["2026-01-03"])},
+        {
+            "user_id": pa.array([1, 1]),
+            "event_ts": pa.array(["2026-01-01", "2026-01-04"]),
+            "score": pa.array([10, 999]),
+        },
+    )
+
+    assert result.dataframe is not None
+    assert result.dataframe["score"].to_list() == [10]
+
+
+def test_point_in_time_join_multiple_source_rows_select_latest_eligible_row(tmp_path: Path) -> None:
+    result = _pit_result(
+        tmp_path,
+        {"user_id": pa.array([1]), "event_ts": pa.array(["2026-01-10"])},
+        {
+            "user_id": pa.array([1, 1, 1]),
+            "event_ts": pa.array(["2026-01-01", "2026-01-09", "2026-01-11"]),
+            "score": pa.array([10, 90, 110]),
+        },
+    )
+
+    assert result.dataframe is not None
+    assert result.dataframe["score"].to_list() == [90]
+
+
+def test_point_in_time_join_multiple_entities_are_isolated(tmp_path: Path) -> None:
+    result = _pit_result(
+        tmp_path,
+        {"user_id": pa.array([1, 2]), "event_ts": pa.array(["2026-01-05", "2026-01-05"])},
+        {
+            "user_id": pa.array([1, 2, 2]),
+            "event_ts": pa.array(["2026-01-04", "2026-01-01", "2026-01-04"]),
+            "score": pa.array([100, 200, 240]),
+        },
+    )
+
+    assert result.dataframe is not None
+    assert result.dataframe["score"].to_list() == [100, 240]
+
+
+def test_point_in_time_join_preserves_entity_row_order(tmp_path: Path) -> None:
+    result = _pit_result(
+        tmp_path,
+        {
+            "user_id": pa.array([2, 1, 2]),
+            "event_ts": pa.array(["2026-01-05", "2026-01-03", "2026-01-02"]),
+            "label": pa.array([0, 1, 0]),
+        },
+        {
+            "user_id": pa.array([1, 2, 2]),
+            "event_ts": pa.array(["2026-01-01", "2026-01-01", "2026-01-04"]),
+            "score": pa.array([10, 20, 40]),
+        },
+    )
+
+    assert result.dataframe is not None
+    assert result.dataframe["user_id"].to_list() == [2, 1, 2]
+    assert result.dataframe["score"].to_list() == [40, 10, 20]
+
+
+def test_point_in_time_join_does_not_leak_internal_row_index_column(tmp_path: Path) -> None:
+    result = _pit_result(
+        tmp_path,
+        {
+            "user_id": pa.array([1]),
+            "event_ts": pa.array(["2026-01-03"]),
+            "__featcat_entity_row": pa.array(["entity value"]),
+        },
+        {"user_id": pa.array([1]), "event_ts": pa.array(["2026-01-02"]), "score": pa.array([20])},
+    )
+
+    assert result.dataframe is not None
+    assert "__featcat_entity_row_1" not in result.dataframe.columns
+    assert result.dataframe.columns == ["user_id", "event_ts", "__featcat_entity_row", "score"]
+
+
+def test_point_in_time_join_feature_entity_column_collision_returns_validation_error(tmp_path: Path) -> None:
+    entity_path = _write_table(
+        tmp_path / "entities.parquet",
+        {"user_id": pa.array([1]), "event_ts": pa.array(["2026-01-03"]), "score": pa.array([111])},
+    )
+    source_path = _write_table(
+        tmp_path / "source.parquet",
+        {"user_id": pa.array([1]), "event_ts": pa.array(["2026-01-02"]), "score": pa.array([222])},
+    )
+    output_path = tmp_path / "collision.parquet"
+
+    result = build_training_dataset(
+        entity_df_path=str(entity_path),
+        feature_columns=["score"],
+        output_path=str(output_path),
+        data_source=_source(source_path),
+    )
+
+    assert result.is_valid is False
+    assert "feature_column_collides_with_entity_dataframe" in _codes(result)
+    assert result.dataframe is None
+    assert not output_path.exists()
+
+
+def test_point_in_time_join_no_historical_match_returns_null_feature_value(tmp_path: Path) -> None:
+    result = _pit_result(
+        tmp_path,
+        {"user_id": pa.array([1]), "event_ts": pa.array(["2026-01-01"])},
+        {"user_id": pa.array([1]), "event_ts": pa.array(["2026-01-02"]), "score": pa.array([20])},
+    )
+
+    assert result.dataframe is not None
+    assert result.dataframe["score"].to_list() == [None]
+    assert result.unresolved_row_count == 1
+    assert result.missing_feature_value_count == 1
+
+
+def test_point_in_time_join_requested_multiple_feature_columns_are_joined(tmp_path: Path) -> None:
+    result = _pit_result(
+        tmp_path,
+        {"user_id": pa.array([1]), "event_ts": pa.array(["2026-01-03"])},
+        {
+            "user_id": pa.array([1]),
+            "event_ts": pa.array(["2026-01-02"]),
+            "score": pa.array([20]),
+            "country": pa.array(["US"]),
+        },
+        ["score", "country"],
+    )
+
+    assert result.dataframe is not None
+    assert result.feature_count == 2
+    assert result.dataframe.select(["score", "country"]).to_dicts() == [{"score": 20, "country": "US"}]
+
+
+def test_point_in_time_join_output_path_writes_local_parquet(tmp_path: Path) -> None:
+    entity_path = _write_table(
+        tmp_path / "entities.parquet",
+        {"user_id": pa.array([1]), "event_ts": pa.array(["2026-01-03"])},
+    )
+    source_path = _write_table(
+        tmp_path / "source.parquet",
+        {"user_id": pa.array([1]), "event_ts": pa.array(["2026-01-02"]), "score": pa.array([20])},
+    )
+    output_path = tmp_path / "dataset.parquet"
+
+    result = build_training_dataset(
+        entity_df_path=str(entity_path),
+        feature_columns=["score"],
+        output_path=str(output_path),
+        data_source=_source(source_path),
+    )
+
+    assert result.is_valid is True
+    assert result.output_path == str(output_path)
+    assert output_path.exists()
+    assert pq.read_table(output_path).to_pydict()["score"] == [20]
+
+
+def test_point_in_time_join_validation_errors_prevent_output_writing(
+    local_parquet_paths: tuple[Path, Path], tmp_path: Path
+) -> None:
+    entity_path, source_path = local_parquet_paths
+    output_path = tmp_path / "should_not_exist.parquet"
+
+    result = build_training_dataset(
+        entity_df_path=str(entity_path),
+        feature_columns=["missing_feature"],
+        output_path=str(output_path),
+        data_source=_source(source_path),
+    )
+
+    assert result.is_valid is False
+    assert result.dataframe is None
+    assert result.output_path is None
+    assert not output_path.exists()

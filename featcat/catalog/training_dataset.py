@@ -1,12 +1,8 @@
-"""Local training dataset validation foundation.
-
-This module intentionally stops short of point-in-time joins and materialization.
-It validates the local parquet inputs and join metadata needed by a future
-training dataset builder.
-"""
+"""Local point-in-time training dataset builder."""
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -14,6 +10,8 @@ from typing import TYPE_CHECKING
 import pyarrow.parquet as pq
 
 if TYPE_CHECKING:
+    import polars as pl
+
     from .models import DataSource
 
 
@@ -40,6 +38,11 @@ class TrainingDatasetBuildResult:
     source_event_timestamp_column: str | None = None
     feature_columns: list[str] = field(default_factory=list)
     output_path: str | None = None
+    row_count: int = 0
+    feature_count: int = 0
+    unresolved_row_count: int = 0
+    missing_feature_value_count: int = 0
+    dataframe: pl.DataFrame | None = None
 
 
 def _issue(code: str, message: str, field: str | None = None) -> TrainingDatasetValidationIssue:
@@ -55,6 +58,58 @@ def _parquet_columns(path: str) -> set[str]:
     return {field.name for field in schema}
 
 
+def _row_index_column(existing_columns: set[str]) -> str:
+    column = "__featcat_entity_row"
+    suffix = 1
+    while column in existing_columns:
+        column = f"__featcat_entity_row_{suffix}"
+        suffix += 1
+    return column
+
+
+def _build_point_in_time_frame(
+    *,
+    entity_df_path: str,
+    source_path: str,
+    entity_key: str,
+    entity_timestamp_column: str,
+    source_event_timestamp_column: str,
+    feature_columns: list[str],
+) -> pl.DataFrame:
+    import polars as pl
+
+    source_columns = [entity_key, source_event_timestamp_column, *feature_columns]
+    entity = pl.read_parquet(entity_df_path)
+    entity_columns = list(entity.columns)
+    row_index_column = _row_index_column(set(entity_columns) | set(source_columns))
+    entity = entity.with_row_index(row_index_column)
+    source = pl.read_parquet(source_path, columns=list(dict.fromkeys(source_columns)))
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        joined = entity.sort([entity_timestamp_column, entity_key]).join_asof(
+            source.sort([source_event_timestamp_column, entity_key]),
+            left_on=entity_timestamp_column,
+            right_on=source_event_timestamp_column,
+            by=entity_key,
+            strategy="backward",
+        )
+
+    return joined.sort(row_index_column).select([*entity_columns, *feature_columns])
+
+
+def _missing_feature_value_count(frame: pl.DataFrame, feature_columns: list[str]) -> int:
+    return sum(frame[column].null_count() for column in feature_columns)
+
+
+def _unresolved_row_count(frame: pl.DataFrame, feature_columns: list[str]) -> int:
+    import polars as pl
+
+    if not feature_columns:
+        return 0
+    return frame.select(pl.all_horizontal([pl.col(column).is_null() for column in feature_columns]).sum()).item()
+
+
 def build_training_dataset(
     entity_df_path: str,
     source_path: str | None = None,
@@ -66,7 +121,7 @@ def build_training_dataset(
     *,
     data_source: DataSource | None = None,
 ) -> TrainingDatasetBuildResult:
-    """Validate local parquet inputs for a future training dataset build.
+    """Build a local point-in-time training dataset from parquet inputs.
 
     ``data_source`` is optional so callers can validate a registered source
     without duplicating path and join metadata. When a registered source is
@@ -192,6 +247,15 @@ def build_training_dataset(
                     "entity_timestamp_column",
                 )
             )
+        feature_collisions = [column for column in features if column in entity_columns]
+        if feature_collisions:
+            errors.append(
+                _issue(
+                    "feature_column_collides_with_entity_dataframe",
+                    f"Requested feature columns already exist in entity dataframe: {', '.join(feature_collisions)}",
+                    "feature_columns",
+                )
+            )
 
     if source_columns is not None:
         if resolved_entity_key and resolved_entity_key not in source_columns:
@@ -221,15 +285,41 @@ def build_training_dataset(
                 )
             )
 
-    if output_path is not None:
-        warnings.append(
+    if output_path is not None and not _is_local_path(output_path):
+        errors.append(
             _issue(
-                "output_materialization_deferred",
-                "output_path was accepted for future compatibility, but materialization "
-                "and point-in-time joins are deferred.",
+                "unsupported_output_path_scheme",
+                "Only local parquet output paths are supported.",
                 "output_path",
             )
         )
+
+    dataframe: pl.DataFrame | None = None
+    row_count = 0
+    unresolved_row_count = 0
+    missing_feature_value_count = 0
+    written_output_path: str | None = None
+
+    if not errors:
+        assert resolved_source_path is not None  # noqa: S101
+        assert resolved_entity_key is not None  # noqa: S101
+        assert resolved_entity_ts is not None  # noqa: S101
+        assert resolved_source_event_ts is not None  # noqa: S101
+        dataframe = _build_point_in_time_frame(
+            entity_df_path=entity_df_path,
+            source_path=resolved_source_path,
+            entity_key=resolved_entity_key,
+            entity_timestamp_column=resolved_entity_ts,
+            source_event_timestamp_column=resolved_source_event_ts,
+            feature_columns=features,
+        )
+        row_count = dataframe.height
+        unresolved_row_count = _unresolved_row_count(dataframe, features)
+        missing_feature_value_count = _missing_feature_value_count(dataframe, features)
+        if output_path is not None:
+            Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+            dataframe.write_parquet(output_path)
+            written_output_path = output_path
 
     return TrainingDatasetBuildResult(
         is_valid=not errors,
@@ -241,5 +331,10 @@ def build_training_dataset(
         entity_timestamp_column=resolved_entity_ts,
         source_event_timestamp_column=resolved_source_event_ts,
         feature_columns=features,
-        output_path=output_path,
+        output_path=written_output_path,
+        row_count=row_count,
+        feature_count=len(features),
+        unresolved_row_count=unresolved_row_count,
+        missing_feature_value_count=missing_feature_value_count,
+        dataframe=dataframe if not errors else None,
     )
