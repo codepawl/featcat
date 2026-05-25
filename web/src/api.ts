@@ -179,6 +179,35 @@ export interface DriftMatrixResponse {
   total_count: number
 }
 
+export type DatasetBuildStatus = 'success' | 'validation_failed' | 'error'
+
+export interface DatasetBuildIssue {
+  code: string
+  message: string
+  field: string | null
+}
+
+export interface DatasetBuildAudit {
+  id: string
+  status: DatasetBuildStatus
+  entity_df_path: string
+  source_path: string | null
+  source_name: string | null
+  output_path: string | null
+  entity_key: string | null
+  entity_timestamp_column: string | null
+  source_event_timestamp_column: string | null
+  feature_columns: string[]
+  row_count: number
+  feature_count: number
+  unresolved_row_count: number
+  missing_feature_value_count: number
+  errors: DatasetBuildIssue[]
+  warnings: DatasetBuildIssue[]
+  actor: string | null
+  created_at: string
+}
+
 export const api = {
   health: () => cachedRequest<{ status: string; llm: boolean; model?: string }>('/health'),
   stats: () => cachedRequest<Record<string, number>>('/stats'),
@@ -489,6 +518,14 @@ export const api = {
     recent: (limit = 20, days = 7) => cachedRequest<Record<string, unknown>[]>(
       `/versions/recent?limit=${limit}&days=${days}`
     ),
+  },
+  datasets: {
+    builds: (params?: { limit?: number; status?: DatasetBuildStatus | '' }) => {
+      const qs = new URLSearchParams()
+      qs.set('limit', String(params?.limit ?? 20))
+      if (params?.status) qs.set('status', params.status)
+      return cachedRequest<DatasetBuildAudit[]>(`/datasets/builds?${qs.toString()}`)
+    },
   },
   export: {
     create: (data: { feature_specs?: string[]; group_name?: string; join_on?: string | null; format?: string }) =>

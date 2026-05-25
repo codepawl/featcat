@@ -8,6 +8,7 @@
     "similarity": "Similarity",
     "lineage": "Lineage",
     "audit": "Audit",
+    "datasetBuilds": "Dataset Builds",
     "monitoring": "Monitoring",
     "actions": "Actions",
     "jobs": "Jobs",

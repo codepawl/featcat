@@ -1,0 +1,52 @@
+{
+  "page": {
+    "title": "Dataset Builds",
+    "subtitle": "Recent training dataset build audits"
+  },
+  "table": {
+    "title": "Recent Builds"
+  },
+  "filters": {
+    "status": "Status filter",
+    "all": "All statuses",
+    "limit": "Limit",
+    "limit_value": "{{count}} rows"
+  },
+  "statuses": {
+    "success": "success",
+    "validation_failed": "validation failed",
+    "error": "error"
+  },
+  "columns": {
+    "status": "Status",
+    "created_at": "Created",
+    "entity_df_path": "Entities",
+    "source": "Source",
+    "output_path": "Output",
+    "row_count": "Rows",
+    "feature_count": "Features",
+    "unresolved_row_count": "Unresolved",
+    "missing_feature_value_count": "Missing values",
+    "feature_columns": "Feature columns",
+    "issues": "Warnings / errors"
+  },
+  "actions": {
+    "copy_path": "Copy path"
+  },
+  "issues": {
+    "none": "None",
+    "errors_one": "{{count}} error",
+    "errors_other": "{{count}} errors",
+    "warnings_one": "{{count}} warning",
+    "warnings_other": "{{count}} warnings"
+  },
+  "empty": {
+    "title": "No dataset builds yet",
+    "description": "Dataset build audits will appear after running the API builder, CLI dataset build command, or SDK builder."
+  },
+  "error": {
+    "title": "Could not load dataset builds",
+    "description": "The dataset build audit API failed.",
+    "retry": "Retry"
+  }
+}

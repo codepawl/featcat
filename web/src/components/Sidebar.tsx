@@ -39,6 +39,7 @@ type NavKey =
   | 'similarity'
   | 'lineage'
   | 'audit'
+  | 'datasetBuilds'
   | 'jobs'
   | 'chat'
   | 'settings'
@@ -86,6 +87,7 @@ const GROUPS: readonly NavGroup[] = [
     icon: Cog,
     items: [
       { to: '/audit', key: 'audit', icon: History },
+      { to: '/datasets/builds', key: 'datasetBuilds', icon: Database },
       { to: '/jobs', key: 'jobs', icon: Clock },
     ],
   },

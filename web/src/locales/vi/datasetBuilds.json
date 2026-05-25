@@ -1,0 +1,52 @@
+{
+  "page": {
+    "title": "Build dataset",
+    "subtitle": "Lịch sử audit build training dataset gần đây"
+  },
+  "table": {
+    "title": "Build gần đây"
+  },
+  "filters": {
+    "status": "Lọc trạng thái",
+    "all": "Tất cả trạng thái",
+    "limit": "Giới hạn",
+    "limit_value": "{{count}} dòng"
+  },
+  "statuses": {
+    "success": "thành công",
+    "validation_failed": "validation lỗi",
+    "error": "lỗi"
+  },
+  "columns": {
+    "status": "Trạng thái",
+    "created_at": "Tạo lúc",
+    "entity_df_path": "Entities",
+    "source": "Nguồn",
+    "output_path": "Output",
+    "row_count": "Dòng",
+    "feature_count": "Features",
+    "unresolved_row_count": "Chưa khớp",
+    "missing_feature_value_count": "Giá trị thiếu",
+    "feature_columns": "Cột feature",
+    "issues": "Cảnh báo / lỗi"
+  },
+  "actions": {
+    "copy_path": "Sao chép path"
+  },
+  "issues": {
+    "none": "Không có",
+    "errors_one": "{{count}} lỗi",
+    "errors_other": "{{count}} lỗi",
+    "warnings_one": "{{count}} cảnh báo",
+    "warnings_other": "{{count}} cảnh báo"
+  },
+  "empty": {
+    "title": "Chưa có build dataset",
+    "description": "Audit build dataset sẽ xuất hiện sau khi chạy API builder, lệnh build dataset trong CLI, hoặc SDK builder."
+  },
+  "error": {
+    "title": "Không tải được build dataset",
+    "description": "API audit build dataset thất bại.",
+    "retry": "Thử lại"
+  }
+}

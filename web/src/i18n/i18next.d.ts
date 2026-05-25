@@ -18,6 +18,7 @@ import actions from '../locales/en/actions.json'
 import help from '../locales/en/help.json'
 import glossary from '../locales/en/glossary.json'
 import search from '../locales/en/search.json'
+import datasetBuilds from '../locales/en/datasetBuilds.json'
 
 declare module 'i18next' {
   interface CustomTypeOptions {
@@ -42,6 +43,7 @@ declare module 'i18next' {
       help: typeof help
       glossary: typeof glossary
       search: typeof search
+      datasetBuilds: typeof datasetBuilds
     }
   }
 }

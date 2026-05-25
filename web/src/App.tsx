@@ -11,6 +11,7 @@ const Similarity = lazy(() => import('./pages/Similarity').then((m) => ({ defaul
 const Lineage = lazy(() => import('./pages/Lineage').then((m) => ({ default: m.Lineage })))
 const Monitoring = lazy(() => import('./pages/Monitoring').then((m) => ({ default: m.Monitoring })))
 const Jobs = lazy(() => import('./pages/Jobs').then((m) => ({ default: m.Jobs })))
+const DatasetBuilds = lazy(() => import('./pages/DatasetBuilds').then((m) => ({ default: m.DatasetBuilds })))
 const Audit = lazy(() => import('./pages/Audit').then((m) => ({ default: m.Audit })))
 const Chat = lazy(() => import('./pages/Chat').then((m) => ({ default: m.Chat })))
 const Settings = lazy(() => import('./pages/Settings').then((m) => ({ default: m.Settings })))
@@ -51,6 +52,7 @@ export default function App() {
             <Route path="/audit" element={<Audit />} />
             <Route path="/monitoring" element={<Monitoring />} />
             <Route path="/actions" element={<Actions />} />
+            <Route path="/datasets/builds" element={<DatasetBuilds />} />
             <Route path="/jobs" element={<Jobs />} />
             <Route path="/chat" element={<Chat />} />
             <Route path="/settings" element={<Settings />} />
