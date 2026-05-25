@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pyarrow as pa
 import pyarrow.parquet as pq
+from pyarrow.fs import S3FileSystem
 
 # ---------------------------------------------------------------------------
 # URI helpers
@@ -157,11 +158,15 @@ def _get_s3_filesystem() -> pa.fs.S3FileSystem:
     # Explicit FEATCAT_S3_* creds take precedence; partial config is caught
     # by the Settings validator, so reaching here with both set or both
     # unset is the only possibility.
-    if settings.s3_access_key and settings.s3_secret_key:
-        kwargs["access_key"] = settings.s3_access_key
-        kwargs["secret_key"] = settings.s3_secret_key
+    access_key = settings.s3_access_key_id or settings.s3_access_key
+    secret_key = settings.s3_secret_access_key or settings.s3_secret_key
+    if access_key and secret_key:
+        kwargs["access_key"] = access_key
+        kwargs["secret_key"] = secret_key
         if settings.s3_session_token:
             kwargs["session_token"] = settings.s3_session_token
+
+    kwargs["force_virtual_addressing"] = not settings.s3_force_path_style
 
     if settings.s3_endpoint_url:
         kwargs["endpoint_override"] = settings.s3_endpoint_url
@@ -170,14 +175,34 @@ def _get_s3_filesystem() -> pa.fs.S3FileSystem:
             kwargs["scheme"] = "http"
             kwargs["endpoint_override"] = settings.s3_endpoint_url.replace("http://", "")
 
-    from pyarrow.fs import S3FileSystem
-
     return S3FileSystem(**kwargs)
 
 
 def _s3_uri_to_path(uri: str) -> str:
     """Convert s3://bucket/key to bucket/key for PyArrow fs."""
     return uri.replace("s3://", "", 1)
+
+
+def s3_config_missing_fields() -> list[str]:
+    """Return required S3-compatible settings that are not configured."""
+    from ..config import load_settings
+
+    settings = load_settings()
+    missing: list[str] = []
+    if not settings.s3_endpoint_url:
+        missing.append("FEATCAT_S3_ENDPOINT_URL")
+    if not (settings.s3_access_key_id or settings.s3_access_key):
+        missing.append("FEATCAT_S3_ACCESS_KEY_ID")
+    if not (settings.s3_secret_access_key or settings.s3_secret_key):
+        missing.append("FEATCAT_S3_SECRET_ACCESS_KEY")
+    return missing
+
+
+def parquet_filesystem_path(path: str) -> tuple[pa.fs.FileSystem | None, str]:
+    """Return a PyArrow filesystem and path for local or S3 parquet IO."""
+    if is_s3_uri(path):
+        return _get_s3_filesystem(), _s3_uri_to_path(path)
+    return None, path
 
 
 def _s3_read_schema(path: str) -> pa.Schema:

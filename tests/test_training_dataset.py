@@ -8,6 +8,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
+from featcat.catalog import storage, training_dataset
 from featcat.catalog.models import DataSource
 from featcat.catalog.training_dataset import build_training_dataset
 
@@ -425,3 +426,120 @@ def test_point_in_time_join_validation_errors_prevent_output_writing(
     assert result.dataframe is None
     assert result.output_path is None
     assert not output_path.exists()
+
+
+def test_s3_paths_are_accepted_with_config_and_mocked_storage(monkeypatch: pytest.MonkeyPatch) -> None:
+    import polars as pl
+
+    entity_path = "s3://featcat/entities.parquet"
+    source_path = "s3://featcat/features.parquet"
+    output_path = "s3://featcat/training.parquet"
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(training_dataset, "s3_config_missing_fields", lambda: [])
+    monkeypatch.setattr(
+        training_dataset,
+        "_parquet_columns",
+        lambda path: {"user_id", "event_ts"} if path == entity_path else {"user_id", "event_ts", "score", "country"},
+    )
+
+    def fake_build_point_in_time_frame(**kwargs):
+        captured["build_kwargs"] = kwargs
+        return pl.DataFrame({"user_id": [1], "event_ts": ["2026-01-01"], "score": [10], "country": ["US"]})
+
+    def fake_write_parquet_frame(frame: pl.DataFrame, path: str) -> None:
+        captured["output_path"] = path
+        captured["written_columns"] = frame.columns
+
+    monkeypatch.setattr(training_dataset, "_build_point_in_time_frame", fake_build_point_in_time_frame)
+    monkeypatch.setattr(training_dataset, "_write_parquet_frame", fake_write_parquet_frame)
+
+    result = build_training_dataset(
+        entity_df_path=entity_path,
+        source_path=source_path,
+        entity_key="user_id",
+        entity_timestamp_column="event_ts",
+        source_event_timestamp_column="event_ts",
+        feature_columns=["score", "country"],
+        output_path=output_path,
+    )
+
+    assert result.is_valid is True
+    assert result.output_path == output_path
+    assert captured["output_path"] == output_path
+    assert captured["build_kwargs"] == {
+        "entity_df_path": entity_path,
+        "source_path": source_path,
+        "entity_key": "user_id",
+        "entity_timestamp_column": "event_ts",
+        "source_event_timestamp_column": "event_ts",
+        "feature_columns": ["score", "country"],
+    }
+
+
+def test_s3_missing_config_returns_structured_error(
+    local_parquet_paths: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, source_path = local_parquet_paths
+
+    monkeypatch.setattr(
+        training_dataset,
+        "s3_config_missing_fields",
+        lambda: ["FEATCAT_S3_ENDPOINT_URL", "FEATCAT_S3_ACCESS_KEY_ID", "FEATCAT_S3_SECRET_ACCESS_KEY"],
+    )
+
+    result = build_training_dataset(
+        entity_df_path="s3://featcat/entities.parquet",
+        source_path=str(source_path),
+        entity_key="user_id",
+        entity_timestamp_column="event_ts",
+        source_event_timestamp_column="event_ts",
+        feature_columns=["score"],
+    )
+
+    assert result.is_valid is False
+    assert "missing_s3_config" in _codes(result)
+    assert result.errors[0].field == "entity_df_path"
+
+
+def test_unsupported_remote_scheme_returns_clear_error(local_parquet_paths: tuple[Path, Path]) -> None:
+    _, source_path = local_parquet_paths
+
+    result = build_training_dataset(
+        entity_df_path="gs://featcat/entities.parquet",
+        source_path=str(source_path),
+        entity_key="user_id",
+        entity_timestamp_column="event_ts",
+        source_event_timestamp_column="event_ts",
+        feature_columns=["score"],
+    )
+
+    assert result.is_valid is False
+    assert "unsupported_entity_path_scheme" in _codes(result)
+    assert result.errors[0].message.startswith("Unsupported entity dataframe path scheme: gs")
+
+
+def test_s3_filesystem_uses_configured_backend_options(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeS3FileSystem:
+        def __init__(self, **kwargs) -> None:
+            captured.update(kwargs)
+
+    monkeypatch.setenv("FEATCAT_S3_ENDPOINT_URL", "http://127.0.0.1:9000")
+    monkeypatch.setenv("FEATCAT_S3_ACCESS_KEY_ID", "minio")
+    monkeypatch.setenv("FEATCAT_S3_SECRET_ACCESS_KEY", "minio-secret")
+    monkeypatch.setenv("FEATCAT_S3_REGION", "us-east-1")
+    monkeypatch.setenv("FEATCAT_S3_FORCE_PATH_STYLE", "true")
+    monkeypatch.delenv("FEATCAT_S3_ACCESS_KEY", raising=False)
+    monkeypatch.delenv("FEATCAT_S3_SECRET_KEY", raising=False)
+    monkeypatch.setattr(storage, "S3FileSystem", FakeS3FileSystem)
+
+    storage._get_s3_filesystem()
+
+    assert captured["endpoint_override"] == "127.0.0.1:9000"
+    assert captured["scheme"] == "http"
+    assert captured["access_key"] == "minio"
+    assert captured["secret_key"] == "minio-secret"
+    assert captured["region"] == "us-east-1"
+    assert captured["force_virtual_addressing"] is False

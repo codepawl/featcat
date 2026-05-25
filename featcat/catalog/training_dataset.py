@@ -5,9 +5,11 @@ from __future__ import annotations
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pyarrow.parquet as pq
+
+from .storage import is_s3_uri, parquet_filesystem_path, read_parquet_schema, s3_config_missing_fields
 
 if TYPE_CHECKING:
     import polars as pl
@@ -73,9 +75,50 @@ def _is_local_path(path: str) -> bool:
     return "://" not in path
 
 
+def _unsupported_scheme(path: str) -> str | None:
+    if _is_local_path(path) or is_s3_uri(path):
+        return None
+    return path.split("://", 1)[0]
+
+
+def _s3_config_error(path: str, field: str) -> TrainingDatasetValidationIssue | None:
+    if not is_s3_uri(path):
+        return None
+    try:
+        missing = s3_config_missing_fields()
+    except ValueError as exc:
+        return _issue("invalid_s3_config", str(exc), field)
+    if missing:
+        return _issue(
+            "missing_s3_config",
+            "S3-compatible parquet paths require configuration for: " + ", ".join(missing),
+            field,
+        )
+    return None
+
+
 def _parquet_columns(path: str) -> set[str]:
-    schema = pq.ParquetFile(path).schema_arrow
+    schema = read_parquet_schema(path)
     return {field.name for field in schema}
+
+
+def _read_parquet_frame(path: str, columns: list[str] | None = None) -> pl.DataFrame:
+    import polars as pl
+
+    if is_s3_uri(path):
+        filesystem, parquet_path = parquet_filesystem_path(path)
+        table = pq.read_table(parquet_path, columns=columns, filesystem=filesystem)
+        return cast("pl.DataFrame", pl.from_arrow(table))
+    return cast("pl.DataFrame", pl.read_parquet(path, columns=columns))
+
+
+def _write_parquet_frame(frame: pl.DataFrame, path: str) -> None:
+    if is_s3_uri(path):
+        filesystem, parquet_path = parquet_filesystem_path(path)
+        pq.write_table(frame.to_arrow(), parquet_path, filesystem=filesystem)
+        return
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    frame.write_parquet(path)
 
 
 def _row_index_column(existing_columns: set[str]) -> str:
@@ -96,14 +139,12 @@ def _build_point_in_time_frame(
     source_event_timestamp_column: str,
     feature_columns: list[str],
 ) -> pl.DataFrame:
-    import polars as pl
-
     source_columns = [entity_key, source_event_timestamp_column, *feature_columns]
-    entity = pl.read_parquet(entity_df_path)
+    entity = _read_parquet_frame(entity_df_path)
     entity_columns = list(entity.columns)
     row_index_column = _row_index_column(set(entity_columns) | set(source_columns))
     entity = entity.with_row_index(row_index_column)
-    source = pl.read_parquet(source_path, columns=list(dict.fromkeys(source_columns)))
+    source = _read_parquet_frame(source_path, columns=list(dict.fromkeys(source_columns)))
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
@@ -203,15 +244,20 @@ def build_training_dataset(
         )
 
     entity_columns: set[str] | None = None
-    if not _is_local_path(entity_df_path):
+    entity_scheme = _unsupported_scheme(entity_df_path)
+    entity_s3_config_error = _s3_config_error(entity_df_path, "entity_df_path")
+    if entity_scheme is not None:
         errors.append(
             _issue(
                 "unsupported_entity_path_scheme",
-                "Only local parquet entity dataframe paths are supported.",
+                f"Unsupported entity dataframe path scheme: {entity_scheme}. "
+                "Only local parquet paths and s3:// paths are supported.",
                 "entity_df_path",
             )
         )
-    elif not Path(entity_df_path).exists():
+    elif entity_s3_config_error is not None:
+        errors.append(entity_s3_config_error)
+    elif _is_local_path(entity_df_path) and not Path(entity_df_path).exists():
         errors.append(
             _issue(
                 "missing_entity_dataframe",
@@ -220,7 +266,16 @@ def build_training_dataset(
             )
         )
     else:
-        entity_columns = _parquet_columns(entity_df_path)
+        try:
+            entity_columns = _parquet_columns(entity_df_path)
+        except Exception as exc:
+            errors.append(
+                _issue(
+                    "entity_dataframe_unreadable",
+                    f"Entity dataframe parquet file could not be read: {exc}",
+                    "entity_df_path",
+                )
+            )
 
     source_columns: set[str] | None = None
     if resolved_source_path is None:
@@ -231,15 +286,18 @@ def build_training_dataset(
                 "source_path",
             )
         )
-    elif not _is_local_path(resolved_source_path):
+    elif (source_scheme := _unsupported_scheme(resolved_source_path)) is not None:
         errors.append(
             _issue(
                 "unsupported_source_path_scheme",
-                "Only local parquet source dataframe paths are supported.",
+                f"Unsupported source dataframe path scheme: {source_scheme}. "
+                "Only local parquet paths and s3:// paths are supported.",
                 "source_path",
             )
         )
-    elif not Path(resolved_source_path).exists():
+    elif (source_s3_config_error := _s3_config_error(resolved_source_path, "source_path")) is not None:
+        errors.append(source_s3_config_error)
+    elif _is_local_path(resolved_source_path) and not Path(resolved_source_path).exists():
         errors.append(
             _issue(
                 "missing_source_dataframe",
@@ -248,7 +306,16 @@ def build_training_dataset(
             )
         )
     else:
-        source_columns = _parquet_columns(resolved_source_path)
+        try:
+            source_columns = _parquet_columns(resolved_source_path)
+        except Exception as exc:
+            errors.append(
+                _issue(
+                    "source_dataframe_unreadable",
+                    f"Source dataframe parquet file could not be read: {exc}",
+                    "source_path",
+                )
+            )
 
     if entity_columns is not None:
         if resolved_entity_key and resolved_entity_key not in entity_columns:
@@ -305,14 +372,18 @@ def build_training_dataset(
                 )
             )
 
-    if output_path is not None and not _is_local_path(output_path):
-        errors.append(
-            _issue(
-                "unsupported_output_path_scheme",
-                "Only local parquet output paths are supported.",
-                "output_path",
+    if output_path is not None:
+        if (output_scheme := _unsupported_scheme(output_path)) is not None:
+            errors.append(
+                _issue(
+                    "unsupported_output_path_scheme",
+                    f"Unsupported output path scheme: {output_scheme}. "
+                    "Only local parquet paths and s3:// paths are supported.",
+                    "output_path",
+                )
             )
-        )
+        elif (output_s3_config_error := _s3_config_error(output_path, "output_path")) is not None:
+            errors.append(output_s3_config_error)
 
     dataframe: pl.DataFrame | None = None
     row_count = 0
@@ -337,8 +408,7 @@ def build_training_dataset(
         unresolved_row_count = _unresolved_row_count(dataframe, features)
         missing_feature_value_count = _missing_feature_value_count(dataframe, features)
         if output_path is not None:
-            Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-            dataframe.write_parquet(output_path)
+            _write_parquet_frame(dataframe, output_path)
             written_output_path = output_path
 
     return TrainingDatasetBuildResult(

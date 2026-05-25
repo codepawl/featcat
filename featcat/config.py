@@ -58,10 +58,13 @@ class Settings(BaseSettings):
 
     # S3 / MinIO
     s3_endpoint_url: str | None = None
+    s3_access_key_id: str | None = None
+    s3_secret_access_key: str | None = None
     s3_access_key: str | None = None
     s3_secret_key: str | None = None
     s3_session_token: str | None = None  # For STS / role-assume credentials
     s3_region: str = "us-east-1"
+    s3_force_path_style: bool = True
     s3_connect_timeout_ms: int = 10_000  # Passed to PyArrow S3FileSystem (converted to seconds)
     s3_request_timeout_ms: int = 60_000
 
@@ -113,11 +116,18 @@ class Settings(BaseSettings):
         Both keys must be set together, or both unset (then the default
         credential chain handles things).
         """
-        has_access = bool(self.s3_access_key)
-        has_secret = bool(self.s3_secret_key)
+        if self.s3_access_key and self.s3_access_key_id and self.s3_access_key != self.s3_access_key_id:
+            raise ValueError("Set only one of FEATCAT_S3_ACCESS_KEY and FEATCAT_S3_ACCESS_KEY_ID")
+        if self.s3_secret_key and self.s3_secret_access_key and self.s3_secret_key != self.s3_secret_access_key:
+            raise ValueError("Set only one of FEATCAT_S3_SECRET_KEY and FEATCAT_S3_SECRET_ACCESS_KEY")
+
+        access_key = self.s3_access_key_id or self.s3_access_key
+        secret_key = self.s3_secret_access_key or self.s3_secret_key
+        has_access = bool(access_key)
+        has_secret = bool(secret_key)
         if has_access != has_secret:
             raise ValueError(
-                "FEATCAT_S3_ACCESS_KEY and FEATCAT_S3_SECRET_KEY must be set together or both unset "
+                "FEATCAT_S3_ACCESS_KEY_ID and FEATCAT_S3_SECRET_ACCESS_KEY must be set together or both unset "
                 f"(currently: access_key={'set' if has_access else 'unset'}, "
                 f"secret_key={'set' if has_secret else 'unset'})"
             )
