@@ -195,7 +195,7 @@ function NavItemRow({
       title={collapsed ? label : undefined}
       aria-label={collapsed ? label : undefined}
     >
-      <item.icon size={collapsed ? 18 : indented ? 14 : 16} strokeWidth={1.8} />
+      <item.icon size="1em" className="w-4 h-4 shrink-0" strokeWidth={1.8} />
       {!collapsed && <span className="flex-1">{label}</span>}
       {badge !== undefined && badge > 0 && (
         collapsed ? (

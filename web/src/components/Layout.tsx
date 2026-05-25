@@ -53,7 +53,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <Menu size={20} />
             </button>
             <div className="hidden md:block w-[208px] shrink-0" />
-            <div className="hidden md:block flex-1 max-w-xl">
+            <div className="hidden md:block flex-1">
               <SearchBar />
             </div>
             <div className="flex-1 md:hidden" />

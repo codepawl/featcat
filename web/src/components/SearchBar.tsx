@@ -138,7 +138,7 @@ export function SearchBar({ className, onSubmit }: SearchBarProps) {
   const showDropdown = open && (suggestions.length > 0 || input.trim().length >= MIN_QUERY_LEN)
 
   return (
-    <div ref={wrapRef} className={`relative ${className ?? 'w-full max-w-xl'}`}>
+    <div ref={wrapRef} className={`relative ${className ?? 'w-full'}`}>
       <SearchIcon
         size={16}
         strokeWidth={1.8}
