@@ -38,6 +38,7 @@ cache_app = typer.Typer(help="Manage LLM response cache")
 config_app = typer.Typer(help="Configuration management")
 job_app = typer.Typer(help="Scheduled job management")
 group_app = typer.Typer(help="Feature groups management")
+dataset_app = typer.Typer(help="Training dataset building")
 usage_app = typer.Typer(help="Feature usage analytics")
 actions_app = typer.Typer(help="Recommended actions (lifecycle loop)")
 lineage_app = typer.Typer(help="Lineage management (T1.1)")
@@ -57,6 +58,7 @@ app.add_typer(cache_app, name="cache")
 app.add_typer(config_app, name="config")
 app.add_typer(job_app, name="job")
 app.add_typer(group_app, name="group")
+app.add_typer(dataset_app, name="dataset")
 app.add_typer(usage_app, name="usage")
 app.add_typer(actions_app, name="actions")
 app.add_typer(lineage_app, name="lineage")
@@ -80,6 +82,10 @@ def _emit(payload: object, render_table: Callable[[], None], *, json_mode: bool)
         print(json.dumps(payload, indent=2, default=str))
         return
     render_table()
+
+
+def _parse_csv_option(value: str) -> list[str]:
+    return [item.strip() for item in value.split(",") if item.strip()]
 
 
 def _confirm_typing(name: str, impact_summary: str, *, skip: bool = False) -> bool:
@@ -605,6 +611,108 @@ def _export_data(
     console.print(f"Features: {result.feature_count}  |  Rows: {result.row_count:,}  |  Size: {size_mb:.1f} MB")
     console.print("\n[dim]Python snippet:[/dim]")
     console.print(f"[cyan]{result.code_snippet}[/cyan]")
+
+
+# =========================================================================
+# Dataset commands
+# =========================================================================
+
+
+@dataset_app.command("build")
+def dataset_build(
+    entities: str = typer.Option(..., "--entities", help="Local parquet entity dataframe path"),
+    source: str | None = typer.Option(None, "--source", help="Local parquet source dataframe path"),
+    source_name: str | None = typer.Option(None, "--source-name", help="Registered DataSource name"),
+    entity_key: str | None = typer.Option(None, "--entity-key", help="Entity/join key column"),
+    entity_timestamp: str | None = typer.Option(
+        None,
+        "--entity-timestamp",
+        help="Entity timestamp column",
+    ),
+    source_timestamp: str | None = typer.Option(
+        None,
+        "--source-timestamp",
+        help="Source event timestamp column",
+    ),
+    features: str = typer.Option(..., "--features", help="Comma-separated feature columns"),
+    output: str | None = typer.Option(None, "--output", "-o", help="Local parquet output path"),
+    json_output: bool = typer.Option(False, "--json", "-j", help="Emit structured JSON"),
+) -> None:
+    """Build a local point-in-time training dataset."""
+    from .catalog.training_dataset import (
+        TrainingDatasetBuildResult,
+        TrainingDatasetValidationIssue,
+        build_training_dataset,
+        training_dataset_result_to_dict,
+    )
+
+    data_source = None
+    db = None
+    try:
+        if source_name:
+            db = _get_db()
+            data_source = db.get_source_by_name(source_name)
+            if data_source is None:
+                result = TrainingDatasetBuildResult(
+                    is_valid=False,
+                    errors=[
+                        TrainingDatasetValidationIssue(
+                            code="source_not_found",
+                            message=f"DataSource not found: {source_name}",
+                            field="source_name",
+                        )
+                    ],
+                    entity_df_path=entities,
+                    source_path=source,
+                    entity_key=entity_key,
+                    entity_timestamp_column=entity_timestamp,
+                    source_event_timestamp_column=source_timestamp,
+                    feature_columns=_parse_csv_option(features),
+                    feature_count=len(_parse_csv_option(features)),
+                )
+            else:
+                result = build_training_dataset(
+                    entity_df_path=entities,
+                    source_path=source,
+                    entity_key=entity_key,
+                    entity_timestamp_column=entity_timestamp,
+                    source_event_timestamp_column=source_timestamp,
+                    feature_columns=_parse_csv_option(features),
+                    output_path=output,
+                    data_source=data_source,
+                )
+        else:
+            result = build_training_dataset(
+                entity_df_path=entities,
+                source_path=source,
+                entity_key=entity_key,
+                entity_timestamp_column=entity_timestamp,
+                source_event_timestamp_column=source_timestamp,
+                feature_columns=_parse_csv_option(features),
+                output_path=output,
+            )
+    finally:
+        if db is not None:
+            db.close()
+
+    payload = training_dataset_result_to_dict(result)
+    if json_output:
+        print(json.dumps(payload, indent=2, default=str))
+    elif result.is_valid:
+        console.print(f"[green]Dataset built:[/green] {result.row_count:,} rows")
+        console.print(f"Features: {result.feature_count}")
+        if result.output_path:
+            console.print(f"Output: [cyan]{result.output_path}[/cyan]")
+        if result.unresolved_row_count:
+            console.print(f"Unresolved rows: [yellow]{result.unresolved_row_count}[/yellow]")
+    else:
+        console.print("[red]Dataset build failed:[/red]")
+        for error in result.errors:
+            field = f" ({error.field})" if error.field else ""
+            console.print(f"  [red]{error.code}[/red]{field}: {error.message}")
+
+    if not result.is_valid:
+        raise typer.Exit(1)
 
 
 # =========================================================================

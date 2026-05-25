@@ -49,6 +49,26 @@ def _issue(code: str, message: str, field: str | None = None) -> TrainingDataset
     return TrainingDatasetValidationIssue(code=code, message=message, field=field)
 
 
+def training_dataset_result_to_dict(result: TrainingDatasetBuildResult) -> dict:
+    """Serialize a build result without the in-memory dataframe."""
+    return {
+        "is_valid": result.is_valid,
+        "errors": [{"code": issue.code, "message": issue.message, "field": issue.field} for issue in result.errors],
+        "warnings": [{"code": issue.code, "message": issue.message, "field": issue.field} for issue in result.warnings],
+        "entity_df_path": result.entity_df_path,
+        "source_path": result.source_path,
+        "entity_key": result.entity_key,
+        "entity_timestamp_column": result.entity_timestamp_column,
+        "source_event_timestamp_column": result.source_event_timestamp_column,
+        "feature_columns": result.feature_columns,
+        "output_path": result.output_path,
+        "row_count": result.row_count,
+        "feature_count": result.feature_count,
+        "unresolved_row_count": result.unresolved_row_count,
+        "missing_feature_value_count": result.missing_feature_value_count,
+    }
+
+
 def _is_local_path(path: str) -> bool:
     return "://" not in path
 
