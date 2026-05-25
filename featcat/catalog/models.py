@@ -170,3 +170,26 @@ class ScanLog(BaseModel):
     status: str  # "success" | "failed"
     error_message: str | None = None
     triggered_by: str  # "api" | "cli" | "scheduler"
+
+
+class DatasetBuildAudit(BaseModel):
+    """Audit row for an API/CLI training dataset build request."""
+
+    id: str = Field(default_factory=_new_id)
+    status: str  # "success" | "validation_failed" | "error"
+    entity_df_path: str
+    source_path: str | None = None
+    source_name: str | None = None
+    output_path: str | None = None
+    entity_key: str | None = None
+    entity_timestamp_column: str | None = None
+    source_event_timestamp_column: str | None = None
+    feature_columns: list[str] = Field(default_factory=list)
+    row_count: int = 0
+    feature_count: int = 0
+    unresolved_row_count: int = 0
+    missing_feature_value_count: int = 0
+    errors: list[dict[str, Any]] = Field(default_factory=list)
+    warnings: list[dict[str, Any]] = Field(default_factory=list)
+    actor: str | None = None
+    created_at: datetime = Field(default_factory=_utcnow)

@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
+from ...catalog.dataset_audit import record_dataset_build_audit, record_dataset_build_error_audit
 from ...catalog.training_dataset import (
     TrainingDatasetBuildResult,
     TrainingDatasetValidationIssue,
@@ -57,38 +58,72 @@ def _response_from_result(result: TrainingDatasetBuildResult) -> DatasetBuildRes
 @router.post("/build", response_model=DatasetBuildResponse)
 def build_dataset(body: DatasetBuildRequest, db=Depends(get_db)) -> DatasetBuildResponse:
     """Build a local point-in-time training dataset."""
+    actor = "api"
     data_source = None
+    result: TrainingDatasetBuildResult
     if body.source_name:
         data_source = db.get_source_by_name(body.source_name)
         if data_source is None:
-            return _response_from_result(
-                TrainingDatasetBuildResult(
-                    is_valid=False,
-                    errors=[
-                        TrainingDatasetValidationIssue(
-                            code="source_not_found",
-                            message=f"DataSource not found: {body.source_name}",
-                            field="source_name",
-                        )
-                    ],
-                    entity_df_path=body.entity_df_path,
-                    source_path=body.source_path,
-                    entity_key=body.entity_key,
-                    entity_timestamp_column=body.entity_timestamp_column,
-                    source_event_timestamp_column=body.source_event_timestamp_column,
-                    feature_columns=body.feature_columns,
-                    feature_count=len(body.feature_columns),
-                )
+            result = TrainingDatasetBuildResult(
+                is_valid=False,
+                errors=[
+                    TrainingDatasetValidationIssue(
+                        code="source_not_found",
+                        message=f"DataSource not found: {body.source_name}",
+                        field="source_name",
+                    )
+                ],
+                entity_df_path=body.entity_df_path,
+                source_path=body.source_path,
+                entity_key=body.entity_key,
+                entity_timestamp_column=body.entity_timestamp_column,
+                source_event_timestamp_column=body.source_event_timestamp_column,
+                feature_columns=body.feature_columns,
+                feature_count=len(body.feature_columns),
             )
+            record_dataset_build_audit(
+                db,
+                result=result,
+                source_name=body.source_name,
+                actor=actor,
+                requested_source_path=body.source_path,
+                requested_output_path=body.output_path,
+            )
+            return _response_from_result(result)
 
-    result = build_training_dataset(
-        entity_df_path=body.entity_df_path,
-        source_path=body.source_path,
-        entity_key=body.entity_key,
-        entity_timestamp_column=body.entity_timestamp_column,
-        source_event_timestamp_column=body.source_event_timestamp_column,
-        feature_columns=body.feature_columns,
-        output_path=body.output_path,
-        data_source=data_source,
+    try:
+        result = build_training_dataset(
+            entity_df_path=body.entity_df_path,
+            source_path=body.source_path,
+            entity_key=body.entity_key,
+            entity_timestamp_column=body.entity_timestamp_column,
+            source_event_timestamp_column=body.source_event_timestamp_column,
+            feature_columns=body.feature_columns,
+            output_path=body.output_path,
+            data_source=data_source,
+        )
+    except Exception as exc:
+        record_dataset_build_error_audit(
+            db,
+            entity_df_path=body.entity_df_path,
+            source_path=body.source_path,
+            source_name=body.source_name,
+            output_path=body.output_path,
+            entity_key=body.entity_key,
+            entity_timestamp_column=body.entity_timestamp_column,
+            source_event_timestamp_column=body.source_event_timestamp_column,
+            feature_columns=body.feature_columns,
+            error=exc,
+            actor=actor,
+        )
+        raise
+
+    record_dataset_build_audit(
+        db,
+        result=result,
+        source_name=body.source_name,
+        actor=actor,
+        requested_source_path=body.source_path,
+        requested_output_path=body.output_path,
     )
     return _response_from_result(result)

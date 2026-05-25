@@ -38,7 +38,7 @@ from sqlalchemy.exc import OperationalError
 from ..db.connection import make_engine, make_session_factory, resolve_backend
 from ..db.models import Base
 from .backend import CatalogBackend
-from .models import DataSource, Feature, FeatureGroup, FeatureGroupVersion, ScanLog, _new_id
+from .models import DatasetBuildAudit, DataSource, Feature, FeatureGroup, FeatureGroupVersion, ScanLog, _new_id
 
 logger = logging.getLogger(__name__)
 
@@ -276,6 +276,27 @@ class LocalBackend(CatalogBackend):
             # where the metric wasn't recorded.
             "ALTER TABLE monitoring_checks ADD COLUMN kl_divergence REAL",
             "ALTER TABLE monitoring_checks ADD COLUMN wasserstein REAL",
+            "CREATE TABLE IF NOT EXISTS dataset_build_audits ("
+            "id TEXT PRIMARY KEY,"
+            "status TEXT NOT NULL,"
+            "entity_df_path TEXT NOT NULL,"
+            "source_path TEXT,"
+            "source_name TEXT,"
+            "output_path TEXT,"
+            "entity_key TEXT,"
+            "entity_timestamp_column TEXT,"
+            "source_event_timestamp_column TEXT,"
+            "feature_columns TEXT NOT NULL DEFAULT '[]',"
+            "row_count INTEGER NOT NULL DEFAULT 0,"
+            "feature_count INTEGER NOT NULL DEFAULT 0,"
+            "unresolved_row_count INTEGER NOT NULL DEFAULT 0,"
+            "missing_feature_value_count INTEGER NOT NULL DEFAULT 0,"
+            "errors TEXT NOT NULL DEFAULT '[]',"
+            "warnings TEXT NOT NULL DEFAULT '[]',"
+            "actor TEXT,"
+            "created_at TIMESTAMP NOT NULL"
+            ")",
+            "CREATE INDEX IF NOT EXISTS idx_dataset_build_audits_created_at ON dataset_build_audits(created_at)",
             # Composite indexes for chart queries (feature timeline, catalog
             # drift-rate). CREATE INDEX IF NOT EXISTS is itself idempotent but
             # the suppress(OperationalError) wrapper covers older sqlites.
@@ -535,6 +556,88 @@ class LocalBackend(CatalogBackend):
                 .all()
             )
         return [ScanLog(**dict(r)) for r in rows]
+
+    def record_dataset_build_audit(
+        self,
+        *,
+        status: str,
+        entity_df_path: str,
+        source_path: str | None = None,
+        source_name: str | None = None,
+        output_path: str | None = None,
+        entity_key: str | None = None,
+        entity_timestamp_column: str | None = None,
+        source_event_timestamp_column: str | None = None,
+        feature_columns: list[str] | None = None,
+        row_count: int = 0,
+        feature_count: int = 0,
+        unresolved_row_count: int = 0,
+        missing_feature_value_count: int = 0,
+        errors: list[dict] | None = None,
+        warnings: list[dict] | None = None,
+        actor: str | None = None,
+    ) -> str:
+        """Insert one dataset-build audit row. Returns the new audit id."""
+        audit_id = _new_id()
+        created_at = _utcnow()
+        with self.session() as s:
+            s.execute(
+                text(
+                    "INSERT INTO dataset_build_audits ("
+                    "id, status, entity_df_path, source_path, source_name, output_path, "
+                    "entity_key, entity_timestamp_column, source_event_timestamp_column, "
+                    "feature_columns, row_count, feature_count, unresolved_row_count, "
+                    "missing_feature_value_count, errors, warnings, actor, created_at"
+                    ") VALUES ("
+                    ":id, :status, :entity_df_path, :source_path, :source_name, :output_path, "
+                    ":entity_key, :entity_timestamp_column, :source_event_timestamp_column, "
+                    ":feature_columns, :row_count, :feature_count, :unresolved_row_count, "
+                    ":missing_feature_value_count, :errors, :warnings, :actor, :created_at"
+                    ")"
+                ),
+                {
+                    "id": audit_id,
+                    "status": status,
+                    "entity_df_path": entity_df_path,
+                    "source_path": source_path,
+                    "source_name": source_name,
+                    "output_path": output_path,
+                    "entity_key": entity_key,
+                    "entity_timestamp_column": entity_timestamp_column,
+                    "source_event_timestamp_column": source_event_timestamp_column,
+                    "feature_columns": json.dumps(feature_columns or []),
+                    "row_count": row_count,
+                    "feature_count": feature_count,
+                    "unresolved_row_count": unresolved_row_count,
+                    "missing_feature_value_count": missing_feature_value_count,
+                    "errors": json.dumps(errors or []),
+                    "warnings": json.dumps(warnings or []),
+                    "actor": actor,
+                    "created_at": created_at,
+                },
+            )
+            s.commit()
+        return audit_id
+
+    def list_dataset_build_audits(self, limit: int = 10) -> list[DatasetBuildAudit]:
+        """Return dataset-build audit rows, newest first."""
+        with self.session() as s:
+            rows = (
+                s.execute(
+                    text("SELECT * FROM dataset_build_audits ORDER BY created_at DESC LIMIT :limit"),
+                    {"limit": limit},
+                )
+                .mappings()
+                .all()
+            )
+        audits = []
+        for row in rows:
+            data = dict(row)
+            data["feature_columns"] = json.loads(data.get("feature_columns") or "[]")
+            data["errors"] = json.loads(data.get("errors") or "[]")
+            data["warnings"] = json.loads(data.get("warnings") or "[]")
+            audits.append(DatasetBuildAudit(**data))
+        return audits
 
     # --- Features ---
 

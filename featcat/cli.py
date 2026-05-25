@@ -21,7 +21,7 @@ from .catalog.local import DEFAULT_DB, LocalBackend
 from .catalog.models import DataSource, Feature, FeatureGroup
 from .catalog.scanner import discover_parquet_files, scan_source
 from .catalog.storage import is_s3_uri
-from .catalog.usage import log_feature_usage
+from .catalog.usage import log_feature_usage, resolve_user
 from .config import load_settings
 
 if TYPE_CHECKING:
@@ -639,6 +639,7 @@ def dataset_build(
     json_output: bool = typer.Option(False, "--json", "-j", help="Emit structured JSON"),
 ) -> None:
     """Build a local point-in-time training dataset."""
+    from .catalog.dataset_audit import record_dataset_build_audit, record_dataset_build_error_audit
     from .catalog.training_dataset import (
         TrainingDatasetBuildResult,
         TrainingDatasetValidationIssue,
@@ -648,9 +649,11 @@ def dataset_build(
 
     data_source = None
     db = None
+    parsed_features = _parse_csv_option(features)
     try:
+        db = _get_db()
+        db.init_db()
         if source_name:
-            db = _get_db()
             data_source = db.get_source_by_name(source_name)
             if data_source is None:
                 result = TrainingDatasetBuildResult(
@@ -667,30 +670,70 @@ def dataset_build(
                     entity_key=entity_key,
                     entity_timestamp_column=entity_timestamp,
                     source_event_timestamp_column=source_timestamp,
-                    feature_columns=_parse_csv_option(features),
-                    feature_count=len(_parse_csv_option(features)),
+                    feature_columns=parsed_features,
+                    feature_count=len(parsed_features),
                 )
             else:
+                try:
+                    result = build_training_dataset(
+                        entity_df_path=entities,
+                        source_path=source,
+                        entity_key=entity_key,
+                        entity_timestamp_column=entity_timestamp,
+                        source_event_timestamp_column=source_timestamp,
+                        feature_columns=parsed_features,
+                        output_path=output,
+                        data_source=data_source,
+                    )
+                except Exception as exc:
+                    record_dataset_build_error_audit(
+                        db,
+                        entity_df_path=entities,
+                        source_path=source,
+                        source_name=source_name,
+                        output_path=output,
+                        entity_key=entity_key,
+                        entity_timestamp_column=entity_timestamp,
+                        source_event_timestamp_column=source_timestamp,
+                        feature_columns=parsed_features,
+                        error=exc,
+                        actor=resolve_user(),
+                    )
+                    raise
+        else:
+            try:
                 result = build_training_dataset(
                     entity_df_path=entities,
                     source_path=source,
                     entity_key=entity_key,
                     entity_timestamp_column=entity_timestamp,
                     source_event_timestamp_column=source_timestamp,
-                    feature_columns=_parse_csv_option(features),
+                    feature_columns=parsed_features,
                     output_path=output,
-                    data_source=data_source,
                 )
-        else:
-            result = build_training_dataset(
-                entity_df_path=entities,
-                source_path=source,
-                entity_key=entity_key,
-                entity_timestamp_column=entity_timestamp,
-                source_event_timestamp_column=source_timestamp,
-                feature_columns=_parse_csv_option(features),
-                output_path=output,
-            )
+            except Exception as exc:
+                record_dataset_build_error_audit(
+                    db,
+                    entity_df_path=entities,
+                    source_path=source,
+                    source_name=source_name,
+                    output_path=output,
+                    entity_key=entity_key,
+                    entity_timestamp_column=entity_timestamp,
+                    source_event_timestamp_column=source_timestamp,
+                    feature_columns=parsed_features,
+                    error=exc,
+                    actor=resolve_user(),
+                )
+                raise
+        record_dataset_build_audit(
+            db,
+            result=result,
+            source_name=source_name,
+            actor=resolve_user(),
+            requested_source_path=source,
+            requested_output_path=output,
+        )
     finally:
         if db is not None:
             db.close()

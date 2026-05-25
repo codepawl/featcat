@@ -165,6 +165,32 @@ class ScanLog(Base):
     triggered_by: Mapped[str] = mapped_column(Text, nullable=False)  # "api" | "cli" | "scheduler"
 
 
+class DatasetBuildAudit(Base):
+    """Audit row written for API/CLI training dataset build requests."""
+
+    __tablename__ = "dataset_build_audits"
+    __table_args__ = (Index("idx_dataset_build_audits_created_at", "created_at"),)
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False)  # "success" | "validation_failed" | "error"
+    entity_df_path: Mapped[str] = mapped_column(Text, nullable=False)
+    source_path: Mapped[str | None] = mapped_column(Text)
+    source_name: Mapped[str | None] = mapped_column(Text)
+    output_path: Mapped[str | None] = mapped_column(Text)
+    entity_key: Mapped[str | None] = mapped_column(Text)
+    entity_timestamp_column: Mapped[str | None] = mapped_column(Text)
+    source_event_timestamp_column: Mapped[str | None] = mapped_column(Text)
+    feature_columns: Mapped[str] = mapped_column(Text, nullable=False, default="[]", server_default="[]")
+    row_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    feature_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    unresolved_row_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    missing_feature_value_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    errors: Mapped[str] = mapped_column(Text, nullable=False, default="[]", server_default="[]")
+    warnings: Mapped[str] = mapped_column(Text, nullable=False, default="[]", server_default="[]")
+    actor: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+
+
 class JobSchedule(Base):
     __tablename__ = "job_schedules"
 

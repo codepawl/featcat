@@ -415,6 +415,52 @@ class CatalogBackend(ABC):
         del source_id, limit
         return []
 
+    def record_dataset_build_audit(
+        self,
+        *,
+        status: str,
+        entity_df_path: str,
+        source_path: str | None = None,
+        source_name: str | None = None,
+        output_path: str | None = None,
+        entity_key: str | None = None,
+        entity_timestamp_column: str | None = None,
+        source_event_timestamp_column: str | None = None,
+        feature_columns: list[str] | None = None,
+        row_count: int = 0,
+        feature_count: int = 0,
+        unresolved_row_count: int = 0,
+        missing_feature_value_count: int = 0,
+        errors: list[dict] | None = None,
+        warnings: list[dict] | None = None,
+        actor: str | None = None,
+    ) -> str:
+        """Persist one dataset-build audit row. Default no-op for remote/unsupported backends."""
+        del (
+            status,
+            entity_df_path,
+            source_path,
+            source_name,
+            output_path,
+            entity_key,
+            entity_timestamp_column,
+            source_event_timestamp_column,
+            feature_columns,
+            row_count,
+            feature_count,
+            unresolved_row_count,
+            missing_feature_value_count,
+            errors,
+            warnings,
+            actor,
+        )
+        return ""
+
+    def list_dataset_build_audits(self, limit: int = 10) -> list:
+        """Return recent dataset-build audit rows, newest first."""
+        del limit
+        return []
+
     # --- Feature Groups ---
 
     @abstractmethod
