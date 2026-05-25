@@ -129,6 +129,24 @@ docker exec featcat-server featcat job list
 docker exec featcat-server featcat job run monitor_check
 ```
 
+## Optional MinIO Smoke
+
+MinIO is available only through the `minio` compose profile for dev/lab
+validation of S3-compatible training dataset paths. It is not required for
+normal development or unit tests.
+
+```bash
+cd ..
+scripts/smoke_training_dataset_s3.sh
+```
+
+The smoke starts MinIO, creates a dev bucket, uploads tiny entity/source
+Parquet fixtures, runs `featcat dataset build` with `s3://` paths, and verifies
+the output Parquet object exists and contains the expected point-in-time join
+values. Dev defaults are `featcat` / `featcat-secret`; override them with
+`MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`, `FEATCAT_S3_ENDPOINT_URL`,
+`FEATCAT_S3_ACCESS_KEY_ID`, and `FEATCAT_S3_SECRET_ACCESS_KEY`.
+
 ## Upgrade
 
 ```bash
