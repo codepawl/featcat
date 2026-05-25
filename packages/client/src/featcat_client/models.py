@@ -101,3 +101,30 @@ class FeatureUsage(_Base):
     total: int = 0
     last_seen: datetime | None = None
     daily: list[dict[str, Any]] = []
+
+
+class TrainingDatasetIssue(_Base):
+    """Structured validation issue from the training dataset builder."""
+
+    code: str
+    message: str
+    field: str | None = None
+
+
+class TrainingDatasetBuildResult(_Base):
+    """Shape returned by ``POST /api/datasets/build``."""
+
+    is_valid: bool
+    errors: list[TrainingDatasetIssue] = []
+    warnings: list[TrainingDatasetIssue] = []
+    entity_df_path: str | None = None
+    source_path: str | None = None
+    entity_key: str | None = None
+    entity_timestamp_column: str | None = None
+    source_event_timestamp_column: str | None = None
+    feature_columns: list[str] = []
+    output_path: str | None = None
+    row_count: int = 0
+    feature_count: int = 0
+    unresolved_row_count: int = 0
+    missing_feature_value_count: int = 0

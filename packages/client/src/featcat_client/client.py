@@ -14,6 +14,7 @@ Server endpoints actually used (verified against ``featcat/server/routes/``):
 - ``GET  /api/sources/{name}``            — single source (has parquet path)
 - ``GET  /api/groups``                    — list groups
 - ``GET  /api/groups/{name}``             — group with members
+- ``POST /api/datasets/build``            — build local PIT training dataset
 - ``GET  /api/usage/feature?name=X``      — usage stats for a feature
 
 The server *auto-logs* a ``view`` action on every ``GET /api/features/by-name``
@@ -42,6 +43,7 @@ from .models import (
     FeatureGroup,
     FeatureGroupDetail,
     FeatureUsage,
+    TrainingDatasetBuildResult,
 )
 
 if TYPE_CHECKING:
@@ -301,6 +303,46 @@ class FeatCatClient:
     def get_feature_usage(self, name: str) -> FeatureUsage:
         row = self._request("GET", "/api/usage/feature", params={"name": name})
         return FeatureUsage.model_validate(row)
+
+    # --- Training datasets ---
+
+    def build_training_dataset(
+        self,
+        *,
+        entity_df_path: str,
+        feature_columns: list[str],
+        source_path: str | None = None,
+        source_name: str | None = None,
+        entity_key: str | None = None,
+        entity_timestamp_column: str | None = None,
+        source_event_timestamp_column: str | None = None,
+        output_path: str | None = None,
+    ) -> TrainingDatasetBuildResult:
+        """Build a local point-in-time training dataset via the server.
+
+        The server currently supports local parquet paths only. Pass either
+        ``source_path`` for an explicit parquet file or ``source_name`` for a
+        registered DataSource with join metadata.
+        """
+        body: dict[str, Any] = {
+            "entity_df_path": entity_df_path,
+            "feature_columns": feature_columns,
+        }
+        if source_path is not None:
+            body["source_path"] = source_path
+        if source_name is not None:
+            body["source_name"] = source_name
+        if entity_key is not None:
+            body["entity_key"] = entity_key
+        if entity_timestamp_column is not None:
+            body["entity_timestamp_column"] = entity_timestamp_column
+        if source_event_timestamp_column is not None:
+            body["source_event_timestamp_column"] = source_event_timestamp_column
+        if output_path is not None:
+            body["output_path"] = output_path
+
+        row = self._request("POST", "/api/datasets/build", json_body=body)
+        return TrainingDatasetBuildResult.model_validate(row)
 
     # --- DataFrame helpers ---
 

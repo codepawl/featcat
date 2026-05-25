@@ -8,6 +8,7 @@ and error-wrapping invariants.
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from typing import Any
 
@@ -23,6 +24,7 @@ from featcat_client import (
     FeatureNotFound,
     GroupNotFound,
     ServerError,
+    TrainingDatasetBuildResult,
 )
 
 
@@ -212,6 +214,148 @@ def test_get_path_resolves_via_sources(feature_payload: dict[str, Any], source_p
     with _client_with_handler(handler) as client:
         path = client.get_path("user_behavior.session_count_30d")
     assert path == "/data/user_behavior.parquet"
+
+
+# --------------------------------------------------------------------------- #
+# Training datasets                                                           #
+# --------------------------------------------------------------------------- #
+
+
+def _dataset_success_payload() -> dict[str, Any]:
+    return {
+        "is_valid": True,
+        "errors": [],
+        "warnings": [],
+        "entity_df_path": "labels.parquet",
+        "source_path": "features.parquet",
+        "entity_key": "customer_id",
+        "entity_timestamp_column": "event_ts",
+        "source_event_timestamp_column": "feature_ts",
+        "feature_columns": ["avg_spend_30d", "txn_count_30d"],
+        "output_path": "training.parquet",
+        "row_count": 10,
+        "feature_count": 2,
+        "unresolved_row_count": 1,
+        "missing_feature_value_count": 2,
+    }
+
+
+def test_build_training_dataset_posts_expected_body() -> None:
+    captured: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json=_dataset_success_payload())
+
+    with _client_with_handler(handler) as client:
+        result = client.build_training_dataset(
+            entity_df_path="labels.parquet",
+            source_path="features.parquet",
+            entity_key="customer_id",
+            entity_timestamp_column="event_ts",
+            source_event_timestamp_column="feature_ts",
+            feature_columns=["avg_spend_30d", "txn_count_30d"],
+            output_path="training.parquet",
+        )
+
+    assert isinstance(result, TrainingDatasetBuildResult)
+    assert captured == {
+        "method": "POST",
+        "path": "/api/datasets/build",
+        "body": {
+            "entity_df_path": "labels.parquet",
+            "source_path": "features.parquet",
+            "entity_key": "customer_id",
+            "entity_timestamp_column": "event_ts",
+            "source_event_timestamp_column": "feature_ts",
+            "feature_columns": ["avg_spend_30d", "txn_count_30d"],
+            "output_path": "training.parquet",
+        },
+    }
+
+
+def test_build_training_dataset_parses_success_response() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_dataset_success_payload())
+
+    with _client_with_handler(handler) as client:
+        result = client.build_training_dataset(
+            entity_df_path="labels.parquet",
+            source_path="features.parquet",
+            entity_key="customer_id",
+            entity_timestamp_column="event_ts",
+            source_event_timestamp_column="feature_ts",
+            feature_columns=["avg_spend_30d", "txn_count_30d"],
+            output_path="training.parquet",
+        )
+
+    assert result.is_valid is True
+    assert result.row_count == 10
+    assert result.feature_count == 2
+    assert result.unresolved_row_count == 1
+    assert result.output_path == "training.parquet"
+
+
+def test_build_training_dataset_parses_validation_failure_response() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                **_dataset_success_payload(),
+                "is_valid": False,
+                "errors": [
+                    {
+                        "code": "source_dataframe_missing_entity_key",
+                        "message": "Source dataframe is missing entity key column: customer_id",
+                        "field": "entity_key",
+                    }
+                ],
+                "output_path": None,
+                "row_count": 0,
+            },
+        )
+
+    with _client_with_handler(handler) as client:
+        result = client.build_training_dataset(
+            entity_df_path="labels.parquet",
+            source_path="features.parquet",
+            entity_key="customer_id",
+            entity_timestamp_column="event_ts",
+            source_event_timestamp_column="feature_ts",
+            feature_columns=["avg_spend_30d"],
+            output_path="training.parquet",
+        )
+
+    assert result.is_valid is False
+    assert result.errors[0].code == "source_dataframe_missing_entity_key"
+    assert result.errors[0].field == "entity_key"
+    assert result.output_path is None
+
+
+def test_build_training_dataset_supports_source_name() -> None:
+    captured_body: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured_body.update(json.loads(request.content))
+        return httpx.Response(200, json={**_dataset_success_payload(), "source_path": "/data/features.parquet"})
+
+    with _client_with_handler(handler) as client:
+        result = client.build_training_dataset(
+            entity_df_path="labels.parquet",
+            source_name="registered_features",
+            entity_timestamp_column="event_ts",
+            feature_columns=["avg_spend_30d"],
+        )
+
+    assert captured_body == {
+        "entity_df_path": "labels.parquet",
+        "feature_columns": ["avg_spend_30d"],
+        "source_name": "registered_features",
+        "entity_timestamp_column": "event_ts",
+    }
+    assert result.source_path == "/data/features.parquet"
 
 
 # --------------------------------------------------------------------------- #

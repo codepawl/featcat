@@ -31,6 +31,8 @@ from .models import (
     FeatureGroup,
     FeatureGroupDetail,
     FeatureUsage,
+    TrainingDatasetBuildResult,
+    TrainingDatasetIssue,
 )
 
 __all__ = [
@@ -45,5 +47,7 @@ __all__ = [
     "FeatureUsage",
     "GroupNotFound",
     "ServerError",
+    "TrainingDatasetBuildResult",
+    "TrainingDatasetIssue",
     "__version__",
 ]
