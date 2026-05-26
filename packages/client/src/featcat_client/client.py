@@ -20,6 +20,10 @@ Server endpoints actually used (verified against ``featcat/server/routes/``):
 - ``POST /api/online/read``               — read online feature values
 - ``POST /api/online/materialize``        — materialize latest offline values
 - ``GET  /api/online/materializations``   — list materialization audit history
+- ``GET  /api/online/materialization-schedules`` — list materialization schedules
+- ``POST /api/online/materialization-schedules`` — create materialization schedule
+- ``PATCH /api/online/materialization-schedules/{id}`` — enable/disable schedule
+- ``POST /api/online/materialization-schedules/{id}/run`` — run schedule once
 - ``GET  /api/usage/feature?name=X``      — usage stats for a feature
 
 The server *auto-logs* a ``view`` action on every ``GET /api/features/by-name``
@@ -50,6 +54,10 @@ from .models import (
     FeatureUsage,
     MaterializationAudit,
     MaterializationResult,
+    MaterializationSchedule,
+    MaterializationScheduleCreateRequest,
+    MaterializationScheduleRunResult,
+    MaterializationScheduleUpdateRequest,
     OnlineFeatureReadResult,
     OnlineFeatureWrite,
     OnlineFeatureWriteResult,
@@ -449,6 +457,66 @@ class FeatCatClient:
             params["status"] = status
         rows = self._request("GET", "/api/online/materializations", params=params)
         return [MaterializationAudit.model_validate(row) for row in rows]
+
+    def list_materialization_schedules(
+        self,
+        *,
+        limit: int = 20,
+        enabled: bool | None = None,
+    ) -> list[MaterializationSchedule]:
+        """List interval materialization schedules."""
+        params: dict[str, Any] = {"limit": limit}
+        if enabled is not None:
+            params["enabled"] = "true" if enabled else "false"
+        rows = self._request("GET", "/api/online/materialization-schedules", params=params)
+        return [MaterializationSchedule.model_validate(row) for row in rows]
+
+    def create_materialization_schedule(
+        self,
+        *,
+        name: str,
+        source_name: str,
+        feature_columns: list[str],
+        interval_seconds: int,
+        project: str = "",
+        feature_view: str = "",
+        enabled: bool = True,
+        actor: str | None = None,
+    ) -> MaterializationSchedule:
+        """Create an interval materialization schedule."""
+        body = MaterializationScheduleCreateRequest(
+            name=name,
+            source_name=source_name,
+            feature_columns=feature_columns,
+            interval_seconds=interval_seconds,
+            project=project,
+            feature_view=feature_view,
+            enabled=enabled,
+            actor=actor,
+        ).model_dump(mode="json")
+        row = self._request("POST", "/api/online/materialization-schedules", json_body=body)
+        return MaterializationSchedule.model_validate(row)
+
+    def set_materialization_schedule_enabled(
+        self,
+        schedule_id: str,
+        enabled: bool,
+    ) -> MaterializationSchedule:
+        """Enable or disable an interval materialization schedule."""
+        body = MaterializationScheduleUpdateRequest(enabled=enabled).model_dump(mode="json")
+        row = self._request("PATCH", f"/api/online/materialization-schedules/{schedule_id}", json_body=body)
+        return MaterializationSchedule.model_validate(row)
+
+    def run_materialization_schedule(
+        self,
+        schedule_id: str,
+        *,
+        runner_id: str | None = None,
+    ) -> MaterializationScheduleRunResult:
+        """Run one materialization schedule immediately."""
+        body = {"runner_id": runner_id} if runner_id is not None else None
+        row = self._request("POST", f"/api/online/materialization-schedules/{schedule_id}/run", json_body=body)
+        return MaterializationScheduleRunResult.model_validate(row)
 
     # --- DataFrame helpers ---
 

@@ -25,6 +25,8 @@ from featcat_client import (
     GroupNotFound,
     MaterializationAudit,
     MaterializationResult,
+    MaterializationSchedule,
+    MaterializationScheduleRunResult,
     OnlineFeatureReadResult,
     OnlineFeatureWriteResult,
     ServerError,
@@ -523,6 +525,28 @@ def _materialization_audit_payload() -> dict[str, Any]:
     }
 
 
+def _materialization_schedule_payload() -> dict[str, Any]:
+    return {
+        "id": "sched-1",
+        "name": "hourly-transactions",
+        "source_name": "transactions",
+        "feature_columns": ["avg_spend_30d", "txn_count_30d"],
+        "project": "churn",
+        "feature_view": "transactions",
+        "schedule_type": "interval",
+        "interval_seconds": 3600,
+        "cron_expression": None,
+        "enabled": True,
+        "actor": "sdk-job",
+        "last_run_at": None,
+        "next_run_at": "2026-05-26T13:00:00Z",
+        "lease_owner": None,
+        "lease_until": None,
+        "created_at": "2026-05-26T12:00:00Z",
+        "updated_at": "2026-05-26T12:00:00Z",
+    }
+
+
 def test_write_online_features_posts_expected_body() -> None:
     captured: dict[str, Any] = {}
 
@@ -838,6 +862,116 @@ def test_list_materialization_runs_parses_response() -> None:
     assert rows[1].source_path == "s3://featcat-smoke/materialization/source.parquet"
     assert rows[1].errors[0].code == "missing_feature_column"
     assert rows[1].errors[0].field == "missing_feature"
+
+
+def test_create_materialization_schedule_posts_expected_body() -> None:
+    captured: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json=_materialization_schedule_payload())
+
+    with _client_with_handler(handler) as client:
+        result = client.create_materialization_schedule(
+            name="hourly-transactions",
+            source_name="transactions",
+            feature_columns=["avg_spend_30d", "txn_count_30d"],
+            interval_seconds=3600,
+            project="churn",
+            feature_view="transactions",
+            actor="sdk-job",
+        )
+
+    assert isinstance(result, MaterializationSchedule)
+    assert captured == {
+        "method": "POST",
+        "path": "/api/online/materialization-schedules",
+        "body": {
+            "name": "hourly-transactions",
+            "source_name": "transactions",
+            "feature_columns": ["avg_spend_30d", "txn_count_30d"],
+            "interval_seconds": 3600,
+            "project": "churn",
+            "feature_view": "transactions",
+            "enabled": True,
+            "actor": "sdk-job",
+        },
+    }
+
+
+def test_list_materialization_schedules_sends_expected_request_and_parses_response() -> None:
+    captured: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        captured["params"] = dict(request.url.params)
+        return httpx.Response(200, json=[_materialization_schedule_payload()])
+
+    with _client_with_handler(handler) as client:
+        rows = client.list_materialization_schedules(limit=20, enabled=True)
+
+    assert isinstance(rows[0], MaterializationSchedule)
+    assert rows[0].id == "sched-1"
+    assert rows[0].schedule_type == "interval"
+    assert rows[0].enabled is True
+    assert captured == {
+        "method": "GET",
+        "path": "/api/online/materialization-schedules",
+        "params": {"limit": "20", "enabled": "true"},
+    }
+
+
+def test_set_materialization_schedule_enabled_sends_expected_patch_body() -> None:
+    captured: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={**_materialization_schedule_payload(), "enabled": False})
+
+    with _client_with_handler(handler) as client:
+        result = client.set_materialization_schedule_enabled("sched-1", False)
+
+    assert result.enabled is False
+    assert captured == {
+        "method": "PATCH",
+        "path": "/api/online/materialization-schedules/sched-1",
+        "body": {"enabled": False},
+    }
+
+
+def test_run_materialization_schedule_posts_expected_body_and_parses_response() -> None:
+    captured: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={
+                "schedule_id": "sched-1",
+                "schedule_name": "hourly-transactions",
+                "status": "success",
+                "audit_id": "mat-1",
+            },
+        )
+
+    with _client_with_handler(handler) as client:
+        result = client.run_materialization_schedule("sched-1", runner_id="local-dev")
+
+    assert isinstance(result, MaterializationScheduleRunResult)
+    assert result.schedule_id == "sched-1"
+    assert result.status == "success"
+    assert captured == {
+        "method": "POST",
+        "path": "/api/online/materialization-schedules/sched-1/run",
+        "body": {"runner_id": "local-dev"},
+    }
 
 
 # --------------------------------------------------------------------------- #

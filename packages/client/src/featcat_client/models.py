@@ -260,3 +260,53 @@ class MaterializationAudit(_Base):
     warnings: list[MaterializationIssue] = []
     actor: str | None = None
     created_at: datetime
+
+
+class MaterializationScheduleCreateRequest(_Base):
+    """Body sent to ``POST /api/online/materialization-schedules``."""
+
+    name: str
+    source_name: str
+    feature_columns: list[str]
+    interval_seconds: int
+    project: str = ""
+    feature_view: str = ""
+    enabled: bool = True
+    actor: str | None = None
+
+
+class MaterializationScheduleUpdateRequest(_Base):
+    """Body sent to ``PATCH /api/online/materialization-schedules/{schedule_id}``."""
+
+    enabled: bool
+
+
+class MaterializationSchedule(_Base):
+    """Shape returned by materialization schedule management endpoints."""
+
+    id: str
+    name: str
+    source_name: str
+    feature_columns: list[str]
+    project: str = ""
+    feature_view: str = ""
+    schedule_type: str = "interval"
+    interval_seconds: int
+    cron_expression: str | None = None
+    enabled: bool = True
+    actor: str | None = None
+    last_run_at: datetime | None = None
+    next_run_at: datetime | None = None
+    lease_owner: str | None = None
+    lease_until: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class MaterializationScheduleRunResult(_Base):
+    """Shape returned by ``POST /api/online/materialization-schedules/{schedule_id}/run``."""
+
+    schedule_id: str
+    schedule_name: str
+    status: str
+    audit_id: str
