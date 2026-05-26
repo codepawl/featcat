@@ -106,3 +106,57 @@ def run_due_materialization_schedules(
             )
         )
     return MaterializationSchedulerRunResult(runner_id=runner_id, claimed=len(claimed), runs=records)
+
+
+def run_materialization_schedule_once(
+    db: CatalogBackend,
+    *,
+    schedule_id: str,
+    clock: Clock = utcnow,
+) -> MaterializationScheduleRunRecord | None:
+    """Execute one materialization schedule immediately."""
+    schedule = db.get_materialization_schedule(schedule_id)
+    if schedule is None:
+        return None
+
+    try:
+        result = materialize_latest_from_source(
+            db,
+            source_name=schedule.source_name,
+            feature_columns=schedule.feature_columns,
+            project=schedule.project,
+            feature_view=schedule.feature_view,
+        )
+        audit_id = record_materialization_audit(
+            db,
+            result=result,
+            actor=schedule.actor,
+            schedule_id=schedule.id,
+        )
+        status = "success" if result.is_valid else "validation_failed"
+    except Exception as exc:
+        audit_id = record_materialization_error_audit(
+            db,
+            source_name=schedule.source_name,
+            project=schedule.project,
+            feature_view=schedule.feature_view,
+            feature_columns=schedule.feature_columns,
+            error=exc,
+            actor=schedule.actor,
+            schedule_id=schedule.id,
+        )
+        status = "error"
+    finally:
+        finished_at = clock()
+        db.finish_materialization_schedule_run(
+            schedule.id,
+            finished_at=finished_at,
+            next_run_at=next_interval_run(finished_at, schedule.interval_seconds),
+        )
+
+    return MaterializationScheduleRunRecord(
+        schedule_id=schedule.id,
+        schedule_name=schedule.name,
+        status=status,
+        audit_id=audit_id,
+    )

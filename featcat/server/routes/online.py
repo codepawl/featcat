@@ -7,13 +7,15 @@ from dataclasses import asdict
 from datetime import datetime  # noqa: TC003
 from typing import Any
 
-from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field, ValidationError
 
 from ...catalog.materialization import MaterializationResult, materialize_latest_from_source
 from ...catalog.materialization_audit import record_materialization_audit, record_materialization_error_audit
+from ...catalog.materialization_scheduler import run_materialization_schedule_once
 from ...catalog.models import (
     MaterializationAudit,
+    MaterializationSchedule,
     OnlineFeatureReadMetadata,
     OnlineFeatureReadResult,
     OnlineFeatureWrite,
@@ -128,6 +130,48 @@ class OnlineMaterializationAuditResponse(BaseModel):
     created_at: str
 
 
+class OnlineMaterializationScheduleCreateRequest(BaseModel):
+    name: str
+    source_name: str
+    feature_columns: list[str]
+    interval_seconds: int
+    project: str = ""
+    feature_view: str = ""
+    enabled: bool = True
+    actor: str | None = None
+
+
+class OnlineMaterializationSchedulePatchRequest(BaseModel):
+    enabled: bool
+
+
+class OnlineMaterializationScheduleResponse(BaseModel):
+    id: str
+    name: str
+    source_name: str
+    feature_columns: list[str]
+    project: str
+    feature_view: str
+    schedule_type: str
+    interval_seconds: int
+    cron_expression: str | None = None
+    enabled: bool
+    actor: str | None = None
+    last_run_at: datetime | None = None
+    next_run_at: datetime | None = None
+    lease_owner: str | None = None
+    lease_until: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class OnlineMaterializationScheduleRunResponse(BaseModel):
+    schedule_id: str
+    schedule_name: str
+    status: str
+    audit_id: str
+
+
 def _write_from_request(body: OnlineFeatureWriteRequest) -> list[OnlineFeatureWrite]:
     writes: list[OnlineFeatureWrite] = []
     for row in body.rows:
@@ -144,6 +188,10 @@ def _materialization_audit_response(row: MaterializationAudit) -> OnlineMaterial
     payload = row.model_dump()
     payload["created_at"] = row.created_at.isoformat()
     return OnlineMaterializationAuditResponse.model_validate(payload)
+
+
+def _materialization_schedule_response(row: MaterializationSchedule) -> OnlineMaterializationScheduleResponse:
+    return OnlineMaterializationScheduleResponse.model_validate(row.model_dump())
 
 
 @router.post("/write", response_model=OnlineFeatureWriteResponse)
@@ -178,6 +226,77 @@ def list_materialization_runs(
 ) -> list[OnlineMaterializationAuditResponse]:
     """List recent online materialization audit rows."""
     return [_materialization_audit_response(row) for row in db.list_materialization_audits(limit=limit, status=status)]
+
+
+@router.get("/materialization-schedules", response_model=list[OnlineMaterializationScheduleResponse])
+def list_materialization_schedules(
+    limit: int = 20,
+    enabled: bool | None = None,
+    db=Depends(get_db),
+) -> list[OnlineMaterializationScheduleResponse]:
+    """List interval materialization schedules."""
+    return [
+        _materialization_schedule_response(row)
+        for row in db.list_materialization_schedules(limit=limit, enabled=enabled)
+    ]
+
+
+@router.post("/materialization-schedules", response_model=OnlineMaterializationScheduleResponse)
+def create_materialization_schedule(
+    body: OnlineMaterializationScheduleCreateRequest,
+    db=Depends(get_db),
+) -> OnlineMaterializationScheduleResponse:
+    """Create an interval materialization schedule."""
+    try:
+        schedule = db.create_materialization_schedule(
+            name=body.name,
+            source_name=body.source_name,
+            feature_columns=body.feature_columns,
+            interval_seconds=body.interval_seconds,
+            project=body.project,
+            feature_view=body.feature_view,
+            enabled=body.enabled,
+            actor=body.actor,
+        )
+    except ValidationError as exc:
+        first_error = exc.errors()[0] if exc.errors() else {}
+        detail = str(first_error.get("msg") or exc)
+        if detail.startswith("Value error, "):
+            detail = detail.removeprefix("Value error, ")
+        raise HTTPException(status_code=400, detail=detail) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _materialization_schedule_response(schedule)
+
+
+@router.patch("/materialization-schedules/{schedule_id}", response_model=OnlineMaterializationScheduleResponse)
+def patch_materialization_schedule(
+    schedule_id: str,
+    body: OnlineMaterializationSchedulePatchRequest,
+    db=Depends(get_db),
+) -> OnlineMaterializationScheduleResponse:
+    """Enable or disable one interval materialization schedule."""
+    schedule = db.set_materialization_schedule_enabled(schedule_id, body.enabled)
+    if schedule is None:
+        raise HTTPException(status_code=404, detail="Materialization schedule not found")
+    return _materialization_schedule_response(schedule)
+
+
+@router.post("/materialization-schedules/{schedule_id}/run", response_model=OnlineMaterializationScheduleRunResponse)
+def run_materialization_schedule(
+    schedule_id: str,
+    db=Depends(get_db),
+) -> OnlineMaterializationScheduleRunResponse:
+    """Run one materialization schedule immediately."""
+    record = run_materialization_schedule_once(db, schedule_id=schedule_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Materialization schedule not found")
+    return OnlineMaterializationScheduleRunResponse(
+        schedule_id=record.schedule_id,
+        schedule_name=record.schedule_name,
+        status=record.status,
+        audit_id=record.audit_id,
+    )
 
 
 @router.post("/materialize", response_model=OnlineMaterializationResponse)
