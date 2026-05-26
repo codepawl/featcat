@@ -205,3 +205,33 @@ class OnlineFeatureReadResult(_Base):
     """Shape returned by ``POST /api/online/read``."""
 
     rows: list[OnlineFeatureReadRow]
+
+
+class MaterializationIssue(_Base):
+    """Structured materialization validation or write issue."""
+
+    code: str
+    message: str
+    field: str | None = None
+
+
+class MaterializationResult(_Base):
+    """Shape returned by ``POST /api/online/materialize``."""
+
+    is_valid: bool
+    errors: list[MaterializationIssue] = []
+    warnings: list[MaterializationIssue] = []
+    source_name: str = ""
+    source_path: str | None = None
+    project: str = ""
+    feature_view: str = ""
+    entity_key: str | None = None
+    event_timestamp_column: str | None = None
+    created_timestamp_column: str | None = None
+    feature_columns: list[str] = []
+    entity_count: int = 0
+    feature_count: int = 0
+    requested: int = 0
+    written: int = 0
+    skipped_older: int = 0
+    skipped_same_timestamp: int = 0

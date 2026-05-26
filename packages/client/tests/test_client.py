@@ -23,6 +23,7 @@ from featcat_client import (
     FeatureGroupDetail,
     FeatureNotFound,
     GroupNotFound,
+    MaterializationResult,
     OnlineFeatureReadResult,
     OnlineFeatureWriteResult,
     ServerError,
@@ -474,6 +475,28 @@ def _online_read_result_payload() -> dict[str, Any]:
     }
 
 
+def _materialization_success_payload() -> dict[str, Any]:
+    return {
+        "is_valid": True,
+        "errors": [],
+        "warnings": [],
+        "source_name": "transactions",
+        "source_path": "/data/transactions.parquet",
+        "project": "churn",
+        "feature_view": "transactions",
+        "entity_key": "customer_id",
+        "event_timestamp_column": "event_ts",
+        "created_timestamp_column": None,
+        "feature_columns": ["avg_spend_30d", "txn_count_30d"],
+        "entity_count": 2,
+        "feature_count": 2,
+        "requested": 4,
+        "written": 4,
+        "skipped_older": 0,
+        "skipped_same_timestamp": 0,
+    }
+
+
 def test_write_online_features_posts_expected_body() -> None:
     captured: dict[str, Any] = {}
 
@@ -646,6 +669,91 @@ def test_get_online_features_preserves_null_found_and_missing_metadata() -> None
     assert row.features["transactions.txn_count_30d"] is None
     assert row.metadata["transactions.txn_count_30d"].found is False
     assert row.metadata["transactions.txn_count_30d"].event_timestamp is None
+
+
+def test_materialize_online_features_posts_expected_body() -> None:
+    captured: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json=_materialization_success_payload())
+
+    with _client_with_handler(handler) as client:
+        client.materialize_online_features(
+            source_name="transactions",
+            feature_columns=["avg_spend_30d", "txn_count_30d"],
+            project="churn",
+            feature_view="transactions",
+            actor="sdk-job",
+        )
+
+    assert captured == {
+        "method": "POST",
+        "path": "/api/online/materialize",
+        "body": {
+            "source_name": "transactions",
+            "feature_columns": ["avg_spend_30d", "txn_count_30d"],
+            "project": "churn",
+            "feature_view": "transactions",
+            "actor": "sdk-job",
+        },
+    }
+
+
+def test_materialize_online_features_parses_success_response() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_materialization_success_payload())
+
+    with _client_with_handler(handler) as client:
+        result = client.materialize_online_features(
+            source_name="transactions",
+            feature_columns=["avg_spend_30d", "txn_count_30d"],
+            project="churn",
+            feature_view="transactions",
+        )
+
+    assert isinstance(result, MaterializationResult)
+    assert result.is_valid is True
+    assert result.source_name == "transactions"
+    assert result.feature_columns == ["avg_spend_30d", "txn_count_30d"]
+    assert result.entity_count == 2
+    assert result.requested == 4
+    assert result.written == 4
+
+
+def test_materialize_online_features_parses_validation_failure_response() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                **_materialization_success_payload(),
+                "is_valid": False,
+                "entity_count": 0,
+                "requested": 0,
+                "written": 0,
+                "feature_columns": ["missing_feature"],
+                "errors": [
+                    {
+                        "code": "missing_feature_column",
+                        "message": "Parquet source is missing feature column: missing_feature",
+                        "field": "missing_feature",
+                    }
+                ],
+            },
+        )
+
+    with _client_with_handler(handler) as client:
+        result = client.materialize_online_features(
+            source_name="transactions",
+            feature_columns=["missing_feature"],
+        )
+
+    assert result.is_valid is False
+    assert result.requested == 0
+    assert result.errors[0].code == "missing_feature_column"
+    assert result.errors[0].field == "missing_feature"
 
 
 # --------------------------------------------------------------------------- #
