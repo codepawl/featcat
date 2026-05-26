@@ -1,4 +1,4 @@
-.PHONY: install lint format type-check test test-cov build clean check release-check docs docs-serve docs-clean bench docker-version docker-build docker-push
+.PHONY: install lint format type-check test test-cov build clean distclean check release-check docs docs-serve docs-clean bench docker-version docker-build docker-push
 
 DOCKER_IMAGE ?= nxank4/featcat
 VERSION := $(shell grep '^__version__' featcat/__init__.py | cut -d'"' -f2)
@@ -30,7 +30,17 @@ build:
 	uv run python -m build
 
 clean:
-	rm -rf dist/ build/ *.egg-info .pytest_cache .mypy_cache .ruff_cache htmlcov .coverage coverage.xml
+	rm -rf dist/ build/ *.egg-info htmlcov .coverage coverage.xml
+	rm -rf .pytest_cache .mypy_cache .ruff_cache test-results site
+	rm -rf packages/client/.venv packages/client/.pytest_cache packages/client/.mypy_cache packages/client/.ruff_cache
+	rm -f packages/client/uv.lock
+	rm -rf web/playwright-report web/test-results web/tests/e2e/.tmp featcat/server/static
+	find featcat tests packages/client/src packages/client/tests -type d -name __pycache__ -prune -exec rm -rf {} +
+	rm -f catalog.db catalog.db-shm catalog.db-wal web/catalog.db web/catalog.db-shm web/catalog.db-wal
+	rm -rf .openpawl .superpowers .claude/plan .claude/settings.local.json
+
+distclean: clean
+	rm -rf .venv web/node_modules deploy/models data-test
 
 # T3.3 — MkDocs site. Install once with: uv pip install -e ".[docs]"
 docs:
