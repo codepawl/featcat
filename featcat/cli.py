@@ -6,6 +6,7 @@ import contextlib
 import json
 import os
 import sys
+from dataclasses import asdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -930,6 +931,52 @@ def online_get(
         "[green]Online read complete:[/green] "
         f"entities={len(result.rows)} features={len(feature_refs)} found={found_count}/{requested_count}"
     )
+
+
+@online_app.command("materialize")
+def online_materialize(
+    source: str = typer.Option(..., "--source", help="Registered DataSource name"),
+    features: str = typer.Option(..., "--features", "-f", help="Comma-separated feature columns"),
+    project: str = typer.Option("", "--project", help="Project namespace"),
+    feature_view: str = typer.Option("", "--feature-view", help="Feature view namespace"),
+    json_output: bool = typer.Option(False, "--json", "-j", help="Emit structured JSON"),
+) -> None:
+    """Materialize latest offline feature values from a registered source."""
+    from .catalog.materialization import materialize_latest_from_source
+
+    feature_columns = _parse_csv_option(features)
+    db = _get_db()
+    try:
+        db.init_db()
+        result = materialize_latest_from_source(
+            db,
+            source_name=source,
+            feature_columns=feature_columns,
+            project=project,
+            feature_view=feature_view,
+        )
+    finally:
+        db.close()
+
+    payload = asdict(result)
+    if json_output:
+        print(json.dumps(payload, indent=2, default=str))
+    elif result.is_valid:
+        console.print(
+            "[green]Online materialization complete:[/green] "
+            f"source={result.source_name} entities={result.entity_count} "
+            f"features={result.feature_count} requested={result.requested} "
+            f"written={result.written} skipped_older={result.skipped_older} "
+            f"skipped_same_timestamp={result.skipped_same_timestamp}"
+        )
+    else:
+        console.print("[red]Online materialization failed:[/red]")
+        for error in result.errors:
+            field = f" ({error.field})" if error.field else ""
+            console.print(f"  [red]{error.code}[/red]{field}: {error.message}")
+
+    if not result.is_valid:
+        raise typer.Exit(1)
 
 
 # =========================================================================

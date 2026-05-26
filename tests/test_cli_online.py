@@ -5,10 +5,13 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Any
 
+import pyarrow as pa
+import pyarrow.parquet as pq
 from typer.testing import CliRunner
 
 from featcat.catalog.local import LocalBackend
 from featcat.catalog.models import DataSource, Feature
+from featcat.catalog.online_store import get_online_features
 from featcat.cli import app
 
 if TYPE_CHECKING:
@@ -21,6 +24,11 @@ runner = CliRunner()
 
 def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> Path:
     path.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+    return path
+
+
+def _write_parquet(path: Path, data: dict[str, list[Any]]) -> Path:
+    pq.write_table(pa.table(data), path)
     return path
 
 
@@ -46,6 +54,48 @@ def _seed_catalog(tmp_path: Path) -> None:
         )
     )
     db.close()
+
+
+def _seed_materialization_catalog(
+    tmp_path: Path,
+    *,
+    data: dict[str, list[Any]] | None = None,
+    feature_columns: list[str] | None = None,
+) -> Path:
+    parquet_path = _write_parquet(
+        tmp_path / "transactions.parquet",
+        data
+        or {
+            "customer_id": [1, 1, 2],
+            "event_ts": [
+                "2026-05-25T09:00:00Z",
+                "2026-05-25T10:00:00Z",
+                "2026-05-25T08:00:00Z",
+            ],
+            "avg_spend_30d": [10.0, 20.0, 30.0],
+            "txn_count_30d": [1, 2, 3],
+        },
+    )
+    db = LocalBackend(str(tmp_path / "catalog.db"))
+    db.init_db()
+    source = DataSource(
+        name="transactions",
+        path=str(parquet_path),
+        entity_key="customer_id",
+        event_timestamp_column="event_ts",
+    )
+    db.add_source(source)
+    for column in feature_columns or ["avg_spend_30d", "txn_count_30d"]:
+        db.upsert_feature(
+            Feature(
+                name=f"transactions.{column}",
+                data_source_id=source.id,
+                column_name=column,
+                dtype="float64",
+            )
+        )
+    db.close()
+    return parquet_path
 
 
 def _write_row(
@@ -195,3 +245,170 @@ def test_online_get_preserves_null_feature_value_as_found(tmp_path: Path, monkey
     assert row["features"]["transactions.avg_spend_30d"] is None
     assert row["metadata"]["transactions.avg_spend_30d"]["found"] is True
     assert row["metadata"]["transactions.avg_spend_30d"]["event_timestamp"] == "2026-05-25T09:00:00Z"
+
+
+def test_online_materialize_command_succeeds_for_registered_local_parquet(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("FEATCAT_CATALOG_DB_PATH", raising=False)
+    monkeypatch.delenv("FEATCAT_SERVER_URL", raising=False)
+    _seed_materialization_catalog(tmp_path)
+
+    result = runner.invoke(
+        app,
+        [
+            "online",
+            "materialize",
+            "--source",
+            "transactions",
+            "--features",
+            "avg_spend_30d,txn_count_30d",
+            "--project",
+            "churn",
+            "--feature-view",
+            "transactions",
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["is_valid"] is True
+    assert payload["source_name"] == "transactions"
+    assert payload["project"] == "churn"
+    assert payload["feature_view"] == "transactions"
+    assert payload["entity_count"] == 2
+    assert payload["feature_count"] == 2
+    assert payload["requested"] == 4
+    assert payload["written"] == 4
+    assert payload["errors"] == []
+
+
+def test_online_materialize_command_writes_values_readable_from_online_store(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("FEATCAT_CATALOG_DB_PATH", raising=False)
+    monkeypatch.delenv("FEATCAT_SERVER_URL", raising=False)
+    _seed_materialization_catalog(tmp_path)
+
+    result = runner.invoke(
+        app,
+        [
+            "online",
+            "materialize",
+            "--source",
+            "transactions",
+            "--features",
+            "avg_spend_30d,txn_count_30d",
+            "--project",
+            "churn",
+            "--feature-view",
+            "transactions",
+            "--json",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+
+    db = LocalBackend(str(tmp_path / "catalog.db"))
+    try:
+        db.init_db()
+        read_result = get_online_features(
+            db,
+            entity_keys=[{"customer_id": 1}, {"customer_id": 2}],
+            feature_refs=["transactions.avg_spend_30d", "transactions.txn_count_30d"],
+            project="churn",
+            feature_view="transactions",
+        )
+    finally:
+        db.close()
+
+    assert read_result.rows[0].features == {
+        "transactions.avg_spend_30d": 20.0,
+        "transactions.txn_count_30d": 2,
+    }
+    assert read_result.rows[1].features == {
+        "transactions.avg_spend_30d": 30.0,
+        "transactions.txn_count_30d": 3,
+    }
+
+
+def test_online_materialize_missing_feature_returns_structured_json_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("FEATCAT_CATALOG_DB_PATH", raising=False)
+    monkeypatch.delenv("FEATCAT_SERVER_URL", raising=False)
+    _seed_materialization_catalog(
+        tmp_path,
+        data={
+            "customer_id": [1],
+            "event_ts": ["2026-05-25T10:00:00Z"],
+            "avg_spend_30d": [10.0],
+        },
+        feature_columns=["avg_spend_30d", "missing_feature"],
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "online",
+            "materialize",
+            "--source",
+            "transactions",
+            "--features",
+            "missing_feature",
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["is_valid"] is False
+    assert payload["requested"] == 0
+    assert payload["errors"] == [
+        {
+            "code": "missing_feature_column",
+            "message": "Parquet source is missing feature column: missing_feature",
+            "field": "missing_feature",
+        }
+    ]
+
+
+def test_online_materialize_missing_source_returns_structured_json_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("FEATCAT_CATALOG_DB_PATH", raising=False)
+    monkeypatch.delenv("FEATCAT_SERVER_URL", raising=False)
+
+    result = runner.invoke(
+        app,
+        [
+            "online",
+            "materialize",
+            "--source",
+            "missing",
+            "--features",
+            "avg_spend_30d",
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["is_valid"] is False
+    assert payload["source_name"] == "missing"
+    assert payload["feature_columns"] == ["avg_spend_30d"]
+    assert payload["errors"] == [
+        {
+            "code": "source_not_found",
+            "message": "DataSource is not registered: missing",
+            "field": "source_name",
+        }
+    ]
