@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
+import { Play, Power } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { api, invalidateCache, type MaterializationSchedule } from '../api'
+import { api, invalidateCache, type MaterializationSchedule, type MaterializationScheduleRunResult } from '../api'
+import { Alert } from '../components/Alert'
 import { Badge } from '../components/Badge'
 import { Card } from '../components/Card'
 import { DataTable } from '../components/DataTable'
@@ -15,6 +17,10 @@ type LimitOption = '20' | '50' | '100'
 
 const ENABLED_OPTIONS: readonly EnabledFilter[] = ['all', 'enabled', 'disabled']
 const LIMIT_OPTIONS: readonly LimitOption[] = ['20', '50', '100']
+
+type ActionKind = 'toggle' | 'run'
+type BusyAction = { scheduleId: string; kind: ActionKind } | null
+type ActionError = { scheduleId: string; message: string } | null
 
 function enabledParam(value: EnabledFilter): boolean | null {
   if (value === 'enabled') return true
@@ -77,6 +83,18 @@ function NamespaceCell({ project, featureView }: { project: string; featureView:
   )
 }
 
+function runSummary(result: MaterializationScheduleRunResult): string {
+  const parts: string[] = []
+  if (result.status) parts.push(`status=${result.status}`)
+  if (result.is_valid != null) parts.push(`is_valid=${result.is_valid}`)
+  if (result.requested != null) parts.push(`requested=${result.requested}`)
+  if (result.written != null) parts.push(`written=${result.written}`)
+  if (result.skipped_older != null) parts.push(`skipped_older=${result.skipped_older}`)
+  if (result.skipped_same_timestamp != null) parts.push(`skipped_same_timestamp=${result.skipped_same_timestamp}`)
+  if (result.audit_id) parts.push(`audit=${result.audit_id}`)
+  return parts.join(' ')
+}
+
 export function MaterializationSchedules() {
   const { t } = useTranslation('materializationSchedules')
   const [schedules, setSchedules] = useState<MaterializationSchedule[]>([])
@@ -84,9 +102,12 @@ export function MaterializationSchedules() {
   const [error, setError] = useState('')
   const [enabled, setEnabled] = useState<EnabledFilter>('all')
   const [limit, setLimit] = useState<LimitOption>('20')
+  const [busyAction, setBusyAction] = useState<BusyAction>(null)
+  const [actionError, setActionError] = useState<ActionError>(null)
+  const [actionSummary, setActionSummary] = useState('')
 
-  const load = useCallback(() => {
-    setLoading(true)
+  const load = useCallback((options?: { silent?: boolean }) => {
+    if (!options?.silent) setLoading(true)
     setError('')
     invalidateCache('/online/materialization-schedules')
     api.online
@@ -96,8 +117,50 @@ export function MaterializationSchedules() {
         setSchedules([])
         setError(err instanceof Error ? err.message : t('error.description'))
       })
-      .finally(() => setLoading(false))
+      .finally(() => {
+        if (!options?.silent) setLoading(false)
+      })
   }, [enabled, limit, t])
+
+  const setScheduleEnabled = async (schedule: MaterializationSchedule, nextEnabled: boolean) => {
+    setBusyAction({ scheduleId: schedule.id, kind: 'toggle' })
+    setActionError(null)
+    setActionSummary('')
+    try {
+      await api.online.updateMaterializationSchedule(schedule.id, { enabled: nextEnabled })
+      await load({ silent: true })
+    } catch (err) {
+      setActionError({
+        scheduleId: schedule.id,
+        message: err instanceof Error ? err.message : t('actions.error'),
+      })
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
+  const runSchedule = async (schedule: MaterializationSchedule) => {
+    setBusyAction({ scheduleId: schedule.id, kind: 'run' })
+    setActionError(null)
+    setActionSummary('')
+    try {
+      const result = await api.online.runMaterializationSchedule(schedule.id)
+      await load({ silent: true })
+      const summary = runSummary(result)
+      setActionSummary(
+        summary
+          ? t('actions.run_success', { name: schedule.name, summary })
+          : t('actions.run_success_no_summary', { name: schedule.name }),
+      )
+    } catch (err) {
+      setActionError({
+        scheduleId: schedule.id,
+        message: err instanceof Error ? err.message : t('actions.error'),
+      })
+    } finally {
+      setBusyAction(null)
+    }
+  }
 
   useEffect(() => {
     load()
@@ -139,6 +202,15 @@ export function MaterializationSchedules() {
           </>
         }
       >
+        {actionSummary && (
+          <Alert
+            severity="success"
+            message={actionSummary}
+            dismissible
+            onDismiss={() => setActionSummary('')}
+            className="m-3"
+          />
+        )}
         {loading ? (
           <Skeleton className="h-48" />
         ) : error ? (
@@ -220,6 +292,46 @@ export function MaterializationSchedules() {
                 key: 'updated_at',
                 label: t('columns.updated_at'),
                 render: (row) => <DateCell value={row.updated_at} />,
+              },
+              {
+                key: 'actions',
+                label: t('columns.actions'),
+                sortable: false,
+                render: (row) => {
+                  const toggleBusy = busyAction?.scheduleId === row.id && busyAction.kind === 'toggle'
+                  const runBusy = busyAction?.scheduleId === row.id && busyAction.kind === 'run'
+                  const disabled = busyAction !== null
+                  const nextEnabled = !row.enabled
+                  return (
+                    <span className="flex min-w-[180px] flex-col gap-1.5">
+                      <span className="inline-flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setScheduleEnabled(row, nextEnabled)}
+                          disabled={disabled}
+                          className="inline-flex items-center gap-1 rounded-md border border-[var(--border-default)] px-2 py-1 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <Power size={12} strokeWidth={1.8} />
+                          {toggleBusy
+                            ? t(row.enabled ? 'actions.disabling' : 'actions.enabling')
+                            : t(row.enabled ? 'actions.disable' : 'actions.enable')}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => runSchedule(row)}
+                          disabled={disabled}
+                          className="inline-flex items-center gap-1 rounded-md bg-brand px-2 py-1 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <Play size={12} strokeWidth={1.8} />
+                          {runBusy ? t('actions.running') : t('actions.run_now')}
+                        </button>
+                      </span>
+                      {actionError?.scheduleId === row.id && (
+                        <span className="max-w-[220px] text-xs text-[var(--danger)]">{actionError.message}</span>
+                      )}
+                    </span>
+                  )
+                },
               },
             ]}
           />

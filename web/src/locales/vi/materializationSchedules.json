@@ -30,7 +30,19 @@
     "lease_owner": "Lease owner",
     "lease_until": "Lease until",
     "created_at": "Tạo lúc",
-    "updated_at": "Cập nhật"
+    "updated_at": "Cập nhật",
+    "actions": "Hành động"
+  },
+  "actions": {
+    "enable": "Bật",
+    "disable": "Tắt",
+    "enabling": "Đang bật...",
+    "disabling": "Đang tắt...",
+    "run_now": "Chạy ngay",
+    "running": "Đang chạy...",
+    "run_success": "Lượt chạy {{name}} hoàn tất: {{summary}}",
+    "run_success_no_summary": "Lượt chạy {{name}} hoàn tất",
+    "error": "Thao tác schedule thất bại"
   },
   "empty": {
     "title": "Chưa có lịch materialization",

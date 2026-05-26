@@ -5,6 +5,8 @@ import i18n from '../../i18n/config'
 
 const mocks = vi.hoisted(() => ({
   materializationSchedules: vi.fn(),
+  updateMaterializationSchedule: vi.fn(),
+  runMaterializationSchedule: vi.fn(),
   invalidateCache: vi.fn(),
 }))
 
@@ -13,6 +15,8 @@ vi.mock('../../api', () => ({
   api: {
     online: {
       materializationSchedules: mocks.materializationSchedules,
+      updateMaterializationSchedule: mocks.updateMaterializationSchedule,
+      runMaterializationSchedule: mocks.runMaterializationSchedule,
     },
   },
 }))
@@ -105,5 +109,91 @@ describe('MaterializationSchedules', () => {
 
     expect(await screen.findByText('hourly-transactions')).toBeInTheDocument()
     expect(mocks.materializationSchedules).toHaveBeenCalledTimes(2)
+  })
+
+  it('enable action calls PATCH with enabled=true and refreshes schedules', async () => {
+    const user = userEvent.setup()
+    const disabledSchedule = { ...schedule, enabled: false }
+    mocks.materializationSchedules.mockResolvedValueOnce([disabledSchedule]).mockResolvedValueOnce([schedule])
+    mocks.updateMaterializationSchedule.mockResolvedValueOnce(schedule)
+
+    render(<MaterializationSchedules />)
+    await screen.findByText('hourly-transactions')
+
+    await user.click(screen.getByRole('button', { name: /enable/i }))
+
+    expect(mocks.updateMaterializationSchedule).toHaveBeenCalledWith('sched-1', { enabled: true })
+    await waitFor(() => {
+      expect(mocks.materializationSchedules).toHaveBeenCalledTimes(2)
+    })
+  })
+
+  it('disable action calls PATCH with enabled=false and refreshes schedules', async () => {
+    const user = userEvent.setup()
+    mocks.materializationSchedules.mockResolvedValueOnce([schedule]).mockResolvedValueOnce([
+      {
+        ...schedule,
+        enabled: false,
+      },
+    ])
+    mocks.updateMaterializationSchedule.mockResolvedValueOnce({ ...schedule, enabled: false })
+
+    render(<MaterializationSchedules />)
+    await screen.findByText('hourly-transactions')
+
+    await user.click(screen.getByRole('button', { name: /disable/i }))
+
+    expect(mocks.updateMaterializationSchedule).toHaveBeenCalledWith('sched-1', { enabled: false })
+    await waitFor(() => {
+      expect(mocks.materializationSchedules).toHaveBeenCalledTimes(2)
+    })
+  })
+
+  it('manual run calls POST, refreshes schedules, and shows a summary', async () => {
+    const user = userEvent.setup()
+    mocks.materializationSchedules.mockResolvedValueOnce([schedule]).mockResolvedValueOnce([schedule])
+    mocks.runMaterializationSchedule.mockResolvedValueOnce({
+      schedule_id: 'sched-1',
+      schedule_name: 'hourly-transactions',
+      status: 'success',
+      requested: 4,
+      written: 4,
+      skipped_older: 0,
+      skipped_same_timestamp: 0,
+      audit_id: 'mat-1',
+    })
+
+    render(<MaterializationSchedules />)
+    await screen.findByText('hourly-transactions')
+
+    await user.click(screen.getByRole('button', { name: /run now/i }))
+
+    expect(mocks.runMaterializationSchedule).toHaveBeenCalledWith('sched-1')
+    expect(await screen.findByText(/requested=4 written=4/i)).toBeInTheDocument()
+    expect(screen.getByText(/status=success/i)).toBeInTheDocument()
+    expect(mocks.materializationSchedules).toHaveBeenCalledTimes(2)
+  })
+
+  it('action error displays an inline error message', async () => {
+    const user = userEvent.setup()
+    mocks.materializationSchedules.mockResolvedValueOnce([schedule])
+    mocks.runMaterializationSchedule.mockRejectedValueOnce(new Error('manual run failed'))
+
+    render(<MaterializationSchedules />)
+    await screen.findByText('hourly-transactions')
+
+    await user.click(screen.getByRole('button', { name: /run now/i }))
+
+    expect(await screen.findByText('manual run failed')).toBeInTheDocument()
+  })
+
+  it('does not introduce create or edit controls', async () => {
+    mocks.materializationSchedules.mockResolvedValueOnce([schedule])
+
+    render(<MaterializationSchedules />)
+    await screen.findByText('hourly-transactions')
+
+    expect(screen.queryByRole('button', { name: /create/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /edit/i })).not.toBeInTheDocument()
   })
 })

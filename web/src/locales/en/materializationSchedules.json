@@ -30,7 +30,19 @@
     "lease_owner": "Lease owner",
     "lease_until": "Lease until",
     "created_at": "Created",
-    "updated_at": "Updated"
+    "updated_at": "Updated",
+    "actions": "Actions"
+  },
+  "actions": {
+    "enable": "Enable",
+    "disable": "Disable",
+    "enabling": "Enabling...",
+    "disabling": "Disabling...",
+    "run_now": "Run now",
+    "running": "Running...",
+    "run_success": "Run {{name}} complete: {{summary}}",
+    "run_success_no_summary": "Run {{name}} complete",
+    "error": "Schedule action failed"
   },
   "empty": {
     "title": "No materialization schedules yet",

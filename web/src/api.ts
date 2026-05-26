@@ -258,6 +258,18 @@ export interface MaterializationSchedule {
   updated_at: string
 }
 
+export interface MaterializationScheduleRunResult {
+  schedule_id: string
+  schedule_name: string
+  status?: string
+  is_valid?: boolean
+  audit_id?: string
+  requested?: number
+  written?: number
+  skipped_older?: number
+  skipped_same_timestamp?: number
+}
+
 export const api = {
   health: () => cachedRequest<{ status: string; llm: boolean; model?: string }>('/health'),
   stats: () => cachedRequest<Record<string, number>>('/stats'),
@@ -590,6 +602,19 @@ export const api = {
       if (params?.enabled != null) qs.set('enabled', String(params.enabled))
       return cachedRequest<MaterializationSchedule[]>(`/online/materialization-schedules?${qs.toString()}`)
     },
+    updateMaterializationSchedule: (scheduleId: string, data: { enabled: boolean }) =>
+      request<MaterializationSchedule>(`/online/materialization-schedules/${encodeURIComponent(scheduleId)}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }),
+    runMaterializationSchedule: (scheduleId: string, data: { runner_id?: string | null } = {}) =>
+      request<MaterializationScheduleRunResult>(
+        `/online/materialization-schedules/${encodeURIComponent(scheduleId)}/run`,
+        {
+          method: 'POST',
+          body: JSON.stringify(data),
+        },
+      ),
   },
   export: {
     create: (data: { feature_specs?: string[]; group_name?: string; join_on?: string | null; format?: string }) =>
