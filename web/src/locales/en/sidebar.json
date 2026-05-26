@@ -9,6 +9,7 @@
     "lineage": "Lineage",
     "audit": "Audit",
     "datasetBuilds": "Dataset Builds",
+    "materializationRuns": "Materialization Runs",
     "monitoring": "Monitoring",
     "actions": "Actions",
     "jobs": "Jobs",

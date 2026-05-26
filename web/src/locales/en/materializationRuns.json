@@ -1,0 +1,54 @@
+{
+  "page": {
+    "title": "Materialization Runs",
+    "subtitle": "Recent online materialization audit history"
+  },
+  "table": {
+    "title": "Recent Runs"
+  },
+  "filters": {
+    "status": "Status filter",
+    "all": "All statuses",
+    "limit": "Limit",
+    "limit_value": "{{count}} rows"
+  },
+  "statuses": {
+    "success": "success",
+    "validation_failed": "validation failed",
+    "error": "error"
+  },
+  "columns": {
+    "status": "Status",
+    "created_at": "Created",
+    "source_name": "Source",
+    "source_path": "Path",
+    "namespace": "Project / view",
+    "feature_columns": "Feature columns",
+    "entity_count": "Entities",
+    "feature_count": "Features",
+    "requested": "Requested",
+    "written": "Written",
+    "skipped_older": "Skipped older",
+    "skipped_same_timestamp": "Skipped same time",
+    "issues": "Warnings / errors"
+  },
+  "actions": {
+    "copy_path": "Copy path"
+  },
+  "issues": {
+    "none": "None",
+    "errors_one": "{{count}} error",
+    "errors_other": "{{count}} errors",
+    "warnings_one": "{{count}} warning",
+    "warnings_other": "{{count}} warnings"
+  },
+  "empty": {
+    "title": "No materialization runs yet",
+    "description": "Materialization runs will appear after running online materialization through the API, CLI, or SDK."
+  },
+  "error": {
+    "title": "Could not load materialization runs",
+    "description": "The materialization history API failed.",
+    "retry": "Retry"
+  }
+}

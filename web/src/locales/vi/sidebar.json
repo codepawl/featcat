@@ -9,6 +9,7 @@
     "lineage": "Lineage",
     "audit": "Nhật ký",
     "datasetBuilds": "Build dataset",
+    "materializationRuns": "Materialization",
     "monitoring": "Giám sát",
     "actions": "Hành động",
     "jobs": "Tác vụ",

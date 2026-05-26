@@ -180,6 +180,7 @@ export interface DriftMatrixResponse {
 }
 
 export type DatasetBuildStatus = 'success' | 'validation_failed' | 'error'
+export type MaterializationStatus = 'success' | 'validation_failed' | 'error'
 
 export interface DatasetBuildIssue {
   code: string
@@ -204,6 +205,35 @@ export interface DatasetBuildAudit {
   missing_feature_value_count: number
   errors: DatasetBuildIssue[]
   warnings: DatasetBuildIssue[]
+  actor: string | null
+  created_at: string
+}
+
+export interface MaterializationIssue {
+  code: string
+  message: string
+  field: string | null
+}
+
+export interface MaterializationAudit {
+  id: string
+  status: MaterializationStatus
+  source_name: string
+  source_path: string | null
+  project: string
+  feature_view: string
+  entity_key: string | null
+  event_timestamp_column: string | null
+  created_timestamp_column: string | null
+  feature_columns: string[]
+  entity_count: number
+  feature_count: number
+  requested: number
+  written: number
+  skipped_older: number
+  skipped_same_timestamp: number
+  errors: MaterializationIssue[]
+  warnings: MaterializationIssue[]
   actor: string | null
   created_at: string
 }
@@ -525,6 +555,14 @@ export const api = {
       qs.set('limit', String(params?.limit ?? 20))
       if (params?.status) qs.set('status', params.status)
       return cachedRequest<DatasetBuildAudit[]>(`/datasets/builds?${qs.toString()}`)
+    },
+  },
+  online: {
+    materializations: (params?: { limit?: number; status?: MaterializationStatus | '' }) => {
+      const qs = new URLSearchParams()
+      qs.set('limit', String(params?.limit ?? 20))
+      if (params?.status) qs.set('status', params.status)
+      return cachedRequest<MaterializationAudit[]>(`/online/materializations?${qs.toString()}`)
     },
   },
   export: {

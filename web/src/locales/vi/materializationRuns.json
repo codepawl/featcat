@@ -1,0 +1,54 @@
+{
+  "page": {
+    "title": "Materialization Runs",
+    "subtitle": "Lịch sử materialization online gần đây"
+  },
+  "table": {
+    "title": "Runs gần đây"
+  },
+  "filters": {
+    "status": "Bộ lọc trạng thái",
+    "all": "Tất cả trạng thái",
+    "limit": "Giới hạn",
+    "limit_value": "{{count}} dòng"
+  },
+  "statuses": {
+    "success": "success",
+    "validation_failed": "validation failed",
+    "error": "error"
+  },
+  "columns": {
+    "status": "Trạng thái",
+    "created_at": "Tạo lúc",
+    "source_name": "Nguồn",
+    "source_path": "Đường dẫn",
+    "namespace": "Project / view",
+    "feature_columns": "Cột feature",
+    "entity_count": "Entities",
+    "feature_count": "Features",
+    "requested": "Requested",
+    "written": "Written",
+    "skipped_older": "Skipped older",
+    "skipped_same_timestamp": "Skipped same time",
+    "issues": "Cảnh báo / lỗi"
+  },
+  "actions": {
+    "copy_path": "Sao chép đường dẫn"
+  },
+  "issues": {
+    "none": "Không có",
+    "errors_one": "{{count}} lỗi",
+    "errors_other": "{{count}} lỗi",
+    "warnings_one": "{{count}} cảnh báo",
+    "warnings_other": "{{count}} cảnh báo"
+  },
+  "empty": {
+    "title": "Chưa có materialization run",
+    "description": "Materialization run sẽ xuất hiện sau khi chạy online materialization qua API, CLI, hoặc SDK."
+  },
+  "error": {
+    "title": "Không tải được materialization runs",
+    "description": "API lịch sử materialization bị lỗi.",
+    "retry": "Thử lại"
+  }
+}

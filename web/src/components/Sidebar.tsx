@@ -40,6 +40,7 @@ type NavKey =
   | 'lineage'
   | 'audit'
   | 'datasetBuilds'
+  | 'materializationRuns'
   | 'jobs'
   | 'chat'
   | 'settings'
@@ -88,6 +89,7 @@ const GROUPS: readonly NavGroup[] = [
     items: [
       { to: '/audit', key: 'audit', icon: History },
       { to: '/datasets/builds', key: 'datasetBuilds', icon: Database },
+      { to: '/online/materializations', key: 'materializationRuns', icon: Clock },
       { to: '/jobs', key: 'jobs', icon: Clock },
     ],
   },
