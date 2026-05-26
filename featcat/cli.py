@@ -45,11 +45,13 @@ usage_app = typer.Typer(help="Feature usage analytics")
 actions_app = typer.Typer(help="Recommended actions (lifecycle loop)")
 online_app = typer.Typer(help="Online feature store read/write commands")
 online_materializations_app = typer.Typer(help="Online materialization audit history")
+online_materialization_schedules_app = typer.Typer(help="Online materialization schedules")
 lineage_app = typer.Typer(help="Lineage management (T1.1)")
 lineage_edge_app = typer.Typer(help="Manage individual lineage edges")
 lineage_app.add_typer(lineage_edge_app, name="edge")
 dataset_app.add_typer(dataset_builds_app, name="builds")
 online_app.add_typer(online_materializations_app, name="materializations")
+online_materializations_app.add_typer(online_materialization_schedules_app, name="schedules")
 demo_app = typer.Typer(help="Demo catalog data: seed and clear")
 backup_app = typer.Typer(
     name="backup",
@@ -1038,6 +1040,158 @@ def online_materializations_list(
             str(row.written),
         )
     console.print(table)
+
+
+@online_materialization_schedules_app.command("add")
+def online_materialization_schedule_add(
+    name: str = typer.Option(..., "--name", help="Unique schedule name"),
+    source: str = typer.Option(..., "--source", help="Registered DataSource name"),
+    features: str = typer.Option(..., "--features", "-f", help="Comma-separated feature columns"),
+    interval_seconds: int = typer.Option(..., "--interval-seconds", help="Interval between runs in seconds"),
+    project: str = typer.Option("", "--project", help="Project namespace"),
+    feature_view: str = typer.Option("", "--feature-view", help="Feature view namespace"),
+    json_output: bool = typer.Option(False, "--json", "-j", help="Emit structured JSON"),
+) -> None:
+    """Create an interval materialization schedule."""
+    feature_columns = _parse_csv_option(features)
+    if not feature_columns:
+        console.print("[red]No feature columns provided:[/red] --features must include at least one feature column")
+        raise typer.Exit(1)
+
+    db = _get_db()
+    try:
+        db.init_db()
+        schedule = db.create_materialization_schedule(
+            name=name,
+            source_name=source,
+            feature_columns=feature_columns,
+            interval_seconds=interval_seconds,
+            project=project,
+            feature_view=feature_view,
+            actor=resolve_user(),
+        )
+    except Exception as exc:
+        console.print(f"[red]Could not create materialization schedule:[/red] {exc}")
+        raise typer.Exit(1) from None
+    finally:
+        db.close()
+
+    payload = schedule.model_dump(mode="json") if hasattr(schedule, "model_dump") else schedule
+    if json_output:
+        print(json.dumps(payload, indent=2, default=str))
+        return
+
+    console.print(
+        "[green]Materialization schedule created:[/green] "
+        f"name={schedule.name} source={schedule.source_name} "
+        f"features={len(schedule.feature_columns)} interval_seconds={schedule.interval_seconds}"
+    )
+
+
+@online_materialization_schedules_app.command("list")
+def online_materialization_schedules_list(
+    limit: int = typer.Option(20, "--limit", "-n", help="Maximum schedules to return"),
+    json_output: bool = typer.Option(False, "--json", "-j", help="Emit structured JSON"),
+) -> None:
+    """List materialization schedules."""
+    db = _get_db()
+    try:
+        db.init_db()
+        rows = db.list_materialization_schedules(limit=limit)
+    finally:
+        db.close()
+
+    payload = [row.model_dump(mode="json") if hasattr(row, "model_dump") else row for row in rows]
+    if json_output:
+        print(json.dumps(payload, indent=2, default=str))
+        return
+
+    table = Table(title="Online Materialization Schedules")
+    table.add_column("Name")
+    table.add_column("Enabled")
+    table.add_column("Source")
+    table.add_column("Interval", justify="right")
+    table.add_column("Next Run")
+    for row in rows:
+        next_run_at = row.next_run_at.isoformat() if row.next_run_at else ""
+        table.add_row(
+            row.name,
+            "yes" if row.enabled else "no",
+            row.source_name,
+            str(row.interval_seconds),
+            next_run_at,
+        )
+    console.print(table)
+
+
+@online_materialization_schedules_app.command("enable")
+def online_materialization_schedule_enable(
+    schedule: str = typer.Argument(..., help="Schedule id or name"),
+    json_output: bool = typer.Option(False, "--json", "-j", help="Emit structured JSON"),
+) -> None:
+    """Enable a materialization schedule."""
+    _set_online_materialization_schedule_enabled(schedule, True, json_output=json_output)
+
+
+@online_materialization_schedules_app.command("disable")
+def online_materialization_schedule_disable(
+    schedule: str = typer.Argument(..., help="Schedule id or name"),
+    json_output: bool = typer.Option(False, "--json", "-j", help="Emit structured JSON"),
+) -> None:
+    """Disable a materialization schedule."""
+    _set_online_materialization_schedule_enabled(schedule, False, json_output=json_output)
+
+
+def _set_online_materialization_schedule_enabled(schedule: str, enabled: bool, *, json_output: bool) -> None:
+    db = _get_db()
+    try:
+        db.init_db()
+        row = db.set_materialization_schedule_enabled(schedule, enabled)
+    finally:
+        db.close()
+
+    if row is None:
+        console.print(f"[red]Materialization schedule not found:[/red] {schedule}")
+        raise typer.Exit(1)
+
+    payload = row.model_dump(mode="json") if hasattr(row, "model_dump") else row
+    if json_output:
+        print(json.dumps(payload, indent=2, default=str))
+        return
+
+    state = "enabled" if enabled else "disabled"
+    console.print(f"[green]Materialization schedule {state}:[/green] {row.name}")
+
+
+@online_materializations_app.command("run-once")
+def online_materializations_run_once(
+    runner_id: str = typer.Option("local", "--runner-id", help="Runner id used for schedule leases"),
+    limit: int = typer.Option(10, "--limit", "-n", help="Maximum due schedules to claim"),
+    json_output: bool = typer.Option(False, "--json", "-j", help="Emit structured JSON"),
+) -> None:
+    """Claim and run due materialization schedules once."""
+    from .catalog.materialization_scheduler import run_due_materialization_schedules
+
+    db = _get_db()
+    try:
+        db.init_db()
+        result = run_due_materialization_schedules(db, runner_id=runner_id, limit=limit)
+    finally:
+        db.close()
+
+    payload = asdict(result)
+    if json_output:
+        print(json.dumps(payload, indent=2, default=str))
+        return
+
+    status_counts: dict[str, int] = {}
+    for run in result.runs:
+        status_counts[run.status] = status_counts.get(run.status, 0) + 1
+    summary = " ".join(f"{status}={count}" for status, count in sorted(status_counts.items()))
+    console.print(
+        "[green]Materialization scheduler run complete:[/green] "
+        f"runner_id={result.runner_id} claimed={result.claimed}" + (f" {summary}" if summary else "")
+    )
 
 
 # =========================================================================

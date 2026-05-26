@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
 import pyarrow as pa
@@ -472,3 +473,260 @@ def test_online_materializations_list_json_output(tmp_path: Path, monkeypatch: p
     assert "s3://featcat-smoke/materialization/source.parquet" in serialized
     assert "access" not in serialized
     assert "secret" not in serialized
+
+
+def test_online_materialization_schedule_add_creates_interval_schedule(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("FEATCAT_CATALOG_DB_PATH", raising=False)
+    monkeypatch.setenv("FEATCAT_USER", "scheduler-test")
+
+    result = runner.invoke(
+        app,
+        [
+            "online",
+            "materializations",
+            "schedules",
+            "add",
+            "--name",
+            "hourly-transactions",
+            "--source",
+            "transactions",
+            "--features",
+            "avg_spend_30d,txn_count_30d",
+            "--interval-seconds",
+            "3600",
+            "--project",
+            "churn",
+            "--feature-view",
+            "transactions",
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["name"] == "hourly-transactions"
+    assert payload["source_name"] == "transactions"
+    assert payload["feature_columns"] == ["avg_spend_30d", "txn_count_30d"]
+    assert payload["schedule_type"] == "interval"
+    assert payload["interval_seconds"] == 3600
+    assert payload["project"] == "churn"
+    assert payload["feature_view"] == "transactions"
+    assert payload["enabled"] is True
+    assert payload["actor"] == "scheduler-test"
+
+
+def test_online_materialization_schedules_list_json_shows_created_schedule(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("FEATCAT_CATALOG_DB_PATH", raising=False)
+    db = LocalBackend(str(tmp_path / "catalog.db"))
+    db.init_db()
+    try:
+        db.create_materialization_schedule(
+            name="hourly-transactions",
+            source_name="transactions",
+            feature_columns=["avg_spend_30d"],
+            interval_seconds=3600,
+        )
+    finally:
+        db.close()
+
+    result = runner.invoke(app, ["online", "materializations", "schedules", "list", "--json"])
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert len(payload) == 1
+    assert payload[0]["name"] == "hourly-transactions"
+    assert payload[0]["source_name"] == "transactions"
+    assert payload[0]["feature_columns"] == ["avg_spend_30d"]
+
+
+def test_online_materialization_schedule_disable_prevents_run_once_claim(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("FEATCAT_CATALOG_DB_PATH", raising=False)
+    _seed_materialization_catalog(tmp_path)
+    db = LocalBackend(str(tmp_path / "catalog.db"))
+    now = datetime(2000, 1, 1, tzinfo=timezone.utc)
+    try:
+        schedule = db.create_materialization_schedule(
+            name="hourly-transactions",
+            source_name="transactions",
+            feature_columns=["avg_spend_30d"],
+            interval_seconds=3600,
+            project="churn",
+            feature_view="transactions",
+            next_run_at=now - timedelta(seconds=1),
+            now=now - timedelta(hours=1),
+        )
+    finally:
+        db.close()
+
+    disable = runner.invoke(app, ["online", "materializations", "schedules", "disable", "hourly-transactions"])
+    run = runner.invoke(app, ["online", "materializations", "run-once", "--runner-id", "cli-test", "--json"])
+
+    assert disable.exit_code == 0, disable.output
+    assert run.exit_code == 0, run.output
+    payload = json.loads(run.output)
+    assert payload["claimed"] == 0
+
+    db = LocalBackend(str(tmp_path / "catalog.db"))
+    try:
+        stored = db.get_materialization_schedule(schedule.id)
+        audits = db.list_materialization_audits()
+    finally:
+        db.close()
+
+    assert stored is not None
+    assert stored.enabled is False
+    assert audits == []
+
+
+def test_online_materialization_schedule_enable_reallows_claim(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("FEATCAT_CATALOG_DB_PATH", raising=False)
+    _seed_materialization_catalog(tmp_path)
+    db = LocalBackend(str(tmp_path / "catalog.db"))
+    now = datetime(2000, 1, 1, tzinfo=timezone.utc)
+    try:
+        db.create_materialization_schedule(
+            name="hourly-transactions",
+            source_name="transactions",
+            feature_columns=["avg_spend_30d"],
+            interval_seconds=3600,
+            project="churn",
+            feature_view="transactions",
+            enabled=False,
+            next_run_at=now - timedelta(seconds=1),
+            now=now - timedelta(hours=1),
+        )
+    finally:
+        db.close()
+
+    enable = runner.invoke(app, ["online", "materializations", "schedules", "enable", "hourly-transactions"])
+    run = runner.invoke(app, ["online", "materializations", "run-once", "--runner-id", "cli-test", "--json"])
+
+    assert enable.exit_code == 0, enable.output
+    assert run.exit_code == 0, run.output
+    payload = json.loads(run.output)
+    assert payload["claimed"] == 1
+    assert payload["runs"][0]["status"] == "success"
+
+
+def test_online_materializations_run_once_executes_due_schedule_and_writes_audit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("FEATCAT_CATALOG_DB_PATH", raising=False)
+    _seed_materialization_catalog(tmp_path)
+    db = LocalBackend(str(tmp_path / "catalog.db"))
+    now = datetime(2000, 1, 1, tzinfo=timezone.utc)
+    try:
+        schedule = db.create_materialization_schedule(
+            name="hourly-transactions",
+            source_name="transactions",
+            feature_columns=["avg_spend_30d"],
+            interval_seconds=3600,
+            project="churn",
+            feature_view="transactions",
+            next_run_at=now - timedelta(seconds=1),
+            now=now - timedelta(hours=1),
+        )
+    finally:
+        db.close()
+
+    result = runner.invoke(app, ["online", "materializations", "run-once", "--runner-id", "cli-test", "--json"])
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["runner_id"] == "cli-test"
+    assert payload["claimed"] == 1
+    assert payload["runs"][0]["schedule_id"] == schedule.id
+    assert payload["runs"][0]["status"] == "success"
+
+    db = LocalBackend(str(tmp_path / "catalog.db"))
+    try:
+        audits = db.list_materialization_audits()
+        online = get_online_features(
+            db,
+            entity_keys=[{"customer_id": 1}],
+            feature_refs=["transactions.avg_spend_30d"],
+            project="churn",
+            feature_view="transactions",
+        )
+    finally:
+        db.close()
+
+    assert audits[0].schedule_id == schedule.id
+    assert audits[0].status == "success"
+    assert online.rows[0].features["transactions.avg_spend_30d"] == 20.0
+
+
+def test_online_materializations_run_once_does_not_execute_non_due_schedule(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("FEATCAT_CATALOG_DB_PATH", raising=False)
+    _seed_materialization_catalog(tmp_path)
+    db = LocalBackend(str(tmp_path / "catalog.db"))
+    try:
+        db.create_materialization_schedule(
+            name="future-transactions",
+            source_name="transactions",
+            feature_columns=["avg_spend_30d"],
+            interval_seconds=3600,
+            project="churn",
+            feature_view="transactions",
+            next_run_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        )
+    finally:
+        db.close()
+
+    result = runner.invoke(app, ["online", "materializations", "run-once", "--runner-id", "cli-test", "--json"])
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["claimed"] == 0
+
+
+def test_online_materialization_schedule_add_invalid_feature_list_exits_nonzero(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("FEATCAT_CATALOG_DB_PATH", raising=False)
+
+    result = runner.invoke(
+        app,
+        [
+            "online",
+            "materializations",
+            "schedules",
+            "add",
+            "--name",
+            "bad",
+            "--source",
+            "transactions",
+            "--features",
+            ",,",
+            "--interval-seconds",
+            "3600",
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "No feature columns provided" in result.output
