@@ -24,9 +24,11 @@ def record_materialization_audit(
     *,
     result: MaterializationResult,
     actor: str | None,
+    schedule_id: str | None = None,
 ) -> str:
     """Persist an audit row for a completed materialization request."""
     return db.record_materialization_audit(
+        schedule_id=schedule_id,
         status=materialization_status(result),
         source_name=result.source_name,
         source_path=sanitize_audit_path(result.source_path),
@@ -61,9 +63,11 @@ def record_materialization_error_audit(
     feature_columns: list[str] | None = None,
     error: Exception,
     actor: str | None,
+    schedule_id: str | None = None,
 ) -> str:
     """Persist an audit row for an unexpected materialization error."""
     return db.record_materialization_audit(
+        schedule_id=schedule_id,
         status="error",
         source_name=source_name,
         source_path=sanitize_audit_path(source_path),

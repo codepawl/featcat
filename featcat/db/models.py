@@ -195,9 +195,13 @@ class MaterializationAudit(Base):
     """Audit row written for API/CLI online materialization requests."""
 
     __tablename__ = "materialization_audits"
-    __table_args__ = (Index("idx_materialization_audits_created_at", "created_at"),)
+    __table_args__ = (
+        Index("idx_materialization_audits_created_at", "created_at"),
+        Index("idx_materialization_audits_schedule_created", "schedule_id", "created_at"),
+    )
 
     id: Mapped[str] = mapped_column(Text, primary_key=True)
+    schedule_id: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, nullable=False)  # "success" | "validation_failed" | "error"
     source_name: Mapped[str] = mapped_column(Text, nullable=False)
     source_path: Mapped[str | None] = mapped_column(Text)
@@ -217,6 +221,35 @@ class MaterializationAudit(Base):
     warnings: Mapped[str] = mapped_column(Text, nullable=False, default="[]", server_default="[]")
     actor: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+
+
+class MaterializationSchedule(Base):
+    """Interval schedule rows for explicit materialization runners."""
+
+    __tablename__ = "materialization_schedules"
+    __table_args__ = (
+        Index("idx_materialization_schedules_due", "enabled", "next_run_at"),
+        Index("idx_materialization_schedules_lease", "lease_until"),
+        Index("idx_materialization_schedules_source", "source_name"),
+    )
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    name: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+    source_name: Mapped[str] = mapped_column(Text, nullable=False)
+    feature_columns: Mapped[str] = mapped_column(Text, nullable=False, default="[]", server_default="[]")
+    project: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    feature_view: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    schedule_type: Mapped[str] = mapped_column(Text, nullable=False, default="interval", server_default="interval")
+    interval_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+    cron_expression: Mapped[str | None] = mapped_column(Text)
+    enabled: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    actor: Mapped[str | None] = mapped_column(Text)
+    last_run_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    next_run_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    lease_owner: Mapped[str | None] = mapped_column(Text)
+    lease_until: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
 
 
 class OnlineFeatureValue(Base):

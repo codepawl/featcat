@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from datetime import datetime
 
 
 class CatalogBackend(ABC):
@@ -482,9 +485,11 @@ class CatalogBackend(ABC):
         errors: list[dict] | None = None,
         warnings: list[dict] | None = None,
         actor: str | None = None,
+        schedule_id: str | None = None,
     ) -> str:
         """Persist one materialization audit row. Default no-op for unsupported backends."""
         del (
+            schedule_id,
             status,
             source_name,
             source_path,
@@ -510,6 +515,84 @@ class CatalogBackend(ABC):
         """Return recent materialization audit rows, newest first."""
         del limit, status
         return []
+
+    def create_materialization_schedule(
+        self,
+        *,
+        name: str,
+        source_name: str,
+        feature_columns: list[str],
+        interval_seconds: int,
+        project: str = "",
+        feature_view: str = "",
+        schedule_type: str = "interval",
+        cron_expression: str | None = None,
+        enabled: bool = True,
+        actor: str | None = None,
+        next_run_at: datetime | None = None,
+        now: datetime | None = None,
+    ) -> Any:
+        """Create a materialization schedule. LocalBackend overrides."""
+        del (
+            name,
+            source_name,
+            feature_columns,
+            interval_seconds,
+            project,
+            feature_view,
+            schedule_type,
+            cron_expression,
+            enabled,
+            actor,
+            next_run_at,
+            now,
+        )
+        raise NotImplementedError(f"{type(self).__name__} does not support materialization schedules")
+
+    def list_materialization_schedules(self, limit: int = 20, enabled: bool | None = None) -> list:
+        """Return materialization schedules. LocalBackend overrides."""
+        del limit, enabled
+        return []
+
+    def get_materialization_schedule(self, identifier: str) -> Any | None:
+        """Look up a materialization schedule by id or name. LocalBackend overrides."""
+        del identifier
+        return None
+
+    def set_materialization_schedule_enabled(
+        self,
+        identifier: str,
+        enabled: bool,
+        *,
+        now: datetime | None = None,
+    ) -> Any | None:
+        """Enable or disable a materialization schedule. LocalBackend overrides."""
+        del identifier, enabled, now
+        return None
+
+    def claim_due_materialization_schedules(
+        self,
+        *,
+        now: datetime,
+        lease_owner: str,
+        lease_until: datetime,
+        limit: int = 10,
+    ) -> list:
+        """Lease due materialization schedules. LocalBackend overrides."""
+        del now, lease_owner, lease_until, limit
+        return []
+
+    def finish_materialization_schedule_run(
+        self,
+        schedule_id: str,
+        *,
+        finished_at: datetime,
+        next_run_at: datetime,
+        lease_owner: str | None = None,
+    ) -> Any | None:
+        """Complete one leased materialization schedule run. LocalBackend overrides."""
+        del schedule_id, finished_at, next_run_at, lease_owner
+        return None
 
     def write_online_features(
         self,

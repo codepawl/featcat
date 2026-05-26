@@ -199,6 +199,7 @@ class MaterializationAudit(BaseModel):
     """Audit row for an API/CLI online materialization request."""
 
     id: str = Field(default_factory=_new_id)
+    schedule_id: str | None = None
     status: str  # "success" | "validation_failed" | "error"
     source_name: str
     source_path: str | None = None
@@ -218,6 +219,44 @@ class MaterializationAudit(BaseModel):
     warnings: list[dict[str, Any]] = Field(default_factory=list)
     actor: str | None = None
     created_at: datetime = Field(default_factory=_utcnow)
+
+
+class MaterializationSchedule(BaseModel):
+    """DB-backed interval schedule for latest-value online materialization."""
+
+    id: str = Field(default_factory=_new_id)
+    name: str
+    source_name: str
+    feature_columns: list[str] = Field(default_factory=list)
+    project: str = ""
+    feature_view: str = ""
+    schedule_type: str = "interval"
+    interval_seconds: int
+    cron_expression: str | None = None
+    enabled: bool = True
+    actor: str | None = None
+    last_run_at: datetime | None = None
+    next_run_at: datetime | None = None
+    lease_owner: str | None = None
+    lease_until: datetime | None = None
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
+
+    @model_validator(mode="after")
+    def _validate_schedule(self) -> MaterializationSchedule:
+        if not self.name.strip():
+            raise ValueError("name is required")
+        if not self.source_name.strip():
+            raise ValueError("source_name is required")
+        if not self.feature_columns:
+            raise ValueError("feature_columns must be non-empty")
+        if any(not column.strip() for column in self.feature_columns):
+            raise ValueError("feature_columns must not contain empty values")
+        if self.schedule_type != "interval":
+            raise ValueError("schedule_type must be 'interval'")
+        if self.interval_seconds <= 0:
+            raise ValueError("interval_seconds must be greater than 0")
+        return self
 
 
 class OnlineFeatureWrite(BaseModel):

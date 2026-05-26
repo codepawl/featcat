@@ -45,6 +45,7 @@ from .models import (
     FeatureGroup,
     FeatureGroupVersion,
     MaterializationAudit,
+    MaterializationSchedule,
     OnlineFeatureReadMetadata,
     OnlineFeatureReadResult,
     OnlineFeatureReadRow,
@@ -323,6 +324,7 @@ class LocalBackend(CatalogBackend):
             "CREATE INDEX IF NOT EXISTS idx_dataset_build_audits_created_at ON dataset_build_audits(created_at)",
             "CREATE TABLE IF NOT EXISTS materialization_audits ("
             "id TEXT PRIMARY KEY,"
+            "schedule_id TEXT,"
             "status TEXT NOT NULL,"
             "source_name TEXT NOT NULL,"
             "source_path TEXT,"
@@ -343,7 +345,33 @@ class LocalBackend(CatalogBackend):
             "actor TEXT,"
             "created_at TIMESTAMP NOT NULL"
             ")",
+            "ALTER TABLE materialization_audits ADD COLUMN schedule_id TEXT",
             "CREATE INDEX IF NOT EXISTS idx_materialization_audits_created_at ON materialization_audits(created_at)",
+            "CREATE INDEX IF NOT EXISTS idx_materialization_audits_schedule_created "
+            "ON materialization_audits(schedule_id, created_at)",
+            "CREATE TABLE IF NOT EXISTS materialization_schedules ("
+            "id TEXT PRIMARY KEY,"
+            "name TEXT UNIQUE NOT NULL,"
+            "source_name TEXT NOT NULL,"
+            "feature_columns TEXT NOT NULL DEFAULT '[]',"
+            "project TEXT NOT NULL DEFAULT '',"
+            "feature_view TEXT NOT NULL DEFAULT '',"
+            "schedule_type TEXT NOT NULL DEFAULT 'interval',"
+            "interval_seconds INTEGER NOT NULL,"
+            "cron_expression TEXT,"
+            "enabled INTEGER NOT NULL DEFAULT 1,"
+            "actor TEXT,"
+            "last_run_at TIMESTAMP,"
+            "next_run_at TIMESTAMP,"
+            "lease_owner TEXT,"
+            "lease_until TIMESTAMP,"
+            "created_at TIMESTAMP NOT NULL,"
+            "updated_at TIMESTAMP NOT NULL"
+            ")",
+            "CREATE INDEX IF NOT EXISTS idx_materialization_schedules_due "
+            "ON materialization_schedules(enabled, next_run_at)",
+            "CREATE INDEX IF NOT EXISTS idx_materialization_schedules_lease ON materialization_schedules(lease_until)",
+            "CREATE INDEX IF NOT EXISTS idx_materialization_schedules_source ON materialization_schedules(source_name)",
             # Composite indexes for chart queries (feature timeline, catalog
             # drift-rate). CREATE INDEX IF NOT EXISTS is itself idempotent but
             # the suppress(OperationalError) wrapper covers older sqlites.
@@ -716,6 +744,7 @@ class LocalBackend(CatalogBackend):
         errors: list[dict] | None = None,
         warnings: list[dict] | None = None,
         actor: str | None = None,
+        schedule_id: str | None = None,
     ) -> str:
         """Insert one materialization audit row. Returns the new audit id."""
         audit_id = _new_id()
@@ -724,12 +753,12 @@ class LocalBackend(CatalogBackend):
             s.execute(
                 text(
                     "INSERT INTO materialization_audits ("
-                    "id, status, source_name, source_path, project, feature_view, "
+                    "id, schedule_id, status, source_name, source_path, project, feature_view, "
                     "entity_key, event_timestamp_column, created_timestamp_column, "
                     "feature_columns, entity_count, feature_count, requested, written, "
                     "skipped_older, skipped_same_timestamp, errors, warnings, actor, created_at"
                     ") VALUES ("
-                    ":id, :status, :source_name, :source_path, :project, :feature_view, "
+                    ":id, :schedule_id, :status, :source_name, :source_path, :project, :feature_view, "
                     ":entity_key, :event_timestamp_column, :created_timestamp_column, "
                     ":feature_columns, :entity_count, :feature_count, :requested, :written, "
                     ":skipped_older, :skipped_same_timestamp, :errors, :warnings, :actor, :created_at"
@@ -737,6 +766,7 @@ class LocalBackend(CatalogBackend):
                 ),
                 {
                     "id": audit_id,
+                    "schedule_id": schedule_id,
                     "status": status,
                     "source_name": source_name,
                     "source_path": source_path,
@@ -782,6 +812,218 @@ class LocalBackend(CatalogBackend):
             data["warnings"] = json.loads(data.get("warnings") or "[]")
             audits.append(MaterializationAudit(**data))
         return audits
+
+    def _materialization_schedule_from_row(self, row: Any) -> MaterializationSchedule:
+        data = dict(row)
+        data["feature_columns"] = json.loads(data.get("feature_columns") or "[]")
+        data["enabled"] = bool(data.get("enabled"))
+        return MaterializationSchedule(**data)
+
+    def create_materialization_schedule(
+        self,
+        *,
+        name: str,
+        source_name: str,
+        feature_columns: list[str],
+        interval_seconds: int,
+        project: str = "",
+        feature_view: str = "",
+        schedule_type: str = "interval",
+        cron_expression: str | None = None,
+        enabled: bool = True,
+        actor: str | None = None,
+        next_run_at: datetime | None = None,
+        now: datetime | None = None,
+    ) -> MaterializationSchedule:
+        """Create one interval materialization schedule."""
+        created_at = now or _utcnow()
+        schedule = MaterializationSchedule(
+            name=name,
+            source_name=source_name,
+            feature_columns=feature_columns,
+            project=project,
+            feature_view=feature_view,
+            schedule_type=schedule_type,
+            interval_seconds=interval_seconds,
+            cron_expression=cron_expression,
+            enabled=enabled,
+            actor=actor,
+            next_run_at=next_run_at if next_run_at is not None else created_at + timedelta(seconds=interval_seconds),
+            created_at=created_at,
+            updated_at=created_at,
+        )
+        with self.session() as s:
+            s.execute(
+                text(
+                    "INSERT INTO materialization_schedules ("
+                    "id, name, source_name, feature_columns, project, feature_view, schedule_type, "
+                    "interval_seconds, cron_expression, enabled, actor, last_run_at, next_run_at, "
+                    "lease_owner, lease_until, created_at, updated_at"
+                    ") VALUES ("
+                    ":id, :name, :source_name, :feature_columns, :project, :feature_view, :schedule_type, "
+                    ":interval_seconds, :cron_expression, :enabled, :actor, :last_run_at, :next_run_at, "
+                    ":lease_owner, :lease_until, :created_at, :updated_at"
+                    ")"
+                ),
+                {
+                    "id": schedule.id,
+                    "name": schedule.name,
+                    "source_name": schedule.source_name,
+                    "feature_columns": json.dumps(schedule.feature_columns),
+                    "project": schedule.project,
+                    "feature_view": schedule.feature_view,
+                    "schedule_type": schedule.schedule_type,
+                    "interval_seconds": schedule.interval_seconds,
+                    "cron_expression": schedule.cron_expression,
+                    "enabled": 1 if schedule.enabled else 0,
+                    "actor": schedule.actor,
+                    "last_run_at": schedule.last_run_at,
+                    "next_run_at": schedule.next_run_at,
+                    "lease_owner": schedule.lease_owner,
+                    "lease_until": schedule.lease_until,
+                    "created_at": schedule.created_at,
+                    "updated_at": schedule.updated_at,
+                },
+            )
+            s.commit()
+        return schedule
+
+    def list_materialization_schedules(
+        self, limit: int = 20, enabled: bool | None = None
+    ) -> list[MaterializationSchedule]:
+        """Return materialization schedules in deterministic newest-first order."""
+        safe_limit = min(max(limit, 1), 100)
+        query = "SELECT * FROM materialization_schedules"
+        params: dict[str, object] = {"limit": safe_limit}
+        if enabled is not None:
+            query += " WHERE enabled = :enabled"
+            params["enabled"] = 1 if enabled else 0
+        query += " ORDER BY created_at DESC, name ASC LIMIT :limit"
+        with self.session() as s:
+            rows = s.execute(text(query), params).mappings().all()
+        return [self._materialization_schedule_from_row(row) for row in rows]
+
+    def get_materialization_schedule(self, identifier: str) -> MaterializationSchedule | None:
+        """Look up a materialization schedule by id or name."""
+        with self.session() as s:
+            row = (
+                s.execute(
+                    text(
+                        "SELECT * FROM materialization_schedules WHERE id = :identifier OR name = :identifier LIMIT 1"
+                    ),
+                    {"identifier": identifier},
+                )
+                .mappings()
+                .first()
+            )
+        return self._materialization_schedule_from_row(row) if row is not None else None
+
+    def set_materialization_schedule_enabled(
+        self,
+        identifier: str,
+        enabled: bool,
+        *,
+        now: datetime | None = None,
+    ) -> MaterializationSchedule | None:
+        """Enable or disable a materialization schedule by id or name."""
+        updated_at = now or _utcnow()
+        lease_sql = ", lease_owner = NULL, lease_until = NULL" if not enabled else ""
+        with self.session() as s:
+            s.execute(
+                text(
+                    "UPDATE materialization_schedules "
+                    f"SET enabled = :enabled{lease_sql}, updated_at = :updated_at "
+                    "WHERE id = :identifier OR name = :identifier"
+                ),
+                {
+                    "identifier": identifier,
+                    "enabled": 1 if enabled else 0,
+                    "updated_at": updated_at,
+                },
+            )
+            s.commit()
+        return self.get_materialization_schedule(identifier)
+
+    def claim_due_materialization_schedules(
+        self,
+        *,
+        now: datetime,
+        lease_owner: str,
+        lease_until: datetime,
+        limit: int = 10,
+    ) -> list[MaterializationSchedule]:
+        """Atomically lease due enabled schedules for one runner."""
+        safe_limit = min(max(limit, 1), 100)
+        claimed: list[MaterializationSchedule] = []
+        with self.session() as s:
+            candidates = (
+                s.execute(
+                    text(
+                        "SELECT id FROM materialization_schedules "
+                        "WHERE enabled = 1 AND next_run_at IS NOT NULL AND next_run_at <= :now "
+                        "AND (lease_until IS NULL OR lease_until <= :now) "
+                        "ORDER BY next_run_at ASC, created_at ASC LIMIT :limit"
+                    ),
+                    {"now": now, "limit": safe_limit},
+                )
+                .mappings()
+                .all()
+            )
+            for candidate in candidates:
+                updated = s.execute(
+                    text(
+                        "UPDATE materialization_schedules "
+                        "SET lease_owner = :lease_owner, lease_until = :lease_until, updated_at = :now "
+                        "WHERE id = :id AND enabled = 1 AND next_run_at IS NOT NULL AND next_run_at <= :now "
+                        "AND (lease_until IS NULL OR lease_until <= :now)"
+                    ),
+                    {
+                        "id": candidate["id"],
+                        "lease_owner": lease_owner,
+                        "lease_until": lease_until,
+                        "now": now,
+                    },
+                )
+                if getattr(updated, "rowcount", 0) == 1:
+                    row = (
+                        s.execute(
+                            text("SELECT * FROM materialization_schedules WHERE id = :id"),
+                            {"id": candidate["id"]},
+                        )
+                        .mappings()
+                        .one()
+                    )
+                    claimed.append(self._materialization_schedule_from_row(row))
+            s.commit()
+        return claimed
+
+    def finish_materialization_schedule_run(
+        self,
+        schedule_id: str,
+        *,
+        finished_at: datetime,
+        next_run_at: datetime,
+        lease_owner: str | None = None,
+    ) -> MaterializationSchedule | None:
+        """Mark a claimed schedule run complete and clear its lease."""
+        query = (
+            "UPDATE materialization_schedules "
+            "SET last_run_at = :finished_at, next_run_at = :next_run_at, "
+            "lease_owner = NULL, lease_until = NULL, updated_at = :finished_at "
+            "WHERE id = :schedule_id"
+        )
+        params: dict[str, object] = {
+            "schedule_id": schedule_id,
+            "finished_at": finished_at,
+            "next_run_at": next_run_at,
+        }
+        if lease_owner is not None:
+            query += " AND lease_owner = :lease_owner"
+            params["lease_owner"] = lease_owner
+        with self.session() as s:
+            s.execute(text(query), params)
+            s.commit()
+        return self.get_materialization_schedule(schedule_id)
 
     def _should_overwrite_online_value(self, existing: dict[str, Any], incoming: dict[str, Any]) -> tuple[bool, str]:
         existing_event = _coerce_utc_datetime(existing["event_timestamp"])
