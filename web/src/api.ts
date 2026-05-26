@@ -238,6 +238,26 @@ export interface MaterializationAudit {
   created_at: string
 }
 
+export interface MaterializationSchedule {
+  id: string
+  name: string
+  source_name: string
+  feature_columns: string[]
+  project: string
+  feature_view: string
+  schedule_type: 'interval'
+  interval_seconds: number
+  cron_expression: string | null
+  enabled: boolean
+  actor: string | null
+  last_run_at: string | null
+  next_run_at: string | null
+  lease_owner: string | null
+  lease_until: string | null
+  created_at: string
+  updated_at: string
+}
+
 export const api = {
   health: () => cachedRequest<{ status: string; llm: boolean; model?: string }>('/health'),
   stats: () => cachedRequest<Record<string, number>>('/stats'),
@@ -563,6 +583,12 @@ export const api = {
       qs.set('limit', String(params?.limit ?? 20))
       if (params?.status) qs.set('status', params.status)
       return cachedRequest<MaterializationAudit[]>(`/online/materializations?${qs.toString()}`)
+    },
+    materializationSchedules: (params?: { limit?: number; enabled?: boolean | null }) => {
+      const qs = new URLSearchParams()
+      qs.set('limit', String(params?.limit ?? 20))
+      if (params?.enabled != null) qs.set('enabled', String(params.enabled))
+      return cachedRequest<MaterializationSchedule[]>(`/online/materialization-schedules?${qs.toString()}`)
     },
   },
   export: {

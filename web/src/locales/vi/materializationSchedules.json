@@ -1,0 +1,44 @@
+{
+  "page": {
+    "title": "Lịch materialization",
+    "subtitle": "Lịch interval cho online feature materialization"
+  },
+  "table": {
+    "title": "Schedules"
+  },
+  "filters": {
+    "enabled": "Bộ lọc enabled",
+    "all": "Tất cả schedules",
+    "enabled_option": "Enabled",
+    "disabled": "Disabled",
+    "limit": "Giới hạn",
+    "limit_value": "{{count}} dòng"
+  },
+  "states": {
+    "enabled": "enabled",
+    "disabled": "disabled"
+  },
+  "columns": {
+    "name": "Tên",
+    "enabled": "Enabled",
+    "source_name": "Nguồn",
+    "feature_columns": "Cột feature",
+    "namespace": "Project / view",
+    "interval_seconds": "Interval seconds",
+    "last_run_at": "Lần chạy cuối",
+    "next_run_at": "Lần chạy kế",
+    "lease_owner": "Lease owner",
+    "lease_until": "Lease until",
+    "created_at": "Tạo lúc",
+    "updated_at": "Cập nhật"
+  },
+  "empty": {
+    "title": "Chưa có lịch materialization",
+    "description": "Lịch materialization sẽ xuất hiện sau khi được tạo qua CLI, API, hoặc SDK."
+  },
+  "error": {
+    "title": "Không tải được lịch materialization",
+    "description": "API lịch materialization bị lỗi.",
+    "retry": "Thử lại"
+  }
+}

@@ -13,6 +13,7 @@ const Monitoring = lazy(() => import('./pages/Monitoring').then((m) => ({ defaul
 const Jobs = lazy(() => import('./pages/Jobs').then((m) => ({ default: m.Jobs })))
 const DatasetBuilds = lazy(() => import('./pages/DatasetBuilds').then((m) => ({ default: m.DatasetBuilds })))
 const MaterializationRuns = lazy(() => import('./pages/MaterializationRuns').then((m) => ({ default: m.MaterializationRuns })))
+const MaterializationSchedules = lazy(() => import('./pages/MaterializationSchedules').then((m) => ({ default: m.MaterializationSchedules })))
 const Audit = lazy(() => import('./pages/Audit').then((m) => ({ default: m.Audit })))
 const Chat = lazy(() => import('./pages/Chat').then((m) => ({ default: m.Chat })))
 const Settings = lazy(() => import('./pages/Settings').then((m) => ({ default: m.Settings })))
@@ -55,6 +56,7 @@ export default function App() {
             <Route path="/actions" element={<Actions />} />
             <Route path="/datasets/builds" element={<DatasetBuilds />} />
             <Route path="/online/materializations" element={<MaterializationRuns />} />
+            <Route path="/online/materialization-schedules" element={<MaterializationSchedules />} />
             <Route path="/jobs" element={<Jobs />} />
             <Route path="/chat" element={<Chat />} />
             <Route path="/settings" element={<Settings />} />

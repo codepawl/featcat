@@ -20,6 +20,7 @@ import glossary from '../locales/en/glossary.json'
 import search from '../locales/en/search.json'
 import datasetBuilds from '../locales/en/datasetBuilds.json'
 import materializationRuns from '../locales/en/materializationRuns.json'
+import materializationSchedules from '../locales/en/materializationSchedules.json'
 
 declare module 'i18next' {
   interface CustomTypeOptions {
@@ -46,6 +47,7 @@ declare module 'i18next' {
       search: typeof search
       datasetBuilds: typeof datasetBuilds
       materializationRuns: typeof materializationRuns
+      materializationSchedules: typeof materializationSchedules
     }
   }
 }

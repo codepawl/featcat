@@ -1,0 +1,44 @@
+{
+  "page": {
+    "title": "Materialization Schedules",
+    "subtitle": "Interval schedules for online feature materialization"
+  },
+  "table": {
+    "title": "Schedules"
+  },
+  "filters": {
+    "enabled": "Enabled filter",
+    "all": "All schedules",
+    "enabled_option": "Enabled",
+    "disabled": "Disabled",
+    "limit": "Limit",
+    "limit_value": "{{count}} rows"
+  },
+  "states": {
+    "enabled": "enabled",
+    "disabled": "disabled"
+  },
+  "columns": {
+    "name": "Name",
+    "enabled": "Enabled",
+    "source_name": "Source",
+    "feature_columns": "Feature columns",
+    "namespace": "Project / view",
+    "interval_seconds": "Interval seconds",
+    "last_run_at": "Last run",
+    "next_run_at": "Next run",
+    "lease_owner": "Lease owner",
+    "lease_until": "Lease until",
+    "created_at": "Created",
+    "updated_at": "Updated"
+  },
+  "empty": {
+    "title": "No materialization schedules yet",
+    "description": "Materialization schedules will appear after they are created through the CLI, API, or SDK."
+  },
+  "error": {
+    "title": "Could not load materialization schedules",
+    "description": "The materialization schedule API failed.",
+    "retry": "Retry"
+  }
+}

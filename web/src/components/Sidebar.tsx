@@ -41,6 +41,7 @@ type NavKey =
   | 'audit'
   | 'datasetBuilds'
   | 'materializationRuns'
+  | 'materializationSchedules'
   | 'jobs'
   | 'chat'
   | 'settings'
@@ -90,6 +91,7 @@ const GROUPS: readonly NavGroup[] = [
       { to: '/audit', key: 'audit', icon: History },
       { to: '/datasets/builds', key: 'datasetBuilds', icon: Database },
       { to: '/online/materializations', key: 'materializationRuns', icon: Clock },
+      { to: '/online/materialization-schedules', key: 'materializationSchedules', icon: Clock },
       { to: '/jobs', key: 'jobs', icon: Clock },
     ],
   },

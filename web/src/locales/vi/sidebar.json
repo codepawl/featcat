@@ -10,6 +10,7 @@
     "audit": "Nhật ký",
     "datasetBuilds": "Build dataset",
     "materializationRuns": "Materialization",
+    "materializationSchedules": "Lịch materialization",
     "monitoring": "Giám sát",
     "actions": "Hành động",
     "jobs": "Tác vụ",

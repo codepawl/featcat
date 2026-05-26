@@ -23,6 +23,7 @@ import viGlossary from '../locales/vi/glossary.json'
 import viSearch from '../locales/vi/search.json'
 import viDatasetBuilds from '../locales/vi/datasetBuilds.json'
 import viMaterializationRuns from '../locales/vi/materializationRuns.json'
+import viMaterializationSchedules from '../locales/vi/materializationSchedules.json'
 
 import enCommon from '../locales/en/common.json'
 import enSidebar from '../locales/en/sidebar.json'
@@ -45,6 +46,7 @@ import enGlossary from '../locales/en/glossary.json'
 import enSearch from '../locales/en/search.json'
 import enDatasetBuilds from '../locales/en/datasetBuilds.json'
 import enMaterializationRuns from '../locales/en/materializationRuns.json'
+import enMaterializationSchedules from '../locales/en/materializationSchedules.json'
 
 export const SUPPORTED_LANGS = ['vi', 'en'] as const
 export type SupportedLang = typeof SUPPORTED_LANGS[number]
@@ -77,6 +79,7 @@ const resources = {
     search: viSearch,
     datasetBuilds: viDatasetBuilds,
     materializationRuns: viMaterializationRuns,
+    materializationSchedules: viMaterializationSchedules,
   },
   en: {
     common: enCommon,
@@ -100,6 +103,7 @@ const resources = {
     search: enSearch,
     datasetBuilds: enDatasetBuilds,
     materializationRuns: enMaterializationRuns,
+    materializationSchedules: enMaterializationSchedules,
   },
 }
 
