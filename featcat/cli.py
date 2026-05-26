@@ -7,7 +7,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import typer
 from pydantic import BaseModel
@@ -18,7 +18,7 @@ from sqlalchemy import text
 
 from .catalog.factory import get_backend
 from .catalog.local import DEFAULT_DB, LocalBackend
-from .catalog.models import DataSource, Feature, FeatureGroup
+from .catalog.models import DataSource, Feature, FeatureGroup, OnlineFeatureWrite
 from .catalog.scanner import discover_parquet_files, scan_source
 from .catalog.storage import is_s3_uri
 from .catalog.usage import log_feature_usage, resolve_user
@@ -42,6 +42,7 @@ dataset_app = typer.Typer(help="Training dataset building")
 dataset_builds_app = typer.Typer(help="Training dataset build audit history")
 usage_app = typer.Typer(help="Feature usage analytics")
 actions_app = typer.Typer(help="Recommended actions (lifecycle loop)")
+online_app = typer.Typer(help="Online feature store read/write commands")
 lineage_app = typer.Typer(help="Lineage management (T1.1)")
 lineage_edge_app = typer.Typer(help="Manage individual lineage edges")
 lineage_app.add_typer(lineage_edge_app, name="edge")
@@ -63,6 +64,7 @@ app.add_typer(group_app, name="group")
 app.add_typer(dataset_app, name="dataset")
 app.add_typer(usage_app, name="usage")
 app.add_typer(actions_app, name="actions")
+app.add_typer(online_app, name="online")
 app.add_typer(lineage_app, name="lineage")
 app.add_typer(demo_app, name="demo")
 app.add_typer(backup_app, name="backup")
@@ -88,6 +90,43 @@ def _emit(payload: object, render_table: Callable[[], None], *, json_mode: bool)
 
 def _parse_csv_option(value: str) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _read_jsonl(path: Path) -> list[object]:
+    if not path.exists():
+        console.print(f"[red]Input file not found:[/red] {path}")
+        raise typer.Exit(1)
+    if not path.is_file():
+        console.print(f"[red]Input path is not a file:[/red] {path}")
+        raise typer.Exit(1)
+
+    rows: list[object] = []
+    try:
+        with path.open(encoding="utf-8") as fh:
+            for line_number, raw_line in enumerate(fh, start=1):
+                line = raw_line.strip()
+                if not line:
+                    continue
+                try:
+                    rows.append(json.loads(line))
+                except json.JSONDecodeError as exc:
+                    console.print(f"[red]Invalid JSONL:[/red] {path}:{line_number}: {exc.msg}")
+                    raise typer.Exit(1) from None
+    except OSError as exc:
+        console.print(f"[red]Could not read input file:[/red] {path}: {exc}")
+        raise typer.Exit(1) from None
+    return rows
+
+
+def _read_jsonl_objects(path: Path, *, label: str) -> list[dict[str, Any]]:
+    rows = _read_jsonl(path)
+    objects: list[dict[str, Any]] = []
+    for index, row in enumerate(rows, start=1):
+        if not isinstance(row, dict):
+            console.print(f"[red]Invalid JSONL:[/red] {label} row {index} must be a JSON object")
+            raise typer.Exit(1)
+        objects.append(row)
+    return objects
 
 
 def _confirm_typing(name: str, impact_summary: str, *, skip: bool = False) -> bool:
@@ -800,6 +839,97 @@ def dataset_builds_list(
             row.output_path or "",
         )
     console.print(table)
+
+
+# =========================================================================
+# Online store commands
+# =========================================================================
+
+
+@online_app.command("write")
+def online_write(
+    input_path: Path = typer.Option(  # noqa: B008
+        ...,
+        "--input",
+        "-i",
+        help="JSONL file with online feature write rows",
+    ),
+    project: str = typer.Option("", "--project", help="Project namespace"),
+    feature_view: str = typer.Option("", "--feature-view", help="Feature view namespace"),
+    json_output: bool = typer.Option(False, "--json", "-j", help="Emit structured JSON"),
+) -> None:
+    """Write online feature values from a JSONL file."""
+    rows = _read_jsonl_objects(input_path, label="write")
+    try:
+        writes = [OnlineFeatureWrite.model_validate(row) for row in rows]
+    except Exception as exc:
+        console.print(f"[red]Invalid online write row:[/red] {exc}")
+        raise typer.Exit(1) from None
+
+    db = _get_db()
+    try:
+        db.init_db()
+        result = db.write_online_features(writes, project=project, feature_view=feature_view)
+    finally:
+        db.close()
+
+    payload = result.model_dump(mode="json")
+    if json_output:
+        print(json.dumps(payload, indent=2, default=str))
+        return
+
+    console.print(
+        "[green]Online write complete:[/green] "
+        f"requested={result.requested} written={result.written} "
+        f"skipped_older={result.skipped_older} "
+        f"skipped_same_timestamp={result.skipped_same_timestamp} "
+        f"errors={len(result.errors)}"
+    )
+
+
+@online_app.command("get")
+def online_get(
+    entities: Path = typer.Option(  # noqa: B008
+        ...,
+        "--entities",
+        "-e",
+        help="JSONL file with entity key objects",
+    ),
+    features: str = typer.Option(..., "--features", "-f", help="Comma-separated feature refs"),
+    project: str = typer.Option("", "--project", help="Project namespace"),
+    feature_view: str = typer.Option("", "--feature-view", help="Feature view namespace"),
+    json_output: bool = typer.Option(False, "--json", "-j", help="Emit structured JSON"),
+) -> None:
+    """Read online feature values for entity keys from a JSONL file."""
+    entity_keys = _read_jsonl_objects(entities, label="entity")
+    feature_refs = _parse_csv_option(features)
+    if not feature_refs:
+        console.print("[red]No feature refs provided:[/red] --features must include at least one feature")
+        raise typer.Exit(1)
+
+    db = _get_db()
+    try:
+        db.init_db()
+        result = db.get_online_features(
+            entity_keys=entity_keys,
+            feature_refs=feature_refs,
+            project=project,
+            feature_view=feature_view,
+        )
+    finally:
+        db.close()
+
+    payload = result.model_dump(mode="json")
+    if json_output:
+        print(json.dumps(payload, indent=2, default=str))
+        return
+
+    found_count = sum(1 for row in result.rows for metadata in row.metadata.values() if metadata.found)
+    requested_count = len(result.rows) * len(feature_refs)
+    console.print(
+        "[green]Online read complete:[/green] "
+        f"entities={len(result.rows)} features={len(feature_refs)} found={found_count}/{requested_count}"
+    )
 
 
 # =========================================================================
