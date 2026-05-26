@@ -69,6 +69,42 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  featcat-materialization-scheduler:
+    image: nxank4/featcat:${FEATCAT_VERSION:-latest}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      args:
+        - HTTP_PROXY=${HTTP_PROXY:-}
+        - HTTPS_PROXY=${HTTPS_PROXY:-}
+        - NO_PROXY=localhost,127.0.0.1
+    container_name: featcat-materialization-scheduler
+    profiles: ["scheduler"]
+    command:
+      [
+        "featcat",
+        "online",
+        "materializations",
+        "loop",
+        "--runner-id",
+        "chauln-labtest",
+        "--poll-interval",
+        "60",
+      ]
+    volumes:
+      - featcat_data:/data
+      - ${DATA_DIR:-./data}:/sources
+    environment:
+      - FEATCAT_DB_BACKEND=${FEATCAT_DB_BACKEND:-postgres}
+      - FEATCAT_DB_URL=${FEATCAT_DB_URL:-postgresql+psycopg2://${POSTGRES_USER:-featcat}:${POSTGRES_PASSWORD:-featcat_local_only}@postgres:5432/${POSTGRES_DB:-featcat}}
+      - FEATCAT_CATALOG_DB_PATH=/data/catalog.db
+      - NO_PROXY=postgres,localhost,127.0.0.1
+      - no_proxy=postgres,localhost,127.0.0.1
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
   # T1.5a — Celery + Redis worker stack. Activated only with the ``tasks``
   # profile (``docker compose --profile tasks up -d``) so default deploys
   # don't pull Redis/workers/Flower until the operator opts in. Until T1.5c

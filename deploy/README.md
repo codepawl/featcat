@@ -129,6 +129,59 @@ docker exec featcat-server featcat job list
 docker exec featcat-server featcat job run monitor_check
 ```
 
+## Optional Materialization Scheduler
+
+Online materialization schedules are explicit catalog records. The scheduler is
+run as a separate CLI process so FastAPI startup stays predictable and the lab
+operator can decide when scheduled online writes should run.
+
+Create an interval schedule:
+
+```bash
+docker exec featcat-server featcat online materializations schedules add \
+  --name hourly-transactions \
+  --source transactions \
+  --features avg_spend_30d,txn_count_30d \
+  --interval-seconds 3600 \
+  --project churn \
+  --feature-view transactions
+```
+
+List schedules:
+
+```bash
+docker exec featcat-server featcat online materializations schedules list
+```
+
+Run due schedules once:
+
+```bash
+docker exec featcat-server featcat online materializations run-once --runner-id chauln-labtest --json
+```
+
+Run the scheduler loop manually:
+
+```bash
+docker exec featcat-server featcat online materializations loop --runner-id chauln-labtest --poll-interval 60
+```
+
+Or start the optional Compose runner:
+
+```bash
+docker compose --profile scheduler up -d featcat-materialization-scheduler
+docker compose logs -f featcat-materialization-scheduler
+```
+
+The scheduler profile is not enabled by default. It uses the same featcat image
+and PostgreSQL catalog as the API server, but runs independently as
+`featcat online materializations loop --runner-id chauln-labtest --poll-interval 60`.
+
+`claimed=0` means the runner checked the registry and found no enabled schedules
+whose `next_run_at` was due, or all due schedules were already leased by another
+runner. Successful, validation-failed, and error runs are recorded in
+materialization audits and appear in the Materialization Runs UI with their
+schedule id.
+
 ## Optional MinIO Smoke
 
 MinIO is available only through the `minio` compose profile for dev/lab
