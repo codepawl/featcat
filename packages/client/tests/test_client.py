@@ -23,6 +23,8 @@ from featcat_client import (
     FeatureGroupDetail,
     FeatureNotFound,
     GroupNotFound,
+    OnlineFeatureReadResult,
+    OnlineFeatureWriteResult,
     ServerError,
     TrainingDatasetBuildAudit,
     TrainingDatasetBuildResult,
@@ -431,6 +433,219 @@ def test_list_training_dataset_builds_parses_response() -> None:
     assert rows[0].feature_columns == ["avg_spend_30d", "txn_count_30d"]
     assert rows[1].status == "validation_failed"
     assert rows[1].errors[0].code == "source_dataframe_missing_entity_key"
+
+
+# --------------------------------------------------------------------------- #
+# Online store                                                                #
+# --------------------------------------------------------------------------- #
+
+
+def _online_write_result_payload() -> dict[str, Any]:
+    return {
+        "requested": 1,
+        "written": 1,
+        "skipped_older": 0,
+        "skipped_same_timestamp": 0,
+        "errors": [],
+    }
+
+
+def _online_read_result_payload() -> dict[str, Any]:
+    return {
+        "rows": [
+            {
+                "entity_key": {"customer_id": 123},
+                "features": {
+                    "transactions.avg_spend_30d": None,
+                    "transactions.txn_count_30d": None,
+                },
+                "metadata": {
+                    "transactions.avg_spend_30d": {
+                        "found": True,
+                        "event_timestamp": "2026-05-25T09:00:00Z",
+                    },
+                    "transactions.txn_count_30d": {
+                        "found": False,
+                        "event_timestamp": None,
+                    },
+                },
+            }
+        ]
+    }
+
+
+def test_write_online_features_posts_expected_body() -> None:
+    captured: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json=_online_write_result_payload())
+
+    with _client_with_handler(handler) as client:
+        client.write_online_features(
+            rows=[
+                {
+                    "entity_key": {"customer_id": 123},
+                    "feature_ref": "transactions.avg_spend_30d",
+                    "value": 42.5,
+                    "value_dtype": "float64",
+                    "event_timestamp": "2026-05-25T09:00:00Z",
+                }
+            ],
+            project="churn",
+            feature_view="transactions",
+            source_name="transactions",
+            source_path="/data/transactions.parquet",
+        )
+
+    assert captured == {
+        "method": "POST",
+        "path": "/api/online/write",
+        "body": {
+            "project": "churn",
+            "feature_view": "transactions",
+            "source_name": "transactions",
+            "source_path": "/data/transactions.parquet",
+            "rows": [
+                {
+                    "entity_key": {"customer_id": 123},
+                    "feature_ref": "transactions.avg_spend_30d",
+                    "value": 42.5,
+                    "value_dtype": "float64",
+                    "event_timestamp": "2026-05-25T09:00:00Z",
+                    "created_timestamp": None,
+                    "source_name": None,
+                    "source_path": None,
+                    "write_id": None,
+                }
+            ],
+        },
+    }
+
+
+def test_write_online_features_parses_count_result() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "requested": 2,
+                "written": 1,
+                "skipped_older": 1,
+                "skipped_same_timestamp": 0,
+                "errors": [],
+            },
+        )
+
+    with _client_with_handler(handler) as client:
+        result = client.write_online_features(
+            rows=[
+                {
+                    "entity_key": {"customer_id": 123},
+                    "feature_ref": "transactions.avg_spend_30d",
+                    "value": 42.5,
+                    "event_timestamp": "2026-05-25T09:00:00Z",
+                }
+            ]
+        )
+
+    assert isinstance(result, OnlineFeatureWriteResult)
+    assert result.requested == 2
+    assert result.written == 1
+    assert result.skipped_older == 1
+
+
+def test_get_online_features_posts_expected_body() -> None:
+    captured: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json=_online_read_result_payload())
+
+    with _client_with_handler(handler) as client:
+        client.get_online_features(
+            entity_keys=[{"customer_id": 123}],
+            feature_refs=["transactions.avg_spend_30d", "transactions.txn_count_30d"],
+            project="churn",
+            feature_view="transactions",
+        )
+
+    assert captured == {
+        "method": "POST",
+        "path": "/api/online/read",
+        "body": {
+            "project": "churn",
+            "feature_view": "transactions",
+            "entity_keys": [{"customer_id": 123}],
+            "feature_refs": ["transactions.avg_spend_30d", "transactions.txn_count_30d"],
+        },
+    }
+
+
+def test_get_online_features_parses_ordered_rows_and_metadata() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "rows": [
+                    {
+                        "entity_key": {"customer_id": 2},
+                        "features": {"transactions.avg_spend_30d": 20.0},
+                        "metadata": {
+                            "transactions.avg_spend_30d": {
+                                "found": True,
+                                "event_timestamp": "2026-05-25T10:00:00Z",
+                            }
+                        },
+                    },
+                    {
+                        "entity_key": {"customer_id": 1},
+                        "features": {"transactions.avg_spend_30d": 10.0},
+                        "metadata": {
+                            "transactions.avg_spend_30d": {
+                                "found": True,
+                                "event_timestamp": "2026-05-25T09:00:00Z",
+                            }
+                        },
+                    },
+                ]
+            },
+        )
+
+    with _client_with_handler(handler) as client:
+        result = client.get_online_features(
+            entity_keys=[{"customer_id": 2}, {"customer_id": 1}],
+            feature_refs=["transactions.avg_spend_30d"],
+        )
+
+    assert isinstance(result, OnlineFeatureReadResult)
+    assert [row.entity_key for row in result.rows] == [{"customer_id": 2}, {"customer_id": 1}]
+    assert [row.features["transactions.avg_spend_30d"] for row in result.rows] == [20.0, 10.0]
+    assert result.rows[0].metadata["transactions.avg_spend_30d"].found is True
+
+
+def test_get_online_features_preserves_null_found_and_missing_metadata() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_online_read_result_payload())
+
+    with _client_with_handler(handler) as client:
+        result = client.get_online_features(
+            entity_keys=[{"customer_id": 123}],
+            feature_refs=["transactions.avg_spend_30d", "transactions.txn_count_30d"],
+        )
+
+    row = result.rows[0]
+    assert row.features["transactions.avg_spend_30d"] is None
+    assert row.metadata["transactions.avg_spend_30d"].found is True
+    assert row.metadata["transactions.avg_spend_30d"].event_timestamp == datetime(
+        2026, 5, 25, 9, 0, tzinfo=timezone.utc
+    )
+    assert row.features["transactions.txn_count_30d"] is None
+    assert row.metadata["transactions.txn_count_30d"].found is False
+    assert row.metadata["transactions.txn_count_30d"].event_timestamp is None
 
 
 # --------------------------------------------------------------------------- #

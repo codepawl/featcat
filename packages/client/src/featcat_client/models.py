@@ -151,3 +151,57 @@ class TrainingDatasetBuildAudit(_Base):
     warnings: list[TrainingDatasetIssue] = []
     actor: str | None = None
     created_at: datetime
+
+
+class OnlineFeatureWrite(_Base):
+    """One online feature value write."""
+
+    entity_key: dict[str, Any]
+    feature_ref: str
+    value: Any = None
+    value_dtype: str | None = None
+    event_timestamp: datetime
+    created_timestamp: datetime | None = None
+    source_name: str | None = None
+    source_path: str | None = None
+    write_id: str | None = None
+
+
+class OnlineFeatureWriteError(_Base):
+    """Structured per-row online write error."""
+
+    index: int
+    code: str
+    message: str
+    field: str | None = None
+
+
+class OnlineFeatureWriteResult(_Base):
+    """Shape returned by ``POST /api/online/write``."""
+
+    requested: int
+    written: int = 0
+    skipped_older: int = 0
+    skipped_same_timestamp: int = 0
+    errors: list[OnlineFeatureWriteError] = []
+
+
+class OnlineFeatureReadMetadata(_Base):
+    """Per-feature metadata returned by online reads."""
+
+    found: bool
+    event_timestamp: datetime | None = None
+
+
+class OnlineFeatureReadRow(_Base):
+    """One entity row returned by ``POST /api/online/read``."""
+
+    entity_key: dict[str, Any]
+    features: dict[str, Any]
+    metadata: dict[str, OnlineFeatureReadMetadata]
+
+
+class OnlineFeatureReadResult(_Base):
+    """Shape returned by ``POST /api/online/read``."""
+
+    rows: list[OnlineFeatureReadRow]

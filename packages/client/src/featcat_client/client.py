@@ -16,6 +16,8 @@ Server endpoints actually used (verified against ``featcat/server/routes/``):
 - ``GET  /api/groups/{name}``             — group with members
 - ``POST /api/datasets/build``            — build local PIT training dataset
 - ``GET  /api/datasets/builds``           — list recent dataset build audits
+- ``POST /api/online/write``              — write online feature values
+- ``POST /api/online/read``               — read online feature values
 - ``GET  /api/usage/feature?name=X``      — usage stats for a feature
 
 The server *auto-logs* a ``view`` action on every ``GET /api/features/by-name``
@@ -44,6 +46,9 @@ from .models import (
     FeatureGroup,
     FeatureGroupDetail,
     FeatureUsage,
+    OnlineFeatureReadResult,
+    OnlineFeatureWrite,
+    OnlineFeatureWriteResult,
     TrainingDatasetBuildAudit,
     TrainingDatasetBuildResult,
 )
@@ -358,6 +363,54 @@ class FeatCatClient:
             params["status"] = status
         rows = self._request("GET", "/api/datasets/builds", params=params)
         return [TrainingDatasetBuildAudit.model_validate(row) for row in rows]
+
+    # --- Online store ---
+
+    def write_online_features(
+        self,
+        rows: list[OnlineFeatureWrite | dict[str, Any]],
+        *,
+        project: str = "",
+        feature_view: str = "",
+        source_name: str | None = None,
+        source_path: str | None = None,
+    ) -> OnlineFeatureWriteResult:
+        """Write latest online feature values.
+
+        ``rows`` accepts either ``OnlineFeatureWrite`` instances or dictionaries
+        matching the API row shape. Datetime strings and ``datetime`` objects are
+        both accepted by the model layer.
+        """
+        body: dict[str, Any] = {
+            "project": project,
+            "feature_view": feature_view,
+            "rows": [OnlineFeatureWrite.model_validate(row).model_dump(mode="json") for row in rows],
+        }
+        if source_name is not None:
+            body["source_name"] = source_name
+        if source_path is not None:
+            body["source_path"] = source_path
+
+        result = self._request("POST", "/api/online/write", json_body=body)
+        return OnlineFeatureWriteResult.model_validate(result)
+
+    def get_online_features(
+        self,
+        *,
+        entity_keys: list[dict[str, Any]],
+        feature_refs: list[str],
+        project: str = "",
+        feature_view: str = "",
+    ) -> OnlineFeatureReadResult:
+        """Read latest online feature values preserving request order."""
+        body = {
+            "project": project,
+            "feature_view": feature_view,
+            "entity_keys": entity_keys,
+            "feature_refs": feature_refs,
+        }
+        result = self._request("POST", "/api/online/read", json_body=body)
+        return OnlineFeatureReadResult.model_validate(result)
 
     # --- DataFrame helpers ---
 
