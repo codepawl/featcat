@@ -6,6 +6,7 @@ import contextlib
 import json
 import os
 import sys
+import time
 from dataclasses import asdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -91,6 +92,10 @@ def _emit(payload: object, render_table: Callable[[], None], *, json_mode: bool)
         print(json.dumps(payload, indent=2, default=str))
         return
     render_table()
+
+
+def _sleep(seconds: float) -> None:
+    time.sleep(seconds)
 
 
 def _parse_csv_option(value: str) -> list[str]:
@@ -1192,6 +1197,64 @@ def online_materializations_run_once(
         "[green]Materialization scheduler run complete:[/green] "
         f"runner_id={result.runner_id} claimed={result.claimed}" + (f" {summary}" if summary else "")
     )
+
+
+@online_materializations_app.command("loop")
+def online_materializations_loop(
+    runner_id: str = typer.Option("local", "--runner-id", help="Runner id used for schedule leases"),
+    poll_interval: float = typer.Option(60.0, "--poll-interval", help="Seconds to sleep between iterations"),
+    lease_seconds: int = typer.Option(1800, "--lease-seconds", help="Seconds before claimed schedule leases expire"),
+    limit: int = typer.Option(10, "--limit", "-n", help="Maximum due schedules to claim per iteration"),
+    max_iterations: int | None = typer.Option(
+        None,
+        "--max-iterations",
+        help="Stop after this many iterations; omit to run until interrupted",
+    ),
+    json_output: bool = typer.Option(False, "--json", "-j", help="Emit structured JSON per iteration"),
+) -> None:
+    """Continuously claim and run due materialization schedules."""
+    from .catalog.materialization_scheduler import run_due_materialization_schedules
+
+    if poll_interval <= 0:
+        console.print("[red]Invalid poll interval:[/red] --poll-interval must be greater than 0")
+        raise typer.Exit(1)
+    if lease_seconds <= 0:
+        console.print("[red]Invalid lease seconds:[/red] --lease-seconds must be greater than 0")
+        raise typer.Exit(1)
+    if max_iterations is not None and max_iterations <= 0:
+        console.print("[red]Invalid max iterations:[/red] --max-iterations must be greater than 0")
+        raise typer.Exit(1)
+
+    db = _get_db()
+    iteration = 0
+    try:
+        db.init_db()
+        while max_iterations is None or iteration < max_iterations:
+            iteration += 1
+            result = run_due_materialization_schedules(
+                db,
+                runner_id=runner_id,
+                lease_seconds=lease_seconds,
+                limit=limit,
+            )
+            payload = {"iteration": iteration, **asdict(result)}
+            if json_output:
+                print(json.dumps(payload, default=str), flush=True)
+            else:
+                status_counts: dict[str, int] = {}
+                for run in result.runs:
+                    status_counts[run.status] = status_counts.get(run.status, 0) + 1
+                summary = " ".join(f"{status}={count}" for status, count in sorted(status_counts.items()))
+                console.print(
+                    "[green]Materialization scheduler iteration complete:[/green] "
+                    f"iteration={iteration} runner_id={result.runner_id} claimed={result.claimed}"
+                    + (f" {summary}" if summary else "")
+                )
+            if max_iterations is not None and iteration >= max_iterations:
+                break
+            _sleep(poll_interval)
+    finally:
+        db.close()
 
 
 # =========================================================================

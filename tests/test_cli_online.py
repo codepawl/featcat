@@ -730,3 +730,173 @@ def test_online_materialization_schedule_add_invalid_feature_list_exits_nonzero(
 
     assert result.exit_code == 1
     assert "No feature columns provided" in result.output
+
+
+def test_online_materializations_loop_max_iterations_one_runs_one_iteration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("FEATCAT_CATALOG_DB_PATH", raising=False)
+
+    result = runner.invoke(
+        app,
+        [
+            "online",
+            "materializations",
+            "loop",
+            "--runner-id",
+            "loop-test",
+            "--max-iterations",
+            "1",
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    lines = [json.loads(line) for line in result.output.splitlines()]
+    assert len(lines) == 1
+    assert lines[0]["iteration"] == 1
+    assert lines[0]["runner_id"] == "loop-test"
+    assert lines[0]["claimed"] == 0
+
+
+def test_online_materializations_loop_max_iterations_two_sleeps_without_long_wait(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("FEATCAT_CATALOG_DB_PATH", raising=False)
+    sleeps: list[float] = []
+    monkeypatch.setattr("featcat.cli._sleep", sleeps.append)
+
+    result = runner.invoke(
+        app,
+        [
+            "online",
+            "materializations",
+            "loop",
+            "--runner-id",
+            "loop-test",
+            "--poll-interval",
+            "7",
+            "--max-iterations",
+            "2",
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    lines = [json.loads(line) for line in result.output.splitlines()]
+    assert [line["iteration"] for line in lines] == [1, 2]
+    assert sleeps == [7.0]
+
+
+def test_online_materializations_loop_executes_due_schedule_and_writes_audit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("FEATCAT_CATALOG_DB_PATH", raising=False)
+    _seed_materialization_catalog(tmp_path)
+    db = LocalBackend(str(tmp_path / "catalog.db"))
+    now = datetime(2000, 1, 1, tzinfo=timezone.utc)
+    try:
+        schedule = db.create_materialization_schedule(
+            name="hourly-transactions",
+            source_name="transactions",
+            feature_columns=["avg_spend_30d"],
+            interval_seconds=3600,
+            project="churn",
+            feature_view="transactions",
+            next_run_at=now - timedelta(seconds=1),
+            now=now - timedelta(hours=1),
+        )
+    finally:
+        db.close()
+
+    result = runner.invoke(
+        app,
+        ["online", "materializations", "loop", "--runner-id", "loop-test", "--max-iterations", "1", "--json"],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["claimed"] == 1
+    assert payload["runs"][0]["schedule_id"] == schedule.id
+    assert payload["runs"][0]["status"] == "success"
+
+    db = LocalBackend(str(tmp_path / "catalog.db"))
+    try:
+        audits = db.list_materialization_audits()
+    finally:
+        db.close()
+
+    assert audits[0].schedule_id == schedule.id
+    assert audits[0].status == "success"
+
+
+def test_online_materializations_loop_respects_disabled_schedule(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("FEATCAT_CATALOG_DB_PATH", raising=False)
+    _seed_materialization_catalog(tmp_path)
+    db = LocalBackend(str(tmp_path / "catalog.db"))
+    now = datetime(2000, 1, 1, tzinfo=timezone.utc)
+    try:
+        db.create_materialization_schedule(
+            name="hourly-transactions",
+            source_name="transactions",
+            feature_columns=["avg_spend_30d"],
+            interval_seconds=3600,
+            project="churn",
+            feature_view="transactions",
+            enabled=False,
+            next_run_at=now - timedelta(seconds=1),
+            now=now - timedelta(hours=1),
+        )
+    finally:
+        db.close()
+
+    result = runner.invoke(
+        app,
+        ["online", "materializations", "loop", "--runner-id", "loop-test", "--max-iterations", "1", "--json"],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["claimed"] == 0
+
+    db = LocalBackend(str(tmp_path / "catalog.db"))
+    try:
+        audits = db.list_materialization_audits()
+    finally:
+        db.close()
+
+    assert audits == []
+
+
+def test_online_materializations_loop_invalid_poll_interval_exits_nonzero(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("FEATCAT_CATALOG_DB_PATH", raising=False)
+
+    result = runner.invoke(
+        app,
+        [
+            "online",
+            "materializations",
+            "loop",
+            "--poll-interval",
+            "0",
+            "--max-iterations",
+            "1",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "Invalid poll interval" in result.output
