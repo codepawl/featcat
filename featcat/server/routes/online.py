@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 # Pydantic needs datetime available at runtime to rebuild endpoint schemas.
+from dataclasses import asdict
 from datetime import datetime  # noqa: TC003
 from typing import Any
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
+from ...catalog.materialization import MaterializationResult, materialize_latest_from_source
 from ...catalog.models import (
     OnlineFeatureReadMetadata,
     OnlineFeatureReadResult,
@@ -67,6 +69,40 @@ class OnlineFeatureReadResponse(BaseModel):
     rows: list[OnlineFeatureReadRowResponse]
 
 
+class OnlineMaterializationIssueResponse(BaseModel):
+    code: str
+    message: str
+    field: str | None = None
+
+
+class OnlineMaterializationRequest(BaseModel):
+    source_name: str
+    feature_columns: list[str] = Field(default_factory=list)
+    project: str = ""
+    feature_view: str = ""
+    actor: str | None = None
+
+
+class OnlineMaterializationResponse(BaseModel):
+    is_valid: bool
+    errors: list[OnlineMaterializationIssueResponse]
+    warnings: list[OnlineMaterializationIssueResponse]
+    source_name: str
+    source_path: str | None = None
+    project: str
+    feature_view: str
+    entity_key: str | None = None
+    event_timestamp_column: str | None = None
+    created_timestamp_column: str | None = None
+    feature_columns: list[str]
+    entity_count: int
+    feature_count: int
+    requested: int
+    written: int
+    skipped_older: int
+    skipped_same_timestamp: int
+
+
 def _write_from_request(body: OnlineFeatureWriteRequest) -> list[OnlineFeatureWrite]:
     writes: list[OnlineFeatureWrite] = []
     for row in body.rows:
@@ -101,3 +137,20 @@ def read_online_features(body: OnlineFeatureReadRequest, db=Depends(get_db)) -> 
         feature_view=body.feature_view,
     )
     return OnlineFeatureReadResponse.model_validate(result.model_dump())
+
+
+@router.post("/materialize", response_model=OnlineMaterializationResponse)
+def materialize_online_features(
+    body: OnlineMaterializationRequest,
+    db=Depends(get_db),
+) -> OnlineMaterializationResponse:
+    """Materialize latest values from a registered offline source into the online store."""
+    # actor is accepted for forward-compatible audit attribution.
+    result: MaterializationResult = materialize_latest_from_source(
+        db,
+        source_name=body.source_name,
+        feature_columns=body.feature_columns,
+        project=body.project,
+        feature_view=body.feature_view,
+    )
+    return OnlineMaterializationResponse.model_validate(asdict(result))
