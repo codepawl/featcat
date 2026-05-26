@@ -19,6 +19,7 @@ Server endpoints actually used (verified against ``featcat/server/routes/``):
 - ``POST /api/online/write``              — write online feature values
 - ``POST /api/online/read``               — read online feature values
 - ``POST /api/online/materialize``        — materialize latest offline values
+- ``GET  /api/online/materializations``   — list materialization audit history
 - ``GET  /api/usage/feature?name=X``      — usage stats for a feature
 
 The server *auto-logs* a ``view`` action on every ``GET /api/features/by-name``
@@ -47,6 +48,7 @@ from .models import (
     FeatureGroup,
     FeatureGroupDetail,
     FeatureUsage,
+    MaterializationAudit,
     MaterializationResult,
     OnlineFeatureReadResult,
     OnlineFeatureWrite,
@@ -434,6 +436,19 @@ class FeatCatClient:
             body["actor"] = actor
         result = self._request("POST", "/api/online/materialize", json_body=body)
         return MaterializationResult.model_validate(result)
+
+    def list_materialization_runs(
+        self,
+        *,
+        limit: int = 20,
+        status: str | None = None,
+    ) -> list[MaterializationAudit]:
+        """List recent online materialization audit records."""
+        params: dict[str, Any] = {"limit": limit}
+        if status is not None:
+            params["status"] = status
+        rows = self._request("GET", "/api/online/materializations", params=params)
+        return [MaterializationAudit.model_validate(row) for row in rows]
 
     # --- DataFrame helpers ---
 

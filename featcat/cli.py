@@ -44,10 +44,12 @@ dataset_builds_app = typer.Typer(help="Training dataset build audit history")
 usage_app = typer.Typer(help="Feature usage analytics")
 actions_app = typer.Typer(help="Recommended actions (lifecycle loop)")
 online_app = typer.Typer(help="Online feature store read/write commands")
+online_materializations_app = typer.Typer(help="Online materialization audit history")
 lineage_app = typer.Typer(help="Lineage management (T1.1)")
 lineage_edge_app = typer.Typer(help="Manage individual lineage edges")
 lineage_app.add_typer(lineage_edge_app, name="edge")
 dataset_app.add_typer(dataset_builds_app, name="builds")
+online_app.add_typer(online_materializations_app, name="materializations")
 demo_app = typer.Typer(help="Demo catalog data: seed and clear")
 backup_app = typer.Typer(
     name="backup",
@@ -992,6 +994,50 @@ def online_materialize(
 
     if not result.is_valid:
         raise typer.Exit(1)
+
+
+@online_materializations_app.command("list")
+def online_materializations_list(
+    limit: int = typer.Option(20, "--limit", "-n", help="Maximum rows to return"),
+    status: str | None = typer.Option(
+        None,
+        "--status",
+        help="Filter by status: success, validation_failed, or error",
+    ),
+    json_output: bool = typer.Option(False, "--json", "-j", help="Emit structured JSON"),
+) -> None:
+    """List recent online materialization audit records."""
+    db = _get_db()
+    try:
+        rows = db.list_materialization_audits(limit=limit, status=status)
+    finally:
+        db.close()
+
+    payload = [row.model_dump(mode="json") if hasattr(row, "model_dump") else row for row in rows]
+    if json_output:
+        print(json.dumps(payload, indent=2, default=str))
+        return
+
+    table = Table(title="Online Materializations")
+    table.add_column("Created")
+    table.add_column("Status")
+    table.add_column("Source")
+    table.add_column("Entities", justify="right")
+    table.add_column("Features", justify="right")
+    table.add_column("Written", justify="right")
+    for row in rows:
+        created_at = getattr(row, "created_at", "")
+        if hasattr(created_at, "isoformat"):
+            created_at = created_at.isoformat()
+        table.add_row(
+            str(created_at),
+            row.status,
+            row.source_name,
+            str(row.entity_count),
+            str(row.feature_count),
+            str(row.written),
+        )
+    console.print(table)
 
 
 # =========================================================================

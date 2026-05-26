@@ -235,3 +235,28 @@ class MaterializationResult(_Base):
     written: int = 0
     skipped_older: int = 0
     skipped_same_timestamp: int = 0
+
+
+class MaterializationAudit(_Base):
+    """Shape returned by ``GET /api/online/materializations``."""
+
+    id: str
+    status: str
+    source_name: str
+    source_path: str | None = None
+    project: str = ""
+    feature_view: str = ""
+    entity_key: str | None = None
+    event_timestamp_column: str | None = None
+    created_timestamp_column: str | None = None
+    feature_columns: list[str] = []
+    entity_count: int = 0
+    feature_count: int = 0
+    requested: int = 0
+    written: int = 0
+    skipped_older: int = 0
+    skipped_same_timestamp: int = 0
+    errors: list[MaterializationIssue] = []
+    warnings: list[MaterializationIssue] = []
+    actor: str | None = None
+    created_at: datetime

@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from ...catalog.materialization import MaterializationResult, materialize_latest_from_source
 from ...catalog.materialization_audit import record_materialization_audit, record_materialization_error_audit
 from ...catalog.models import (
+    MaterializationAudit,
     OnlineFeatureReadMetadata,
     OnlineFeatureReadResult,
     OnlineFeatureWrite,
@@ -104,6 +105,29 @@ class OnlineMaterializationResponse(BaseModel):
     skipped_same_timestamp: int
 
 
+class OnlineMaterializationAuditResponse(BaseModel):
+    id: str
+    status: str
+    source_name: str
+    source_path: str | None = None
+    project: str
+    feature_view: str
+    entity_key: str | None = None
+    event_timestamp_column: str | None = None
+    created_timestamp_column: str | None = None
+    feature_columns: list[str]
+    entity_count: int
+    feature_count: int
+    requested: int
+    written: int
+    skipped_older: int
+    skipped_same_timestamp: int
+    errors: list[dict]
+    warnings: list[dict]
+    actor: str | None = None
+    created_at: str
+
+
 def _write_from_request(body: OnlineFeatureWriteRequest) -> list[OnlineFeatureWrite]:
     writes: list[OnlineFeatureWrite] = []
     for row in body.rows:
@@ -114,6 +138,12 @@ def _write_from_request(body: OnlineFeatureWriteRequest) -> list[OnlineFeatureWr
             payload["source_path"] = body.source_path
         writes.append(OnlineFeatureWrite.model_validate(payload))
     return writes
+
+
+def _materialization_audit_response(row: MaterializationAudit) -> OnlineMaterializationAuditResponse:
+    payload = row.model_dump()
+    payload["created_at"] = row.created_at.isoformat()
+    return OnlineMaterializationAuditResponse.model_validate(payload)
 
 
 @router.post("/write", response_model=OnlineFeatureWriteResponse)
@@ -138,6 +168,16 @@ def read_online_features(body: OnlineFeatureReadRequest, db=Depends(get_db)) -> 
         feature_view=body.feature_view,
     )
     return OnlineFeatureReadResponse.model_validate(result.model_dump())
+
+
+@router.get("/materializations", response_model=list[OnlineMaterializationAuditResponse])
+def list_materialization_runs(
+    limit: int = 20,
+    status: str | None = None,
+    db=Depends(get_db),
+) -> list[OnlineMaterializationAuditResponse]:
+    """List recent online materialization audit rows."""
+    return [_materialization_audit_response(row) for row in db.list_materialization_audits(limit=limit, status=status)]
 
 
 @router.post("/materialize", response_model=OnlineMaterializationResponse)

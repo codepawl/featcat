@@ -153,3 +153,4 @@ def test_materialization_route_is_registered_without_testclient() -> None:
     routes = {(route.path, tuple(sorted(route.methods or []))) for route in router.routes}
 
     assert ("/materialize", ("POST",)) in routes
+    assert ("/materializations", ("GET",)) in routes

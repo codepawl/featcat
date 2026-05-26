@@ -10,6 +10,8 @@ import pyarrow.parquet as pq
 from typer.testing import CliRunner
 
 from featcat.catalog.local import LocalBackend
+from featcat.catalog.materialization import MaterializationIssue, MaterializationResult
+from featcat.catalog.materialization_audit import record_materialization_audit
 from featcat.catalog.models import DataSource, Feature
 from featcat.catalog.online_store import get_online_features
 from featcat.cli import app
@@ -412,3 +414,61 @@ def test_online_materialize_missing_source_returns_structured_json_failure(
             "field": "source_name",
         }
     ]
+
+
+def test_online_materializations_list_json_output(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("FEATCAT_CATALOG_DB_PATH", raising=False)
+    db = LocalBackend(str(tmp_path / "catalog.db"))
+    db.init_db()
+    try:
+        record_materialization_audit(
+            db,
+            result=MaterializationResult(
+                is_valid=False,
+                errors=[
+                    MaterializationIssue(
+                        code="missing_feature_column",
+                        message="Parquet source is missing feature column: missing_feature",
+                        field="missing_feature",
+                    )
+                ],
+                source_name="transactions",
+                source_path="s3://access:secret@featcat-smoke/materialization/source.parquet",
+                project="churn",
+                feature_view="transactions",
+                entity_key="customer_id",
+                event_timestamp_column="event_ts",
+                feature_columns=["missing_feature"],
+                feature_count=1,
+            ),
+            actor="cli-test",
+        )
+    finally:
+        db.close()
+
+    result = runner.invoke(
+        app,
+        [
+            "online",
+            "materializations",
+            "list",
+            "--limit",
+            "20",
+            "--status",
+            "validation_failed",
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert len(payload) == 1
+    assert payload[0]["status"] == "validation_failed"
+    assert payload[0]["source_name"] == "transactions"
+    assert payload[0]["feature_columns"] == ["missing_feature"]
+    assert payload[0]["actor"] == "cli-test"
+    serialized = result.output
+    assert "s3://featcat-smoke/materialization/source.parquet" in serialized
+    assert "access" not in serialized
+    assert "secret" not in serialized

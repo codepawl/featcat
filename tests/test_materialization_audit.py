@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import TYPE_CHECKING, Any
 
 import pyarrow as pa
@@ -16,7 +17,7 @@ from featcat.catalog.materialization_audit import record_materialization_audit
 from featcat.catalog.models import DataSource, Feature
 from featcat.cli import app
 from featcat.server.routes import online
-from featcat.server.routes.online import OnlineMaterializationRequest
+from featcat.server.routes.online import OnlineMaterializationRequest, list_materialization_runs
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -71,6 +72,37 @@ def _seed_materialization_catalog(
             )
         )
     return db
+
+
+def _audit_result(
+    *,
+    is_valid: bool = True,
+    source_path: str | None = "transactions.parquet",
+    written: int = 4,
+) -> MaterializationResult:
+    return MaterializationResult(
+        is_valid=is_valid,
+        errors=[]
+        if is_valid
+        else [
+            MaterializationIssue(
+                code="missing_feature_column",
+                message="Parquet source is missing feature column: missing_feature",
+                field="missing_feature",
+            )
+        ],
+        source_name="transactions",
+        source_path=source_path,
+        project="churn",
+        feature_view="transactions",
+        entity_key="customer_id",
+        event_timestamp_column="event_ts",
+        feature_columns=["avg_spend_30d", "txn_count_30d"],
+        entity_count=2 if is_valid else 0,
+        feature_count=2,
+        requested=4 if is_valid else 0,
+        written=written if is_valid else 0,
+    )
 
 
 def test_api_materialization_records_success_audit(tmp_path: Path) -> None:
@@ -243,5 +275,90 @@ def test_materialization_audit_sanitizes_s3_credentials(tmp_path: Path) -> None:
 
     assert audit.source_path == "s3://featcat-smoke/materialization/source.parquet"
     serialized = json.dumps(audit.model_dump(), default=str)
+    assert "access" not in serialized
+    assert "secret" not in serialized
+
+
+def test_list_materialization_audits_returns_newest_first(tmp_path: Path) -> None:
+    db = LocalBackend(str(tmp_path / "catalog.db"))
+    db.init_db()
+    try:
+        record_materialization_audit(db, result=_audit_result(written=1), actor="first")
+        time.sleep(0.001)
+        record_materialization_audit(db, result=_audit_result(written=2), actor="second")
+
+        audits = db.list_materialization_audits()
+    finally:
+        db.close()
+
+    assert [audit.actor for audit in audits] == ["second", "first"]
+    assert [audit.written for audit in audits] == [2, 1]
+
+
+def test_list_materialization_audits_respects_limit(tmp_path: Path) -> None:
+    db = LocalBackend(str(tmp_path / "catalog.db"))
+    db.init_db()
+    try:
+        for index in range(3):
+            record_materialization_audit(db, result=_audit_result(written=index + 1), actor=f"run-{index}")
+
+        audits = db.list_materialization_audits(limit=2)
+    finally:
+        db.close()
+
+    assert len(audits) == 2
+
+
+def test_list_materialization_audits_filters_status(tmp_path: Path) -> None:
+    db = LocalBackend(str(tmp_path / "catalog.db"))
+    db.init_db()
+    try:
+        record_materialization_audit(db, result=_audit_result(is_valid=True), actor="success")
+        record_materialization_audit(db, result=_audit_result(is_valid=False, written=0), actor="failed")
+
+        audits = db.list_materialization_audits(status="validation_failed")
+    finally:
+        db.close()
+
+    assert len(audits) == 1
+    assert audits[0].status == "validation_failed"
+    assert audits[0].actor == "failed"
+
+
+def test_materialization_history_route_serializes_records_without_testclient(tmp_path: Path) -> None:
+    db = LocalBackend(str(tmp_path / "catalog.db"))
+    db.init_db()
+    try:
+        record_materialization_audit(db, result=_audit_result(), actor="api")
+
+        response = list_materialization_runs(limit=20, status=None, db=db)
+    finally:
+        db.close()
+
+    assert len(response) == 1
+    payload = response[0].model_dump()
+    assert payload["status"] == "success"
+    assert payload["source_name"] == "transactions"
+    assert payload["feature_columns"] == ["avg_spend_30d", "txn_count_30d"]
+    assert payload["actor"] == "api"
+    assert isinstance(payload["created_at"], str)
+
+
+def test_materialization_history_route_does_not_expose_s3_credentials(tmp_path: Path) -> None:
+    db = LocalBackend(str(tmp_path / "catalog.db"))
+    db.init_db()
+    try:
+        record_materialization_audit(
+            db,
+            result=_audit_result(source_path="s3://access:secret@featcat-smoke/materialization/source.parquet"),
+            actor="api",
+        )
+
+        response = list_materialization_runs(limit=20, status=None, db=db)
+    finally:
+        db.close()
+
+    serialized = json.dumps([row.model_dump() for row in response], default=str)
+    assert "s3://featcat-smoke/materialization/source.parquet" in serialized
     assert "access" not in serialized
     assert "secret" not in serialized
