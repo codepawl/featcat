@@ -123,6 +123,7 @@ def build_app() -> FastAPI:
     from .routes.lineage import router as lineage_router
     from .routes.monitor import router as monitor_router
     from .routes.notifications import router as notifications_router
+    from .routes.online import router as online_router
     from .routes.scan import router as scan_router
     from .routes.scheduler import router as scheduler_router
     from .routes.search import router as search_router
@@ -145,6 +146,7 @@ def build_app() -> FastAPI:
     app.include_router(scan_router, prefix="/api/scan-bulk", tags=["scan"])
     app.include_router(export_router, prefix="/api/export", tags=["export"])
     app.include_router(datasets_router, prefix="/api/datasets", tags=["datasets"])
+    app.include_router(online_router, prefix="/api/online", tags=["online"])
     app.include_router(versions_router, prefix="/api/versions", tags=["versions"])
     app.include_router(lineage_router, prefix="/api/lineage", tags=["lineage"])
     app.include_router(bulk_router, prefix="/api/features/bulk", tags=["bulk"])
