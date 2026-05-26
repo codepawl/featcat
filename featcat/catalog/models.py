@@ -195,6 +195,31 @@ class DatasetBuildAudit(BaseModel):
     created_at: datetime = Field(default_factory=_utcnow)
 
 
+class MaterializationAudit(BaseModel):
+    """Audit row for an API/CLI online materialization request."""
+
+    id: str = Field(default_factory=_new_id)
+    status: str  # "success" | "validation_failed" | "error"
+    source_name: str
+    source_path: str | None = None
+    project: str = ""
+    feature_view: str = ""
+    entity_key: str | None = None
+    event_timestamp_column: str | None = None
+    created_timestamp_column: str | None = None
+    feature_columns: list[str] = Field(default_factory=list)
+    entity_count: int = 0
+    feature_count: int = 0
+    requested: int = 0
+    written: int = 0
+    skipped_older: int = 0
+    skipped_same_timestamp: int = 0
+    errors: list[dict[str, Any]] = Field(default_factory=list)
+    warnings: list[dict[str, Any]] = Field(default_factory=list)
+    actor: str | None = None
+    created_at: datetime = Field(default_factory=_utcnow)
+
+
 class OnlineFeatureWrite(BaseModel):
     """One latest-value write into the PostgreSQL online store."""
 

@@ -943,18 +943,33 @@ def online_materialize(
 ) -> None:
     """Materialize latest offline feature values from a registered source."""
     from .catalog.materialization import materialize_latest_from_source
+    from .catalog.materialization_audit import record_materialization_audit, record_materialization_error_audit
 
     feature_columns = _parse_csv_option(features)
     db = _get_db()
     try:
         db.init_db()
-        result = materialize_latest_from_source(
-            db,
-            source_name=source,
-            feature_columns=feature_columns,
-            project=project,
-            feature_view=feature_view,
-        )
+        try:
+            result = materialize_latest_from_source(
+                db,
+                source_name=source,
+                feature_columns=feature_columns,
+                project=project,
+                feature_view=feature_view,
+            )
+        except Exception as exc:
+            record_materialization_error_audit(
+                db,
+                source_name=source,
+                project=project,
+                feature_view=feature_view,
+                feature_columns=feature_columns,
+                error=exc,
+                actor=resolve_user(),
+            )
+            console.print(f"[red]Online materialization error:[/red] {exc}")
+            raise typer.Exit(1) from None
+        record_materialization_audit(db, result=result, actor=resolve_user())
     finally:
         db.close()
 

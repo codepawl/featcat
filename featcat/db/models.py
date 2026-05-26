@@ -191,6 +191,34 @@ class DatasetBuildAudit(Base):
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
 
 
+class MaterializationAudit(Base):
+    """Audit row written for API/CLI online materialization requests."""
+
+    __tablename__ = "materialization_audits"
+    __table_args__ = (Index("idx_materialization_audits_created_at", "created_at"),)
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False)  # "success" | "validation_failed" | "error"
+    source_name: Mapped[str] = mapped_column(Text, nullable=False)
+    source_path: Mapped[str | None] = mapped_column(Text)
+    project: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    feature_view: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    entity_key: Mapped[str | None] = mapped_column(Text)
+    event_timestamp_column: Mapped[str | None] = mapped_column(Text)
+    created_timestamp_column: Mapped[str | None] = mapped_column(Text)
+    feature_columns: Mapped[str] = mapped_column(Text, nullable=False, default="[]", server_default="[]")
+    entity_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    feature_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    requested: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    written: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    skipped_older: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    skipped_same_timestamp: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    errors: Mapped[str] = mapped_column(Text, nullable=False, default="[]", server_default="[]")
+    warnings: Mapped[str] = mapped_column(Text, nullable=False, default="[]", server_default="[]")
+    actor: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+
+
 class OnlineFeatureValue(Base):
     """Latest online feature value for one entity-feature pair."""
 

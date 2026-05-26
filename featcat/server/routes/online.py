@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from ...catalog.materialization import MaterializationResult, materialize_latest_from_source
+from ...catalog.materialization_audit import record_materialization_audit, record_materialization_error_audit
 from ...catalog.models import (
     OnlineFeatureReadMetadata,
     OnlineFeatureReadResult,
@@ -145,12 +146,26 @@ def materialize_online_features(
     db=Depends(get_db),
 ) -> OnlineMaterializationResponse:
     """Materialize latest values from a registered offline source into the online store."""
-    # actor is accepted for forward-compatible audit attribution.
-    result: MaterializationResult = materialize_latest_from_source(
-        db,
-        source_name=body.source_name,
-        feature_columns=body.feature_columns,
-        project=body.project,
-        feature_view=body.feature_view,
-    )
+    actor = body.actor or "api"
+    try:
+        result: MaterializationResult = materialize_latest_from_source(
+            db,
+            source_name=body.source_name,
+            feature_columns=body.feature_columns,
+            project=body.project,
+            feature_view=body.feature_view,
+        )
+    except Exception as exc:
+        record_materialization_error_audit(
+            db,
+            source_name=body.source_name,
+            project=body.project,
+            feature_view=body.feature_view,
+            feature_columns=body.feature_columns,
+            error=exc,
+            actor=actor,
+        )
+        raise
+
+    record_materialization_audit(db, result=result, actor=actor)
     return OnlineMaterializationResponse.model_validate(asdict(result))

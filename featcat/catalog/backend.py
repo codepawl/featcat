@@ -461,6 +461,56 @@ class CatalogBackend(ABC):
         del limit, status
         return []
 
+    def record_materialization_audit(
+        self,
+        *,
+        status: str,
+        source_name: str,
+        source_path: str | None = None,
+        project: str = "",
+        feature_view: str = "",
+        entity_key: str | None = None,
+        event_timestamp_column: str | None = None,
+        created_timestamp_column: str | None = None,
+        feature_columns: list[str] | None = None,
+        entity_count: int = 0,
+        feature_count: int = 0,
+        requested: int = 0,
+        written: int = 0,
+        skipped_older: int = 0,
+        skipped_same_timestamp: int = 0,
+        errors: list[dict] | None = None,
+        warnings: list[dict] | None = None,
+        actor: str | None = None,
+    ) -> str:
+        """Persist one materialization audit row. Default no-op for unsupported backends."""
+        del (
+            status,
+            source_name,
+            source_path,
+            project,
+            feature_view,
+            entity_key,
+            event_timestamp_column,
+            created_timestamp_column,
+            feature_columns,
+            entity_count,
+            feature_count,
+            requested,
+            written,
+            skipped_older,
+            skipped_same_timestamp,
+            errors,
+            warnings,
+            actor,
+        )
+        return ""
+
+    def list_materialization_audits(self, limit: int = 20, status: str | None = None) -> list:
+        """Return recent materialization audit rows, newest first."""
+        del limit, status
+        return []
+
     def write_online_features(
         self,
         rows: list[Any],

@@ -44,6 +44,7 @@ from .models import (
     Feature,
     FeatureGroup,
     FeatureGroupVersion,
+    MaterializationAudit,
     OnlineFeatureReadMetadata,
     OnlineFeatureReadResult,
     OnlineFeatureReadRow,
@@ -320,6 +321,29 @@ class LocalBackend(CatalogBackend):
             "created_at TIMESTAMP NOT NULL"
             ")",
             "CREATE INDEX IF NOT EXISTS idx_dataset_build_audits_created_at ON dataset_build_audits(created_at)",
+            "CREATE TABLE IF NOT EXISTS materialization_audits ("
+            "id TEXT PRIMARY KEY,"
+            "status TEXT NOT NULL,"
+            "source_name TEXT NOT NULL,"
+            "source_path TEXT,"
+            "project TEXT NOT NULL DEFAULT '',"
+            "feature_view TEXT NOT NULL DEFAULT '',"
+            "entity_key TEXT,"
+            "event_timestamp_column TEXT,"
+            "created_timestamp_column TEXT,"
+            "feature_columns TEXT NOT NULL DEFAULT '[]',"
+            "entity_count INTEGER NOT NULL DEFAULT 0,"
+            "feature_count INTEGER NOT NULL DEFAULT 0,"
+            "requested INTEGER NOT NULL DEFAULT 0,"
+            "written INTEGER NOT NULL DEFAULT 0,"
+            "skipped_older INTEGER NOT NULL DEFAULT 0,"
+            "skipped_same_timestamp INTEGER NOT NULL DEFAULT 0,"
+            "errors TEXT NOT NULL DEFAULT '[]',"
+            "warnings TEXT NOT NULL DEFAULT '[]',"
+            "actor TEXT,"
+            "created_at TIMESTAMP NOT NULL"
+            ")",
+            "CREATE INDEX IF NOT EXISTS idx_materialization_audits_created_at ON materialization_audits(created_at)",
             # Composite indexes for chart queries (feature timeline, catalog
             # drift-rate). CREATE INDEX IF NOT EXISTS is itself idempotent but
             # the suppress(OperationalError) wrapper covers older sqlites.
@@ -669,6 +693,94 @@ class LocalBackend(CatalogBackend):
             data["errors"] = json.loads(data.get("errors") or "[]")
             data["warnings"] = json.loads(data.get("warnings") or "[]")
             audits.append(DatasetBuildAudit(**data))
+        return audits
+
+    def record_materialization_audit(
+        self,
+        *,
+        status: str,
+        source_name: str,
+        source_path: str | None = None,
+        project: str = "",
+        feature_view: str = "",
+        entity_key: str | None = None,
+        event_timestamp_column: str | None = None,
+        created_timestamp_column: str | None = None,
+        feature_columns: list[str] | None = None,
+        entity_count: int = 0,
+        feature_count: int = 0,
+        requested: int = 0,
+        written: int = 0,
+        skipped_older: int = 0,
+        skipped_same_timestamp: int = 0,
+        errors: list[dict] | None = None,
+        warnings: list[dict] | None = None,
+        actor: str | None = None,
+    ) -> str:
+        """Insert one materialization audit row. Returns the new audit id."""
+        audit_id = _new_id()
+        created_at = _utcnow()
+        with self.session() as s:
+            s.execute(
+                text(
+                    "INSERT INTO materialization_audits ("
+                    "id, status, source_name, source_path, project, feature_view, "
+                    "entity_key, event_timestamp_column, created_timestamp_column, "
+                    "feature_columns, entity_count, feature_count, requested, written, "
+                    "skipped_older, skipped_same_timestamp, errors, warnings, actor, created_at"
+                    ") VALUES ("
+                    ":id, :status, :source_name, :source_path, :project, :feature_view, "
+                    ":entity_key, :event_timestamp_column, :created_timestamp_column, "
+                    ":feature_columns, :entity_count, :feature_count, :requested, :written, "
+                    ":skipped_older, :skipped_same_timestamp, :errors, :warnings, :actor, :created_at"
+                    ")"
+                ),
+                {
+                    "id": audit_id,
+                    "status": status,
+                    "source_name": source_name,
+                    "source_path": source_path,
+                    "project": project,
+                    "feature_view": feature_view,
+                    "entity_key": entity_key,
+                    "event_timestamp_column": event_timestamp_column,
+                    "created_timestamp_column": created_timestamp_column,
+                    "feature_columns": json.dumps(feature_columns or []),
+                    "entity_count": entity_count,
+                    "feature_count": feature_count,
+                    "requested": requested,
+                    "written": written,
+                    "skipped_older": skipped_older,
+                    "skipped_same_timestamp": skipped_same_timestamp,
+                    "errors": json.dumps(errors or []),
+                    "warnings": json.dumps(warnings or []),
+                    "actor": actor,
+                    "created_at": created_at,
+                },
+            )
+            s.commit()
+        return audit_id
+
+    def list_materialization_audits(self, limit: int = 20, status: str | None = None) -> list[MaterializationAudit]:
+        """Return materialization audit rows, newest first."""
+        if status is not None and status not in {"success", "validation_failed", "error"}:
+            raise ValueError(f"Unsupported materialization audit status: {status}")
+        safe_limit = min(max(limit, 1), 100)
+        query = "SELECT * FROM materialization_audits"
+        params: dict[str, object] = {"limit": safe_limit}
+        if status is not None:
+            query += " WHERE status = :status"
+            params["status"] = status
+        query += " ORDER BY created_at DESC LIMIT :limit"
+        with self.session() as s:
+            rows = s.execute(text(query), params).mappings().all()
+        audits = []
+        for row in rows:
+            data = dict(row)
+            data["feature_columns"] = json.loads(data.get("feature_columns") or "[]")
+            data["errors"] = json.loads(data.get("errors") or "[]")
+            data["warnings"] = json.loads(data.get("warnings") or "[]")
+            audits.append(MaterializationAudit(**data))
         return audits
 
     def _should_overwrite_online_value(self, existing: dict[str, Any], incoming: dict[str, Any]) -> tuple[bool, str]:
