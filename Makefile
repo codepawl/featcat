@@ -4,7 +4,10 @@ DOCKER_IMAGE ?= nxank4/featcat
 VERSION := $(shell grep '^__version__' featcat/__init__.py | cut -d'"' -f2)
 
 install:
-	@if [ ! -d .venv ]; then echo "Creating .venv..."; uv venv; fi
+	@if [ ! -d ".venv" ] && [ -z "$$VIRTUAL_ENV" ] && [ -z "$$CONDA_PREFIX" ]; then \
+		echo "Creating virtual environment..."; \
+		uv venv; \
+	fi
 	uv pip install -e ".[dev,tui,s3,server]"
 	uv run pre-commit install
 

@@ -37,6 +37,7 @@ dependencies = [
     "psycopg2-binary>=2.9",
     "cachetools>=5.3",
     "pgvector>=0.3",
+    "huggingface-hub>=1.13.0",
 ]
 
 [project.optional-dependencies]
