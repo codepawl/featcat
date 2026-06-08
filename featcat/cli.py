@@ -5194,6 +5194,84 @@ def ui() -> None:
         raise typer.Exit(1) from None
 
 
+@app.command("build")
+def build(
+    entities: str = typer.Option(..., "--entities", help="Local parquet entity dataframe path"),
+    source: str | None = typer.Option(None, "--source", help="Local parquet source dataframe path"),
+    source_name: str | None = typer.Option(None, "--source-name", help="Registered DataSource name"),
+    entity_key: str | None = typer.Option(None, "--entity-key", help="Entity/join key column"),
+    entity_timestamp: str | None = typer.Option(None, "--entity-timestamp", help="Entity timestamp column"),
+    source_timestamp: str | None = typer.Option(None, "--source-timestamp", help="Source event timestamp column"),
+    features: str = typer.Option(..., "--features", help="Comma-separated feature columns"),
+    output: str | None = typer.Option(None, "--output", "-o", help="Local parquet output path"),
+    json_output: bool = typer.Option(False, "--json", "-j", help="Emit structured JSON"),
+) -> None:
+    """Build a local point-in-time training dataset."""
+    dataset_build(
+        entities=entities,
+        source=source,
+        source_name=source_name,
+        entity_key=entity_key,
+        entity_timestamp=entity_timestamp,
+        source_timestamp=source_timestamp,
+        features=features,
+        output=output,
+        json_output=json_output,
+    )
+
+
+@app.command("get")
+def get(
+    entities: Path = typer.Option(  # noqa: B008
+        ...,
+        "--entities",
+        "-e",
+        help="JSONL file with entity key objects",
+    ),
+    features: str = typer.Option(..., "--features", "-f", help="Comma-separated feature refs"),
+    project: str = typer.Option("", "--project", help="Project namespace"),
+    feature_view: str = typer.Option("", "--feature-view", help="Feature view namespace"),
+    json_output: bool = typer.Option(False, "--json", "-j", help="Emit structured JSON"),
+) -> None:
+    """Read online feature values for entity keys from a JSONL file."""
+    online_get(
+        entities=entities,
+        features=features,
+        project=project,
+        feature_view=feature_view,
+        json_output=json_output,
+    )
+
+
+@app.command("write")
+def write(
+    input_path: Path = typer.Option(  # noqa: B008
+        ...,
+        "--input",
+        "-i",
+        help="JSONL file with online feature write rows",
+    ),
+    project: str = typer.Option("", "--project", help="Project namespace"),
+    feature_view: str = typer.Option("", "--feature-view", help="Feature view namespace"),
+    json_output: bool = typer.Option(False, "--json", "-j", help="Emit structured JSON"),
+) -> None:
+    """Write online feature values from a JSONL file."""
+    online_write(
+        input_path=input_path,
+        project=project,
+        feature_view=feature_view,
+        json_output=json_output,
+    )
+
+
+@app.command("scan")
+def scan(
+    name: str = typer.Argument(help="Name of the data source to scan"),
+) -> None:
+    """Scan a data source and auto-register features."""
+    source_scan(name=name)
+
+
 # =========================================================================
 # Helpers
 # =========================================================================
