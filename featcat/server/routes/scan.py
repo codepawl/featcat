@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
 from ...catalog.models import DataSource, Feature
-from ...catalog.scanner import discover_parquet_files, scan_source
+from ...catalog.scanner import detect_file_format, discover_files, scan_source
 from ...catalog.storage import validate_path_input
 from ..deps import get_db
 
@@ -21,6 +21,7 @@ router = APIRouter()
 class BulkScanRequest(BaseModel):
     path: str
     recursive: bool = False
+    formats: list[str] = Field(default_factory=lambda: ["parquet", "csv"])
     owner: str = ""
     tags: list[str] = Field(default_factory=list)
     dry_run: bool = False
@@ -43,14 +44,14 @@ class BulkScanResponse(BaseModel):
 
 @router.post("", response_model=BulkScanResponse)
 async def bulk_scan(body: BulkScanRequest, db=Depends(get_db)):  # noqa: B008
-    """Scan a directory or S3 prefix for Parquet files and register them as sources + features."""
+    """Scan a directory or S3 prefix for Parquet/CSV files and register them as sources + features."""
     try:
         validated_path = validate_path_input(body.path)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
 
     def _scan():
-        files = discover_parquet_files(validated_path, recursive=body.recursive)
+        files = discover_files(validated_path, recursive=body.recursive, formats=tuple(body.formats))
         registered_sources = 0
         registered_features = 0
         skipped = 0
@@ -86,7 +87,7 @@ async def bulk_scan(body: BulkScanRequest, db=Depends(get_db)):  # noqa: B008
             perf_start = time.perf_counter()
             source: DataSource | None = None
             try:
-                source = DataSource(name=final_name, path=abs_path)
+                source = DataSource(name=final_name, path=abs_path, format=detect_file_format(abs_path))
                 db.add_source(source)
                 registered_sources += 1
 

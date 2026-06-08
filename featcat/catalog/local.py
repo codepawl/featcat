@@ -121,10 +121,10 @@ def _compute_pair_reasons(
     mean_a, mean_b = stats_a.get("mean"), stats_b.get("mean")
     std_a, std_b = stats_a.get("std"), stats_b.get("std")
     if (
-        isinstance(mean_a, (int, float))
-        and isinstance(mean_b, (int, float))
-        and isinstance(std_a, (int, float))
-        and isinstance(std_b, (int, float))
+        isinstance(mean_a, int | float)
+        and isinstance(mean_b, int | float)
+        and isinstance(std_a, int | float)
+        and isinstance(std_b, int | float)
     ):
 
         def _rel_delta(x: float, y: float) -> float:
@@ -1054,6 +1054,18 @@ class LocalBackend(CatalogBackend):
         feature_view: str = "",
     ) -> OnlineFeatureWriteResult:
         """Write latest online feature values with deterministic conflict handling."""
+        from ..config import load_settings
+
+        settings = load_settings()
+        if settings.online_store_backend == "redis":
+            from .redis_store import get_redis_client, write_online_features_redis
+
+            client = get_redis_client(settings.redis_url)
+            writes = [
+                row if isinstance(row, OnlineFeatureWrite) else OnlineFeatureWrite.model_validate(row) for row in rows
+            ]
+            return write_online_features_redis(client, rows=writes, project=project, feature_view=feature_view)
+
         from .online_store import prepare_online_write_records
 
         writes = [
@@ -1139,6 +1151,21 @@ class LocalBackend(CatalogBackend):
         feature_view: str = "",
     ) -> OnlineFeatureReadResult:
         """Read latest online feature values preserving entity and feature order."""
+        from ..config import load_settings
+
+        settings = load_settings()
+        if settings.online_store_backend == "redis":
+            from .redis_store import get_online_features_redis, get_redis_client
+
+            client = get_redis_client(settings.redis_url)
+            return get_online_features_redis(
+                client,
+                entity_keys=entity_keys,
+                feature_refs=feature_refs,
+                project=project,
+                feature_view=feature_view,
+            )
+
         from .online_store import canonical_entity_key, entity_key_hash
 
         canonical_entities = []

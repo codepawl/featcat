@@ -11,6 +11,7 @@ import pyarrow.parquet as pq
 
 from .models import DataSource, OnlineFeatureWrite
 from .online_store import write_online_features
+from .scanner import detect_file_format
 from .storage import is_s3_uri, parquet_filesystem_path, read_parquet_schema, s3_config_missing_fields
 
 if TYPE_CHECKING:
@@ -97,17 +98,49 @@ def _s3_config_error(path: str) -> MaterializationIssue | None:
     if missing:
         return _issue(
             "missing_s3_config",
-            "S3-compatible parquet paths require configuration for: " + ", ".join(missing),
+            "S3-compatible data paths require configuration for: " + ", ".join(missing),
             "source_path",
         )
     return None
 
 
-def _parquet_schema(path: str) -> pa.Schema:
+def _source_format(source: DataSource) -> str:
+    return source.format or detect_file_format(source.path)
+
+
+def _source_label(fmt: str) -> str:
+    return "CSV source" if fmt == "csv" else "Parquet source"
+
+
+def _source_schema(path: str, fmt: str) -> pa.Schema:
+    import pyarrow.csv as pa_csv
+
+    if fmt == "csv":
+        if is_s3_uri(path):
+            from .storage import _get_s3_filesystem, parse_s3_uri
+
+            fs = _get_s3_filesystem()
+            bucket, key = parse_s3_uri(path)
+            with fs.open_input_file(f"{bucket}/{key}") as f:
+                return pa_csv.read_csv(f).schema
+        return pa_csv.read_csv(path).schema
     return read_parquet_schema(path)
 
 
-def _read_parquet_table(path: str, columns: list[str]) -> pa.Table:
+def _read_source_table(path: str, columns: list[str], fmt: str) -> pa.Table:
+    if fmt == "csv":
+        import pyarrow.csv as pa_csv
+
+        convert_options = pa_csv.ConvertOptions(include_columns=columns)
+        if is_s3_uri(path):
+            from .storage import _get_s3_filesystem, parse_s3_uri
+
+            fs = _get_s3_filesystem()
+            bucket, key = parse_s3_uri(path)
+            with fs.open_input_file(f"{bucket}/{key}") as f:
+                return pa_csv.read_csv(f, convert_options=convert_options)
+        return pa_csv.read_csv(path, convert_options=convert_options)
+
     filesystem, parquet_path = parquet_filesystem_path(path)
     return pq.read_table(parquet_path, columns=columns, filesystem=filesystem)
 
@@ -198,7 +231,7 @@ def materialize_latest_from_source(
     project: str = "",
     feature_view: str = "",
 ) -> MaterializationResult:
-    """Materialize latest values from one registered Parquet source.
+    """Materialize latest values from one registered Parquet or CSV source.
 
     The MVP supports a registered DataSource with one entity key column. It
     loads the full source file, selects the latest row per entity by event time,
@@ -221,8 +254,11 @@ def materialize_latest_from_source(
 
     if not source.path:
         errors.append(_issue("missing_source_path", "DataSource must have a path", "source_path"))
-    if source.format != "parquet":
-        errors.append(_issue("unsupported_source_format", "Materialization requires a Parquet DataSource", "format"))
+    fmt = _source_format(source)
+    if fmt not in {"parquet", "csv"}:
+        errors.append(
+            _issue("unsupported_source_format", "Materialization requires a Parquet or CSV DataSource", "format")
+        )
     if not source.entity_key:
         errors.append(_issue("missing_entity_key", "DataSource must have entity_key metadata", "entity_key"))
     if not source.event_timestamp_column:
@@ -244,11 +280,12 @@ def materialize_latest_from_source(
     schema: pa.Schema | None = None
     if not errors:
         try:
-            schema = _parquet_schema(source.path)
-        except Exception as exc:  # noqa: BLE001 - surface storage/parquet failures as structured validation.
+            schema = _source_schema(source.path, fmt)
+        except Exception as exc:  # noqa: BLE001 - surface storage failures as structured validation.
             errors.append(_issue("source_path_unreadable", str(exc), "source_path"))
 
     if schema is not None:
+        source_label = _source_label(fmt)
         available_columns = {field.name for field in schema}
         required_columns = [source.entity_key, source.event_timestamp_column, source.created_timestamp_column]
         for column, field_name, code in [
@@ -257,11 +294,11 @@ def materialize_latest_from_source(
             (source.created_timestamp_column, "created_timestamp_column", "missing_created_timestamp_column"),
         ]:
             if column and column not in available_columns:
-                errors.append(_issue(code, f"Parquet source is missing column: {column}", field_name))
+                errors.append(_issue(code, f"{source_label} is missing column: {column}", field_name))
         for column in selected_features:
             if column not in available_columns:
                 errors.append(
-                    _issue("missing_feature_column", f"Parquet source is missing feature column: {column}", column)
+                    _issue("missing_feature_column", f"{source_label} is missing feature column: {column}", column)
                 )
             elif db.get_feature_by_name(f"{source.name}.{column}") is None:
                 errors.append(
@@ -289,7 +326,7 @@ def materialize_latest_from_source(
     assert source.entity_key is not None
     assert source.event_timestamp_column is not None
 
-    table = _read_parquet_table(source.path, columns=list(dict.fromkeys(read_columns)))
+    table = _read_source_table(source.path, columns=list(dict.fromkeys(read_columns)), fmt=fmt)
     latest, timestamp_errors = _latest_rows(
         table.to_pylist(),
         entity_key=source.entity_key,

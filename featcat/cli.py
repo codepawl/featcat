@@ -21,7 +21,7 @@ from sqlalchemy import text
 from .catalog.factory import get_backend
 from .catalog.local import DEFAULT_DB, LocalBackend
 from .catalog.models import DataSource, Feature, FeatureGroup, OnlineFeatureWrite
-from .catalog.scanner import discover_parquet_files, scan_source
+from .catalog.scanner import detect_file_format, discover_files, scan_source
 from .catalog.storage import is_s3_uri
 from .catalog.usage import log_feature_usage, resolve_user
 from .config import load_settings
@@ -246,7 +246,7 @@ def add(
     tags: str | None = typer.Option(None, "--tags", "-t", help="Comma-separated tags"),
     skip_docs: bool = typer.Option(False, "--skip-docs", help="Skip auto documentation"),
     description: str = typer.Option("", "--desc", "-d", help="Source description"),
-    fmt: str = typer.Option("parquet", "--format", help="File format: parquet or csv"),
+    fmt: str | None = typer.Option(None, "--format", help="File format: parquet or csv (auto-detected if omitted)"),
     no_cache: bool = typer.Option(False, "--no-cache", help="Bypass LLM response cache"),
 ) -> None:
     """Add a data source: register, scan, and optionally generate docs in one step."""
@@ -268,7 +268,7 @@ def add(
         name=name,
         path=path,
         storage_type=storage_type,
-        format=fmt,
+        format=fmt or detect_file_format(path),
         description=description,
     )
     db = _get_db()
@@ -2927,15 +2927,21 @@ def serve(
 
 @app.command(name="scan-bulk")
 def scan_bulk(
-    path: str = typer.Argument(help="Directory or S3 prefix (s3://bucket/prefix) to scan for .parquet files"),
+    path: str = typer.Argument(help="Directory or S3 prefix (s3://bucket/prefix) to scan for data files"),
     recursive: bool = typer.Option(False, "--recursive", "-r", help="Search subdirectories"),
     owner: str = typer.Option("", "--owner", "-o", help="Owner for all discovered features"),
     tag: list[str] = typer.Option([], "--tag", "-t", help="Tags to apply to all features"),  # noqa: B008
     dry_run: bool = typer.Option(False, "--dry-run", help="Show what would happen without writing to DB"),
+    formats: str = typer.Option(
+        "parquet,csv",
+        "--formats",
+        help="Comma-separated list of formats to discover: parquet,csv",
+    ),
 ) -> None:
-    """Scan a directory or S3 prefix for Parquet files and register them as sources + features."""
+    """Scan a directory or S3 prefix for Parquet/CSV files and register them as sources + features."""
+    fmt_list = tuple(f.strip().lower() for f in formats.split(",") if f.strip())
     try:
-        files = discover_parquet_files(path, recursive=recursive)
+        files = discover_files(path, recursive=recursive, formats=fmt_list)
     except NotADirectoryError:
         console.print(f"[red]Not a directory:[/red] {path}")
         raise typer.Exit(1) from None
@@ -2947,7 +2953,7 @@ def scan_bulk(
         raise typer.Exit(1) from None
 
     if not files:
-        console.print(f"[dim]No .parquet files found in {path}[/dim]")
+        console.print(f"[dim]No matching data files found in {path}[/dim]")
         return
 
     db = _get_db()
@@ -2983,7 +2989,7 @@ def scan_bulk(
             suffix += 1
 
         try:
-            source = DataSource(name=final_name, path=abs_path)
+            source = DataSource(name=final_name, path=abs_path, format=detect_file_format(abs_path))
             db.add_source(source)
             registered_sources += 1
 

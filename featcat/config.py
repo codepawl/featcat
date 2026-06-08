@@ -68,6 +68,10 @@ class Settings(BaseSettings):
     s3_connect_timeout_ms: int = 10_000  # Passed to PyArrow S3FileSystem (converted to seconds)
     s3_request_timeout_ms: int = 60_000
 
+    # Online store backend: "sql" (default, uses DB table) or "redis" (Redis hash-based store).
+    online_store_backend: str = "sql"
+    redis_url: str = "redis://localhost:6379/0"
+
     # Server mode
     server_url: str | None = None  # If set, use RemoteBackend instead of local SQLite
     server_host: str = "0.0.0.0"

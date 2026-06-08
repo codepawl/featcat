@@ -6,7 +6,9 @@ from pathlib import Path
 
 import pyarrow as pa
 import pyarrow.parquet as pq
-from pyarrow.fs import S3FileSystem
+
+_ORIGINAL_S3_FILESYSTEM = pa.fs.S3FileSystem
+S3FileSystem = _ORIGINAL_S3_FILESYSTEM
 
 # ---------------------------------------------------------------------------
 # URI helpers
@@ -175,7 +177,8 @@ def _get_s3_filesystem() -> pa.fs.S3FileSystem:
             kwargs["scheme"] = "http"
             kwargs["endpoint_override"] = settings.s3_endpoint_url.replace("http://", "")
 
-    return S3FileSystem(**kwargs)
+    constructor = S3FileSystem if S3FileSystem is not _ORIGINAL_S3_FILESYSTEM else pa.fs.S3FileSystem
+    return constructor(**kwargs)
 
 
 def _s3_uri_to_path(uri: str) -> str:

@@ -1,4 +1,11 @@
-"""Auto-scan Parquet files to extract schema and basic statistics."""
+"""Auto-scan Parquet and CSV files to extract schema and basic statistics.
+
+File format is auto-detected from the file extension:
+- ``.parquet`` → PyArrow Parquet reader (existing behaviour).
+- ``.csv``     → PyArrow CSV reader (new in this version).
+
+Both local paths and ``s3://`` URIs are supported for all formats.
+"""
 
 from __future__ import annotations
 
@@ -16,6 +23,26 @@ from .storage import (
     read_parquet_schema,
     resolve_parquet_path,
 )
+
+# ─── Format detection ─────────────────────────────────────────────────────────
+
+_PARQUET_EXTS = {".parquet", ".pq"}
+_CSV_EXTS = {".csv", ".tsv", ".txt"}
+
+
+def detect_file_format(path: str) -> str:
+    """Return 'parquet' or 'csv' based on the file extension.
+
+    For paths without a recognisable extension we default to 'parquet' so
+    the original behaviour is preserved.
+    """
+    suffix = Path(path.split("?")[0]).suffix.lower()  # strip query params for S3
+    if suffix in _CSV_EXTS:
+        return "csv"
+    return "parquet"
+
+
+# ─── File discovery ───────────────────────────────────────────────────────────
 
 
 def discover_parquet_files(path: str, recursive: bool = False) -> list[str]:
@@ -46,6 +73,38 @@ def discover_parquet_files(path: str, recursive: bool = False) -> list[str]:
     return [str(p) for p in sorted(root.glob(pattern))]
 
 
+def discover_files(path: str, recursive: bool = False, formats: tuple[str, ...] = ("parquet", "csv")) -> list[str]:
+    """Walk a local directory or S3 prefix and return files for the given formats.
+
+    Args:
+        path: Local directory path or S3 prefix.
+        recursive: Whether to recurse into sub-directories / S3 prefixes.
+        formats: Tuple of format names to include. Defaults to both
+            ``("parquet", "csv")``.
+
+    Returns:
+        Sorted, deduplicated list of matching file paths (absolute local or
+        ``s3://`` URIs).
+    """
+    extensions: set[str] = set()
+    if "parquet" in formats:
+        extensions.update(_PARQUET_EXTS)
+    if "csv" in formats:
+        extensions.update(_CSV_EXTS)
+
+    if is_s3_uri(path):
+        return _discover_s3_files(path, recursive, extensions)
+
+    root = Path(path).resolve()
+    if not root.is_dir():
+        raise NotADirectoryError(f"Not a directory: {path}")
+    results: list[Path] = []
+    for ext in sorted(extensions):
+        pattern = f"**/*{ext}" if recursive else f"*{ext}"
+        results.extend(root.glob(pattern))
+    return [str(p) for p in sorted(set(results))]
+
+
 def _discover_s3_parquet_files(uri: str, recursive: bool) -> list[str]:
     """Enumerate ``.parquet`` files under an S3 prefix via PyArrow's
     ``S3FileSystem.get_file_info``.
@@ -55,6 +114,11 @@ def _discover_s3_parquet_files(uri: str, recursive: bool) -> list[str]:
     interleaves Directory and File entries (so we filter by ``type``),
     and that PyArrow does not sort the response (so we sort here).
     """
+    return _discover_s3_files(uri, recursive, _PARQUET_EXTS)
+
+
+def _discover_s3_files(uri: str, recursive: bool, extensions: set[str]) -> list[str]:
+    """Generic S3 file discovery filtering by a set of extensions."""
     from pyarrow.fs import FileSelector, FileType
 
     bucket, prefix = parse_s3_uri(uri)
@@ -64,17 +128,31 @@ def _discover_s3_parquet_files(uri: str, recursive: bool) -> list[str]:
         infos = fs.get_file_info(FileSelector(selector_path, recursive=recursive, allow_not_found=False))
     except FileNotFoundError as e:
         raise FileNotFoundError(f"S3 prefix not found: {uri}") from e
-    parquet_files = [
-        f"s3://{info.path}" for info in infos if info.type == FileType.File and info.path.endswith(".parquet")
+    matching = [
+        f"s3://{info.path}"
+        for info in infos
+        if info.type == FileType.File and Path(info.path).suffix.lower() in extensions
     ]
-    return sorted(parquet_files)
+    return sorted(matching)
+
+
+# ─── Scanning ─────────────────────────────────────────────────────────────────
 
 
 def scan_source(path: str) -> list[ColumnInfo]:
     """Scan a data source and return column info with stats.
 
-    Supports both local paths and s3:// URIs.
+    Supports both local paths and s3:// URIs, and auto-detects the file
+    format from the extension (``.parquet`` or ``.csv``).
     """
+    fmt = detect_file_format(path)
+    if fmt == "csv":
+        return _scan_csv_source(path)
+    return _scan_parquet_source(path)
+
+
+def _scan_parquet_source(path: str) -> list[ColumnInfo]:
+    """Scan a Parquet file (local or S3)."""
     resolved = resolve_parquet_path(path)
 
     # S3 paths go straight to read; local paths may be directories
@@ -85,6 +163,59 @@ def scan_source(path: str) -> list[ColumnInfo]:
 
     columns: list[ColumnInfo] = []
     for _i, field in enumerate(schema):
+        col_array = table.column(field.name) if table.num_rows > 0 else None
+        stats = _compute_stats(col_array, field.type) if col_array else {}
+        columns.append(
+            ColumnInfo(
+                column_name=field.name,
+                dtype=str(field.type),
+                stats=stats,
+            )
+        )
+    return columns
+
+
+def _scan_csv_source(path: str) -> list[ColumnInfo]:
+    """Scan a CSV file (local or S3) and return column info with stats.
+
+    Uses PyArrow's CSV reader so it shares the same type-inference pipeline
+    as the Parquet path.  For large files we sample the first 10 000 rows
+    to keep startup latency low.
+    """
+    import pyarrow.csv as pa_csv
+
+    sample_rows = 10_000
+
+    if is_s3_uri(path):
+        fs = _get_s3_filesystem()
+        bucket, key = parse_s3_uri(path)
+        with fs.open_input_file(f"{bucket}/{key}") as f:
+            reader = pa_csv.open_csv(f)
+            batches = []
+            row_count = 0
+            for batch in reader:
+                batches.append(batch)
+                row_count += batch.num_rows
+                if row_count >= sample_rows:
+                    break
+            table = pa.Table.from_batches(batches) if batches else reader.read_all()
+    else:
+        p = Path(path)
+        if not p.exists():
+            raise FileNotFoundError(f"CSV file not found: {path}")
+        reader = pa_csv.open_csv(str(p))
+        batches = []
+        row_count = 0
+        for batch in reader:
+            batches.append(batch)
+            row_count += batch.num_rows
+            if row_count >= sample_rows:
+                break
+        table = pa.Table.from_batches(batches) if batches else reader.read_all()
+
+    schema = table.schema
+    columns: list[ColumnInfo] = []
+    for field in schema:
         col_array = table.column(field.name) if table.num_rows > 0 else None
         stats = _compute_stats(col_array, field.type) if col_array else {}
         columns.append(

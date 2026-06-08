@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, cast
 
 import pyarrow.parquet as pq
 
+from .scanner import detect_file_format
 from .storage import is_s3_uri, parquet_filesystem_path, read_parquet_schema, s3_config_missing_fields
 
 if TYPE_CHECKING:
@@ -91,19 +92,51 @@ def _s3_config_error(path: str, field: str) -> TrainingDatasetValidationIssue | 
     if missing:
         return _issue(
             "missing_s3_config",
-            "S3-compatible parquet paths require configuration for: " + ", ".join(missing),
+            "S3-compatible data paths require configuration for: " + ", ".join(missing),
             field,
         )
     return None
 
 
-def _parquet_columns(path: str) -> set[str]:
-    schema = read_parquet_schema(path)
+def _source_schema(path: str):
+    import pyarrow.csv as pa_csv
+
+    if detect_file_format(path) == "csv":
+        if is_s3_uri(path):
+            from .storage import _get_s3_filesystem, parse_s3_uri
+
+            fs = _get_s3_filesystem()
+            bucket, key = parse_s3_uri(path)
+            with fs.open_input_file(f"{bucket}/{key}") as f:
+                return pa_csv.read_csv(f).schema
+        return pa_csv.read_csv(path).schema
+    return read_parquet_schema(path)
+
+
+def _source_columns(path: str) -> set[str]:
+    schema = _source_schema(path)
     return {field.name for field in schema}
 
 
-def _read_parquet_frame(path: str, columns: list[str] | None = None) -> pl.DataFrame:
+_parquet_columns = _source_columns
+
+
+def _read_source_frame(path: str, columns: list[str] | None = None) -> pl.DataFrame:
     import polars as pl
+
+    if detect_file_format(path) == "csv":
+        if is_s3_uri(path):
+            import pyarrow.csv as pa_csv
+
+            from .storage import _get_s3_filesystem, parse_s3_uri
+
+            fs = _get_s3_filesystem()
+            bucket, key = parse_s3_uri(path)
+            convert_options = pa_csv.ConvertOptions(include_columns=columns) if columns else None
+            with fs.open_input_file(f"{bucket}/{key}") as f:
+                table = pa_csv.read_csv(f, convert_options=convert_options)
+            return cast("pl.DataFrame", pl.from_arrow(table))
+        return cast("pl.DataFrame", pl.read_csv(path, columns=columns, try_parse_dates=True))
 
     if is_s3_uri(path):
         filesystem, parquet_path = parquet_filesystem_path(path)
@@ -140,11 +173,11 @@ def _build_point_in_time_frame(
     feature_columns: list[str],
 ) -> pl.DataFrame:
     source_columns = [entity_key, source_event_timestamp_column, *feature_columns]
-    entity = _read_parquet_frame(entity_df_path)
+    entity = _read_source_frame(entity_df_path)
     entity_columns = list(entity.columns)
     row_index_column = _row_index_column(set(entity_columns) | set(source_columns))
     entity = entity.with_row_index(row_index_column)
-    source = _read_parquet_frame(source_path, columns=list(dict.fromkeys(source_columns)))
+    source = _read_source_frame(source_path, columns=list(dict.fromkeys(source_columns)))
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
@@ -182,7 +215,7 @@ def build_training_dataset(
     *,
     data_source: DataSource | None = None,
 ) -> TrainingDatasetBuildResult:
-    """Build a local point-in-time training dataset from parquet inputs.
+    """Build a local point-in-time training dataset from Parquet or CSV inputs.
 
     ``data_source`` is optional so callers can validate a registered source
     without duplicating path and join metadata. When a registered source is
@@ -251,7 +284,7 @@ def build_training_dataset(
             _issue(
                 "unsupported_entity_path_scheme",
                 f"Unsupported entity dataframe path scheme: {entity_scheme}. "
-                "Only local parquet paths and s3:// paths are supported.",
+                "Only local Parquet/CSV paths and s3:// paths are supported.",
                 "entity_df_path",
             )
         )
@@ -272,7 +305,7 @@ def build_training_dataset(
             errors.append(
                 _issue(
                     "entity_dataframe_unreadable",
-                    f"Entity dataframe parquet file could not be read: {exc}",
+                    f"Entity dataframe file could not be read: {exc}",
                     "entity_df_path",
                 )
             )
@@ -291,7 +324,7 @@ def build_training_dataset(
             _issue(
                 "unsupported_source_path_scheme",
                 f"Unsupported source dataframe path scheme: {source_scheme}. "
-                "Only local parquet paths and s3:// paths are supported.",
+                "Only local Parquet/CSV paths and s3:// paths are supported.",
                 "source_path",
             )
         )
@@ -312,7 +345,7 @@ def build_training_dataset(
             errors.append(
                 _issue(
                     "source_dataframe_unreadable",
-                    f"Source dataframe parquet file could not be read: {exc}",
+                    f"Source dataframe file could not be read: {exc}",
                     "source_path",
                 )
             )
@@ -378,7 +411,7 @@ def build_training_dataset(
                 _issue(
                     "unsupported_output_path_scheme",
                     f"Unsupported output path scheme: {output_scheme}. "
-                    "Only local parquet paths and s3:// paths are supported.",
+                    "Only local Parquet/CSV paths and s3:// paths are supported.",
                     "output_path",
                 )
             )
