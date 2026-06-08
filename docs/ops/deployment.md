@@ -35,7 +35,7 @@ EOF
 # Pull the GGUF model once
 mkdir -p deploy/models
 curl -L -o deploy/models/gemma-4-E2B-it-Q4_K_M.gguf \
-    "https://huggingface.co/<...>/resolve/main/gemma-4-E2B-it-Q4_K_M.gguf"
+    "https://huggingface.co/bartowski/google_gemma-4-E2B-it-GGUF/resolve/main/google_gemma-4-E2B-it-Q4_K_M.gguf"
 
 # Bring up
 cd deploy

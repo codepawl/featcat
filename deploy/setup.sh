@@ -24,7 +24,7 @@ if [ ! -f "$MODEL_FILE" ]; then
         PROXY_FLAG="-x $HTTP_PROXY"
     fi
     curl $PROXY_FLAG -L -o "$MODEL_FILE" \
-        "https://huggingface.co/google/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q4_K_M.gguf"
+        "https://huggingface.co/bartowski/google_gemma-4-E2B-it-GGUF/resolve/main/google_gemma-4-E2B-it-Q4_K_M.gguf"
     echo "Model downloaded."
 else
     echo "Model already exists: $MODEL_FILE"

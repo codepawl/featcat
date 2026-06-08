@@ -7,6 +7,11 @@ if [ -n "$NODE_DIR" ]; then
   export PATH="$NODE_DIR/bin:$PATH"
 fi
 
+# Auto-activate virtual environment if present and not already activated
+if [ -z "$VIRTUAL_ENV" ] && [ -d ".venv" ]; then
+  source .venv/bin/activate
+fi
+
 # Verify required CLI tools
 if ! command -v featcat >/dev/null 2>&1; then
   echo "error: 'featcat' not on PATH. Run 'make install' (or activate your venv) first." >&2
@@ -61,7 +66,7 @@ if [ ! -f "$MODEL_FILE" ]; then
     PROXY_FLAG="-x $HTTP_PROXY"
   fi
   curl --fail $PROXY_FLAG -L -o "${MODEL_FILE}.part" \
-    "https://huggingface.co/google/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q4_K_M.gguf"
+    "https://huggingface.co/bartowski/google_gemma-4-E2B-it-GGUF/resolve/main/google_gemma-4-E2B-it-Q4_K_M.gguf"
   mv "${MODEL_FILE}.part" "$MODEL_FILE"
 fi
 
