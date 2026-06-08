@@ -584,7 +584,7 @@ def export_catalog(
         for f in all_features:
             tags = ", ".join(f.tags) if f.tags else ""
             nr = f.stats.get("null_ratio", "")
-            nr_str = f"{nr:.1%}" if isinstance(nr, (int, float)) else str(nr)
+            nr_str = f"{nr:.1%}" if isinstance(nr, int | float) else str(nr)
             lines.append(f"| {f.name} | {f.dtype} | {tags} | {f.owner} | {nr_str} |")
         text = "\n".join(lines)
     else:
@@ -1001,6 +1001,24 @@ def online_materialize(
 
     if not result.is_valid:
         raise typer.Exit(1)
+
+
+@app.command("materialize")
+def materialize(
+    source: str = typer.Option(..., "--source", help="Registered DataSource name"),
+    features: str = typer.Option(..., "--features", "-f", help="Comma-separated feature columns"),
+    project: str = typer.Option("", "--project", help="Project namespace"),
+    feature_view: str = typer.Option("", "--feature-view", help="Feature view namespace"),
+    json_output: bool = typer.Option(False, "--json", "-j", help="Emit structured JSON"),
+) -> None:
+    """Materialize latest offline feature values from a registered source to the online store."""
+    online_materialize(
+        source=source,
+        features=features,
+        project=project,
+        feature_view=feature_view,
+        json_output=json_output,
+    )
 
 
 @online_materializations_app.command("list")
@@ -1581,7 +1599,7 @@ def feature_list(
 
         for d in enriched:
             null_ratio = d["stats"].get("null_ratio", "")
-            null_str = f"{null_ratio:.1%}" if isinstance(null_ratio, (int, float)) else str(null_ratio)
+            null_str = f"{null_ratio:.1%}" if isinstance(null_ratio, int | float) else str(null_ratio)
             tags_str = ", ".join(d["tags"]) if d["tags"] else ""
             row = [d["name"], d["column"], d["dtype"]]
             if show_health:
@@ -2513,7 +2531,7 @@ def monitor_history(
     table.add_column("PSI", justify="right")
     for r in rows:
         psi = r.get("psi")
-        psi_str = f"{psi:.4f}" if isinstance(psi, (int, float)) else "-"
+        psi_str = f"{psi:.4f}" if isinstance(psi, int | float) else "-"
         ts = str(r.get("checked_at", ""))[:19]
         table.add_row(ts, r.get("severity", "-"), psi_str)
     console.print(table)
@@ -3310,7 +3328,7 @@ def group_monitoring(name: str = typer.Argument(help="Group name")) -> None:
     table.add_column("PSI", justify="right")
     table.add_column("Checked at")
     for r in drift:
-        psi_str = f"{r['psi']:.4f}" if isinstance(r["psi"], (int, float)) else "-"
+        psi_str = f"{r['psi']:.4f}" if isinstance(r["psi"], int | float) else "-"
         table.add_row(r["spec"], r["severity"], psi_str, r["checked_at"][:19])
     console.print(table)
 
