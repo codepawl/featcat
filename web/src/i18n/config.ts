@@ -6,6 +6,8 @@ import viCommon from '../locales/vi/common.json'
 import viSidebar from '../locales/vi/sidebar.json'
 import viDashboard from '../locales/vi/dashboard.json'
 import viFeatures from '../locales/vi/features.json'
+import viBusinessMetrics from '../locales/vi/businessMetrics.json'
+import viFeatureRegistry from '../locales/vi/featureRegistry.json'
 import viGroups from '../locales/vi/groups.json'
 import viSources from '../locales/vi/sources.json'
 import viSimilarity from '../locales/vi/similarity.json'
@@ -29,6 +31,8 @@ import enCommon from '../locales/en/common.json'
 import enSidebar from '../locales/en/sidebar.json'
 import enDashboard from '../locales/en/dashboard.json'
 import enFeatures from '../locales/en/features.json'
+import enBusinessMetrics from '../locales/en/businessMetrics.json'
+import enFeatureRegistry from '../locales/en/featureRegistry.json'
 import enGroups from '../locales/en/groups.json'
 import enSources from '../locales/en/sources.json'
 import enSimilarity from '../locales/en/similarity.json'
@@ -62,6 +66,8 @@ const resources = {
     sidebar: viSidebar,
     dashboard: viDashboard,
     features: viFeatures,
+    businessMetrics: viBusinessMetrics,
+    featureRegistry: viFeatureRegistry,
     groups: viGroups,
     sources: viSources,
     similarity: viSimilarity,
@@ -86,6 +92,8 @@ const resources = {
     sidebar: enSidebar,
     dashboard: enDashboard,
     features: enFeatures,
+    businessMetrics: enBusinessMetrics,
+    featureRegistry: enFeatureRegistry,
     groups: enGroups,
     sources: enSources,
     similarity: enSimilarity,

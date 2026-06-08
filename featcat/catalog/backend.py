@@ -40,6 +40,73 @@ class CatalogBackend(ABC):
     def list_sources(self) -> list:
         """Return all registered data sources."""
 
+    # --- Entities / relationships ---
+
+    def upsert_entity(self, entity: Any) -> Any:
+        """Insert or update an entity definition."""
+        del entity
+        raise NotImplementedError("entities are not supported by this backend")
+
+    def get_entity_by_name(self, name: str) -> Any | None:
+        """Look up an entity definition by name."""
+        del name
+        return None
+
+    def list_entities(self) -> list:
+        """Return all entity definitions."""
+        return []
+
+    def upsert_entity_relationship(self, relationship: Any) -> Any:
+        """Insert or update an entity relationship definition."""
+        del relationship
+        raise NotImplementedError("entity relationships are not supported by this backend")
+
+    def get_entity_relationship_by_name(self, name: str) -> Any | None:
+        """Look up an entity relationship by name."""
+        del name
+        return None
+
+    def list_entity_relationships(
+        self,
+        *,
+        left_entity: str | None = None,
+        right_entity: str | None = None,
+        relation_type: str | None = None,
+    ) -> list:
+        """Return entity relationships matching optional filters."""
+        del left_entity, right_entity, relation_type
+        return []
+
+    def upsert_feature_view(self, feature_view: Any) -> Any:
+        """Insert or update a feature view definition."""
+        del feature_view
+        raise NotImplementedError("feature views are not supported by this backend")
+
+    def get_feature_view_by_name(self, name: str) -> Any | None:
+        """Look up a feature view by name."""
+        del name
+        return None
+
+    def list_feature_views(self, *, entity: str | None = None, owner: str | None = None) -> list:
+        """Return feature views matching optional filters."""
+        del entity, owner
+        return []
+
+    def upsert_feature_set(self, feature_set: Any) -> Any:
+        """Insert or update a feature set definition."""
+        del feature_set
+        raise NotImplementedError("feature sets are not supported by this backend")
+
+    def get_feature_set_by_name(self, name: str) -> Any | None:
+        """Look up a feature set by name."""
+        del name
+        return None
+
+    def list_feature_sets(self, *, target_entity: str | None = None, owner: str | None = None) -> list:
+        """Return feature sets matching optional filters."""
+        del target_entity, owner
+        return []
+
     # --- Features ---
 
     @abstractmethod
@@ -98,6 +165,30 @@ class CatalogBackend(ABC):
     @abstractmethod
     def get_feature_by_name(self, name: str) -> Any | None:
         """Look up a feature by name."""
+
+    # --- Business metrics ---
+
+    def upsert_business_metric(self, metric: Any) -> Any:
+        """Insert or update a business-facing metric definition."""
+        del metric
+        raise NotImplementedError("business metrics are not supported by this backend")
+
+    def get_business_metric_by_name(self, name: str) -> Any | None:
+        """Look up a business metric definition by name."""
+        del name
+        return None
+
+    def list_business_metrics(
+        self,
+        *,
+        metric_domain: str | None = None,
+        lifecycle_stage: str | None = None,
+        metric_level: str | None = None,
+        owner: str | None = None,
+    ) -> list:
+        """Return business metrics matching taxonomy filters."""
+        del metric_domain, lifecycle_stage, metric_level, owner
+        return []
 
     @abstractmethod
     def update_feature_tags(self, feature_id: str, tags: list[str]) -> None:

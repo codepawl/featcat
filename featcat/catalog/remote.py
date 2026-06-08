@@ -11,7 +11,7 @@ from typing import Any
 import httpx
 
 from .backend import CatalogBackend
-from .models import DataSource, Feature
+from .models import BusinessMetric, DataSource, Entity, EntityRelationship, Feature, FeatureSet, FeatureView
 
 
 class RemoteBackend(CatalogBackend):
@@ -53,6 +53,105 @@ class RemoteBackend(CatalogBackend):
     def list_sources(self) -> list:
         result = self._request("GET", "/api/sources")
         return [DataSource.model_validate(s) for s in result]
+
+    # --- Entities / relationships ---
+
+    def upsert_entity(self, entity: Any) -> Any:
+        data = entity.model_dump(mode="json") if hasattr(entity, "model_dump") else entity
+        result = self._request("POST", "/api/entities", json=data)
+        return Entity.model_validate(result)
+
+    def get_entity_by_name(self, name: str) -> Any | None:
+        try:
+            result = self._request("GET", "/api/entities/by-name", params={"name": name})
+            return Entity.model_validate(result)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                return None
+            raise
+
+    def list_entities(self) -> list:
+        result = self._request("GET", "/api/entities")
+        return [Entity.model_validate(entity) for entity in result]
+
+    def upsert_entity_relationship(self, relationship: Any) -> Any:
+        data = relationship.model_dump(mode="json") if hasattr(relationship, "model_dump") else relationship
+        result = self._request("POST", "/api/entity-relationships", json=data)
+        return EntityRelationship.model_validate(result)
+
+    def get_entity_relationship_by_name(self, name: str) -> Any | None:
+        try:
+            result = self._request("GET", "/api/entity-relationships/by-name", params={"name": name})
+            return EntityRelationship.model_validate(result)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                return None
+            raise
+
+    def list_entity_relationships(
+        self,
+        *,
+        left_entity: str | None = None,
+        right_entity: str | None = None,
+        relation_type: str | None = None,
+    ) -> list:
+        params: dict[str, Any] = {}
+        if left_entity:
+            params["left_entity"] = left_entity
+        if right_entity:
+            params["right_entity"] = right_entity
+        if relation_type:
+            params["relation_type"] = relation_type
+        result = self._request("GET", "/api/entity-relationships", params=params)
+        return [EntityRelationship.model_validate(item) for item in result]
+
+    # --- Feature views / feature sets ---
+
+    def upsert_feature_view(self, feature_view: Any) -> Any:
+        data = feature_view.model_dump(mode="json") if hasattr(feature_view, "model_dump") else feature_view
+        result = self._request("POST", "/api/feature-views", json=data)
+        return FeatureView.model_validate(result)
+
+    def get_feature_view_by_name(self, name: str) -> Any | None:
+        try:
+            result = self._request("GET", "/api/feature-views/by-name", params={"name": name})
+            return FeatureView.model_validate(result)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                return None
+            raise
+
+    def list_feature_views(self, *, entity: str | None = None, owner: str | None = None) -> list:
+        params: dict[str, Any] = {}
+        if entity:
+            params["entity"] = entity
+        if owner:
+            params["owner"] = owner
+        result = self._request("GET", "/api/feature-views", params=params)
+        return [FeatureView.model_validate(item) for item in result]
+
+    def upsert_feature_set(self, feature_set: Any) -> Any:
+        data = feature_set.model_dump(mode="json") if hasattr(feature_set, "model_dump") else feature_set
+        result = self._request("POST", "/api/feature-sets", json=data)
+        return FeatureSet.model_validate(result)
+
+    def get_feature_set_by_name(self, name: str) -> Any | None:
+        try:
+            result = self._request("GET", "/api/feature-sets/by-name", params={"name": name})
+            return FeatureSet.model_validate(result)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                return None
+            raise
+
+    def list_feature_sets(self, *, target_entity: str | None = None, owner: str | None = None) -> list:
+        params: dict[str, Any] = {}
+        if target_entity:
+            params["target_entity"] = target_entity
+        if owner:
+            params["owner"] = owner
+        result = self._request("GET", "/api/feature-sets", params=params)
+        return [FeatureSet.model_validate(item) for item in result]
 
     def update_source(
         self,
@@ -153,6 +252,42 @@ class RemoteBackend(CatalogBackend):
 
     def update_feature_tags(self, feature_id: str, tags: list[str]) -> None:
         self._request("PATCH", "/api/features/by-name", params={"name": feature_id}, json={"tags": tags})
+
+    # --- Business metrics ---
+
+    def upsert_business_metric(self, metric: Any) -> Any:
+        data = metric.model_dump(mode="json") if hasattr(metric, "model_dump") else metric
+        result = self._request("POST", "/api/business-metrics", json=data)
+        return BusinessMetric.model_validate(result)
+
+    def get_business_metric_by_name(self, name: str) -> Any | None:
+        try:
+            result = self._request("GET", "/api/business-metrics/by-name", params={"name": name})
+            return BusinessMetric.model_validate(result)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                return None
+            raise
+
+    def list_business_metrics(
+        self,
+        *,
+        metric_domain: str | None = None,
+        lifecycle_stage: str | None = None,
+        metric_level: str | None = None,
+        owner: str | None = None,
+    ) -> list:
+        params: dict[str, Any] = {}
+        if metric_domain:
+            params["metric_domain"] = metric_domain
+        if lifecycle_stage:
+            params["lifecycle_stage"] = lifecycle_stage
+        if metric_level:
+            params["metric_level"] = metric_level
+        if owner:
+            params["owner"] = owner
+        result = self._request("GET", "/api/business-metrics", params=params)
+        return [BusinessMetric.model_validate(metric) for metric in result]
 
     def search_features(self, query: str) -> list:
         result = self._request("GET", "/api/features", params={"search": query})

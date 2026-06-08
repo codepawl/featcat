@@ -39,11 +39,17 @@ from ..db.connection import make_engine, make_session_factory, resolve_backend
 from ..db.models import Base
 from .backend import CatalogBackend
 from .models import (
+    BusinessMetric,
     DatasetBuildAudit,
     DataSource,
+    Entity,
+    EntityRelationship,
+    EntityRelationshipJoinKey,
     Feature,
     FeatureGroup,
     FeatureGroupVersion,
+    FeatureSet,
+    FeatureView,
     MaterializationAudit,
     MaterializationSchedule,
     OnlineFeatureReadMetadata,
@@ -54,6 +60,7 @@ from .models import (
     ScanLog,
     _new_id,
 )
+from .scanner import detect_file_format
 
 logger = logging.getLogger(__name__)
 
@@ -203,6 +210,14 @@ def _row_to_feature(row: Any) -> Feature:
     d.setdefault("dtype", "unknown")
     d.setdefault("description", "")
     d.setdefault("owner", "")
+    d.setdefault("entity_grain", None)
+    d.setdefault("business_metric_name", None)
+    d.setdefault("metric_domain", None)
+    d.setdefault("lifecycle_stage", None)
+    d.setdefault("metric_group", None)
+    d.setdefault("metric_level", None)
+    d.setdefault("business_objective", None)
+    d.setdefault("leakage_risk", "low")
     if d.get("dtype") is None:
         d["dtype"] = "unknown"
     if d.get("description") is None:
@@ -213,6 +228,64 @@ def _row_to_feature(row: Any) -> Feature:
     valid_fields = Feature.model_fields
     d = {k: v for k, v in d.items() if k in valid_fields}
     return Feature(**d)
+
+
+def _row_to_business_metric(row: Any) -> BusinessMetric:
+    """Convert a storage row to a BusinessMetric model."""
+    d = dict(row)
+    d["mapped_features"] = (
+        json.loads(d["mapped_features"])
+        if isinstance(d.get("mapped_features"), str)
+        else (d.get("mapped_features") or [])
+    )
+    d["allowed_use_cases"] = (
+        json.loads(d["allowed_use_cases"])
+        if isinstance(d.get("allowed_use_cases"), str)
+        else (d.get("allowed_use_cases") or [])
+    )
+    valid_fields = BusinessMetric.model_fields
+    return BusinessMetric(**{k: v for k, v in d.items() if k in valid_fields})
+
+
+def _row_to_entity(row: Any) -> Entity:
+    d = dict(row)
+    d["primary_keys"] = (
+        json.loads(d["primary_keys"]) if isinstance(d.get("primary_keys"), str) else (d.get("primary_keys") or [])
+    )
+    d["join_keys"] = json.loads(d["join_keys"]) if isinstance(d.get("join_keys"), str) else (d.get("join_keys") or [])
+    valid_fields = Entity.model_fields
+    return Entity(**{k: v for k, v in d.items() if k in valid_fields})
+
+
+def _row_to_entity_relationship(row: Any) -> EntityRelationship:
+    d = dict(row)
+    join_keys_raw = json.loads(d["join_keys"]) if isinstance(d.get("join_keys"), str) else (d.get("join_keys") or [])
+    d["join_keys"] = [
+        key if isinstance(key, EntityRelationshipJoinKey) else EntityRelationshipJoinKey(**key) for key in join_keys_raw
+    ]
+    valid_fields = EntityRelationship.model_fields
+    return EntityRelationship(**{k: v for k, v in d.items() if k in valid_fields})
+
+
+def _row_to_feature_view(row: Any) -> FeatureView:
+    d = dict(row)
+    d["feature_names"] = (
+        json.loads(d["feature_names"]) if isinstance(d.get("feature_names"), str) else (d.get("feature_names") or [])
+    )
+    valid_fields = FeatureView.model_fields
+    return FeatureView(**{k: v for k, v in d.items() if k in valid_fields})
+
+
+def _row_to_feature_set(row: Any) -> FeatureSet:
+    d = dict(row)
+    d["feature_names"] = (
+        json.loads(d["feature_names"]) if isinstance(d.get("feature_names"), str) else (d.get("feature_names") or [])
+    )
+    d["rollup_rules"] = (
+        json.loads(d["rollup_rules"]) if isinstance(d.get("rollup_rules"), str) else (d.get("rollup_rules") or {})
+    )
+    valid_fields = FeatureSet.model_fields
+    return FeatureSet(**{k: v for k, v in d.items() if k in valid_fields})
 
 
 def _utcnow() -> datetime:
@@ -271,12 +344,108 @@ class LocalBackend(CatalogBackend):
             "ALTER TABLE features ADD COLUMN definition_type TEXT",
             "ALTER TABLE features ADD COLUMN definition_updated_at TIMESTAMP",
             "ALTER TABLE features ADD COLUMN generation_hints TEXT",
+            "ALTER TABLE features ADD COLUMN entity_grain TEXT",
+            "ALTER TABLE features ADD COLUMN business_metric_name TEXT",
+            "ALTER TABLE features ADD COLUMN metric_domain TEXT",
+            "ALTER TABLE features ADD COLUMN lifecycle_stage TEXT",
+            "ALTER TABLE features ADD COLUMN metric_group TEXT",
+            "ALTER TABLE features ADD COLUMN metric_level TEXT",
+            "ALTER TABLE features ADD COLUMN business_objective TEXT",
+            "ALTER TABLE features ADD COLUMN leakage_risk TEXT NOT NULL DEFAULT 'low'",
             # T3.1 lifecycle status — fields land on existing rows with
             # 'draft' so /api/features/stats/status-counts doesn't 500 on
             # legacy catalogs.
             "ALTER TABLE features ADD COLUMN status TEXT NOT NULL DEFAULT 'draft'",
             "ALTER TABLE features ADD COLUMN status_changed_at TIMESTAMP",
             "ALTER TABLE features ADD COLUMN status_notes TEXT",
+            "CREATE TABLE IF NOT EXISTS entities ("
+            "id TEXT PRIMARY KEY,"
+            "name TEXT UNIQUE NOT NULL,"
+            "primary_keys TEXT NOT NULL DEFAULT '[]',"
+            "join_keys TEXT NOT NULL DEFAULT '[]',"
+            "description TEXT DEFAULT '',"
+            "owner TEXT DEFAULT '',"
+            "source_of_truth TEXT DEFAULT '',"
+            "lifecycle_status TEXT NOT NULL DEFAULT 'draft',"
+            "created_at TIMESTAMP NOT NULL,"
+            "updated_at TIMESTAMP NOT NULL"
+            ")",
+            "CREATE INDEX IF NOT EXISTS idx_entities_name ON entities(name)",
+            "CREATE INDEX IF NOT EXISTS idx_entities_owner ON entities(owner)",
+            "CREATE TABLE IF NOT EXISTS entity_relationships ("
+            "id TEXT PRIMARY KEY,"
+            "name TEXT UNIQUE NOT NULL,"
+            "left_entity TEXT NOT NULL,"
+            "right_entity TEXT NOT NULL,"
+            "relation_type TEXT NOT NULL,"
+            "join_keys TEXT NOT NULL DEFAULT '[]',"
+            "valid_from TEXT,"
+            "valid_to TEXT,"
+            "event_time TEXT,"
+            "description TEXT DEFAULT '',"
+            "owner TEXT DEFAULT '',"
+            "lifecycle_status TEXT NOT NULL DEFAULT 'draft',"
+            "created_at TIMESTAMP NOT NULL,"
+            "updated_at TIMESTAMP NOT NULL"
+            ")",
+            "CREATE INDEX IF NOT EXISTS idx_entity_relationships_left ON entity_relationships(left_entity)",
+            "CREATE INDEX IF NOT EXISTS idx_entity_relationships_right ON entity_relationships(right_entity)",
+            "CREATE INDEX IF NOT EXISTS idx_entity_relationships_type ON entity_relationships(relation_type)",
+            "CREATE TABLE IF NOT EXISTS feature_views ("
+            "id TEXT PRIMARY KEY,"
+            "name TEXT UNIQUE NOT NULL,"
+            "entity TEXT NOT NULL,"
+            "source_name TEXT DEFAULT '',"
+            "source_entity TEXT,"
+            "relationship TEXT,"
+            "aggregation TEXT DEFAULT '',"
+            "feature_names TEXT NOT NULL DEFAULT '[]',"
+            "description TEXT DEFAULT '',"
+            "owner TEXT DEFAULT '',"
+            "lifecycle_status TEXT NOT NULL DEFAULT 'draft',"
+            "created_at TIMESTAMP NOT NULL,"
+            "updated_at TIMESTAMP NOT NULL"
+            ")",
+            "CREATE INDEX IF NOT EXISTS idx_feature_views_entity ON feature_views(entity)",
+            "CREATE INDEX IF NOT EXISTS idx_feature_views_owner ON feature_views(owner)",
+            "CREATE TABLE IF NOT EXISTS feature_sets ("
+            "id TEXT PRIMARY KEY,"
+            "name TEXT UNIQUE NOT NULL,"
+            "target_entity TEXT NOT NULL,"
+            "feature_names TEXT NOT NULL DEFAULT '[]',"
+            "rollup_rules TEXT NOT NULL DEFAULT '{}',"
+            "use_case TEXT DEFAULT '',"
+            "description TEXT DEFAULT '',"
+            "owner TEXT DEFAULT '',"
+            "lifecycle_status TEXT NOT NULL DEFAULT 'draft',"
+            "created_at TIMESTAMP NOT NULL,"
+            "updated_at TIMESTAMP NOT NULL"
+            ")",
+            "CREATE INDEX IF NOT EXISTS idx_feature_sets_target ON feature_sets(target_entity)",
+            "CREATE INDEX IF NOT EXISTS idx_feature_sets_owner ON feature_sets(owner)",
+            "ALTER TABLE feature_groups ADD COLUMN lifecycle_status TEXT NOT NULL DEFAULT 'draft'",
+            "CREATE TABLE IF NOT EXISTS business_metrics ("
+            "id TEXT PRIMARY KEY,"
+            "name TEXT UNIQUE NOT NULL,"
+            "business_metric_name TEXT NOT NULL,"
+            "business_definition TEXT DEFAULT '',"
+            "metric_domain TEXT NOT NULL,"
+            "lifecycle_stage TEXT NOT NULL,"
+            "metric_group TEXT DEFAULT '',"
+            "metric_level TEXT NOT NULL,"
+            "entity_grain TEXT NOT NULL,"
+            "aggregation_rule TEXT DEFAULT '',"
+            "mapped_features TEXT NOT NULL DEFAULT '[]',"
+            "owner TEXT DEFAULT '',"
+            "lifecycle_status TEXT NOT NULL DEFAULT 'draft',"
+            "allowed_use_cases TEXT NOT NULL DEFAULT '[]',"
+            "created_at TIMESTAMP NOT NULL,"
+            "updated_at TIMESTAMP NOT NULL"
+            ")",
+            "CREATE INDEX IF NOT EXISTS idx_business_metrics_domain ON business_metrics(metric_domain)",
+            "CREATE INDEX IF NOT EXISTS idx_business_metrics_stage ON business_metrics(lifecycle_stage)",
+            "CREATE INDEX IF NOT EXISTS idx_business_metrics_level ON business_metrics(metric_level)",
+            "CREATE INDEX IF NOT EXISTS idx_business_metrics_owner ON business_metrics(owner)",
             "ALTER TABLE feature_docs ADD COLUMN hints_used TEXT",
             "ALTER TABLE feature_docs ADD COLUMN context_features TEXT",
             "ALTER TABLE feature_versions ADD COLUMN change_type TEXT DEFAULT 'metadata'",
@@ -1232,6 +1401,343 @@ class LocalBackend(CatalogBackend):
             result_rows.append(OnlineFeatureReadRow(entity_key=entity_key, features=features, metadata=metadata))
         return OnlineFeatureReadResult(rows=result_rows)
 
+    # --- Entities / relationships ---
+
+    def upsert_entity(self, entity: Entity) -> Entity:
+        with self.session() as s:
+            s.execute(
+                text(
+                    "INSERT INTO entities ("
+                    "id, name, primary_keys, join_keys, description, owner, source_of_truth, "
+                    "lifecycle_status, created_at, updated_at"
+                    ") VALUES ("
+                    ":id, :name, :primary_keys, :join_keys, :description, :owner, :source_of_truth, "
+                    ":lifecycle_status, :created_at, :updated_at"
+                    ") ON CONFLICT(name) DO UPDATE SET "
+                    "primary_keys = excluded.primary_keys, "
+                    "join_keys = excluded.join_keys, "
+                    "description = excluded.description, "
+                    "owner = excluded.owner, "
+                    "source_of_truth = excluded.source_of_truth, "
+                    "lifecycle_status = excluded.lifecycle_status, "
+                    "updated_at = excluded.updated_at"
+                ),
+                {
+                    "id": entity.id,
+                    "name": entity.name,
+                    "primary_keys": json.dumps(entity.primary_keys),
+                    "join_keys": json.dumps(entity.join_keys),
+                    "description": entity.description,
+                    "owner": entity.owner,
+                    "source_of_truth": entity.source_of_truth,
+                    "lifecycle_status": entity.lifecycle_status,
+                    "created_at": entity.created_at,
+                    "updated_at": entity.updated_at,
+                },
+            )
+            s.commit()
+        return entity
+
+    def get_entity_by_name(self, name: str) -> Entity | None:
+        with self.session() as s:
+            row = s.execute(text("SELECT * FROM entities WHERE name = :name"), {"name": name}).mappings().first()
+            return _row_to_entity(row) if row else None
+
+    def list_entities(self) -> list[Entity]:
+        with self.session() as s:
+            rows = s.execute(text("SELECT * FROM entities ORDER BY name")).mappings().all()
+            return [_row_to_entity(row) for row in rows]
+
+    def _validate_entity_relationship(self, relationship: EntityRelationship) -> None:
+        left = self.get_entity_by_name(relationship.left_entity)
+        right = self.get_entity_by_name(relationship.right_entity)
+        missing = [
+            name
+            for name, found in ((relationship.left_entity, left), (relationship.right_entity, right))
+            if found is None
+        ]
+        if missing:
+            raise ValueError(f"relationship references unknown entity(s): {', '.join(missing)}")
+
+    def upsert_entity_relationship(self, relationship: EntityRelationship) -> EntityRelationship:
+        self._validate_entity_relationship(relationship)
+        with self.session() as s:
+            s.execute(
+                text(
+                    "INSERT INTO entity_relationships ("
+                    "id, name, left_entity, right_entity, relation_type, join_keys, valid_from, valid_to, "
+                    "event_time, description, owner, lifecycle_status, created_at, updated_at"
+                    ") VALUES ("
+                    ":id, :name, :left_entity, :right_entity, :relation_type, :join_keys, :valid_from, "
+                    ":valid_to, :event_time, :description, :owner, :lifecycle_status, :created_at, :updated_at"
+                    ") ON CONFLICT(name) DO UPDATE SET "
+                    "left_entity = excluded.left_entity, "
+                    "right_entity = excluded.right_entity, "
+                    "relation_type = excluded.relation_type, "
+                    "join_keys = excluded.join_keys, "
+                    "valid_from = excluded.valid_from, "
+                    "valid_to = excluded.valid_to, "
+                    "event_time = excluded.event_time, "
+                    "description = excluded.description, "
+                    "owner = excluded.owner, "
+                    "lifecycle_status = excluded.lifecycle_status, "
+                    "updated_at = excluded.updated_at"
+                ),
+                {
+                    "id": relationship.id,
+                    "name": relationship.name,
+                    "left_entity": relationship.left_entity,
+                    "right_entity": relationship.right_entity,
+                    "relation_type": relationship.relation_type,
+                    "join_keys": json.dumps([jk.model_dump(mode="json") for jk in relationship.join_keys]),
+                    "valid_from": relationship.valid_from,
+                    "valid_to": relationship.valid_to,
+                    "event_time": relationship.event_time,
+                    "description": relationship.description,
+                    "owner": relationship.owner,
+                    "lifecycle_status": relationship.lifecycle_status,
+                    "created_at": relationship.created_at,
+                    "updated_at": relationship.updated_at,
+                },
+            )
+            s.commit()
+        return relationship
+
+    def get_entity_relationship_by_name(self, name: str) -> EntityRelationship | None:
+        with self.session() as s:
+            row = (
+                s.execute(text("SELECT * FROM entity_relationships WHERE name = :name"), {"name": name})
+                .mappings()
+                .first()
+            )
+            return _row_to_entity_relationship(row) if row else None
+
+    def list_entity_relationships(
+        self,
+        *,
+        left_entity: str | None = None,
+        right_entity: str | None = None,
+        relation_type: str | None = None,
+    ) -> list[EntityRelationship]:
+        clauses: list[str] = []
+        params: dict[str, Any] = {}
+        if left_entity:
+            clauses.append("left_entity = :left_entity")
+            params["left_entity"] = left_entity
+        if right_entity:
+            clauses.append("right_entity = :right_entity")
+            params["right_entity"] = right_entity
+        if relation_type:
+            clauses.append("relation_type = :relation_type")
+            params["relation_type"] = relation_type
+        where_clause = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        with self.session() as s:
+            rows = (
+                s.execute(text(f"SELECT * FROM entity_relationships {where_clause} ORDER BY name"), params)
+                .mappings()
+                .all()
+            )  # noqa: S608
+            return [_row_to_entity_relationship(row) for row in rows]
+
+    @staticmethod
+    def _expected_entity_grain(target_entity: str) -> str | None:
+        mapping = {
+            "device": "device_id",
+            "contract": "contract_id",
+            "customer": "customer_id",
+            "service": "service_id",
+        }
+        return mapping.get(target_entity.strip().lower())
+
+    def _source_schema_columns(self, source: DataSource) -> set[str]:
+        if not source.path:
+            raise ValueError("source path is required for feature view validation")
+        fmt = source.format or detect_file_format(source.path)
+        if fmt == "csv":
+            import pyarrow.csv as pa_csv
+
+            if source.path.startswith("s3://"):
+                from .storage import _get_s3_filesystem, parse_s3_uri
+
+                fs = _get_s3_filesystem()
+                bucket, key = parse_s3_uri(source.path)
+                with fs.open_input_file(f"{bucket}/{key}") as f:
+                    return {field.name for field in pa_csv.read_csv(f).schema}
+            return {field.name for field in pa_csv.read_csv(source.path).schema}
+
+        from .storage import read_parquet_schema
+
+        return {field.name for field in read_parquet_schema(source.path)}
+
+    def _validate_feature_view(self, feature_view: FeatureView) -> None:
+        source = self.get_source_by_name(feature_view.source_name)
+        if source is None:
+            raise ValueError(f"feature view references unknown source: {feature_view.source_name}")
+
+        schema_columns = self._source_schema_columns(source)
+        with self.session() as s:
+            for feature_name in feature_view.feature_names:
+                row = (
+                    s.execute(
+                        text("SELECT id, data_source_id, column_name FROM features WHERE name = :name"),
+                        {"name": feature_name},
+                    )
+                    .mappings()
+                    .first()
+                )
+                if row is None:
+                    raise ValueError(f"feature view references unknown feature: {feature_name}")
+                if str(row.get("data_source_id")) != str(source.id):
+                    raise ValueError(
+                        f"feature {feature_name} is registered under a different source than {feature_view.source_name}"
+                    )
+                column_name = str(row.get("column_name") or "")
+                if column_name not in schema_columns:
+                    raise ValueError(f"feature view source {feature_view.source_name} is missing column: {column_name}")
+
+    # --- Feature views / feature sets ---
+
+    def upsert_feature_view(self, feature_view: FeatureView) -> FeatureView:
+        self._validate_feature_view(feature_view)
+        with self.session() as s:
+            s.execute(
+                text(
+                    "INSERT INTO feature_views ("
+                    "id, name, entity, source_name, source_entity, relationship, aggregation, "
+                    "feature_names, description, owner, lifecycle_status, created_at, updated_at"
+                    ") VALUES ("
+                    ":id, :name, :entity, :source_name, :source_entity, :relationship, :aggregation, "
+                    ":feature_names, :description, :owner, :lifecycle_status, :created_at, :updated_at"
+                    ") ON CONFLICT(name) DO UPDATE SET "
+                    "entity = excluded.entity, "
+                    "source_name = excluded.source_name, "
+                    "source_entity = excluded.source_entity, "
+                    "relationship = excluded.relationship, "
+                    "aggregation = excluded.aggregation, "
+                    "feature_names = excluded.feature_names, "
+                    "description = excluded.description, "
+                    "owner = excluded.owner, "
+                    "lifecycle_status = excluded.lifecycle_status, "
+                    "updated_at = excluded.updated_at"
+                ),
+                {
+                    "id": feature_view.id,
+                    "name": feature_view.name,
+                    "entity": feature_view.entity,
+                    "source_name": feature_view.source_name,
+                    "source_entity": feature_view.source_entity,
+                    "relationship": feature_view.relationship,
+                    "aggregation": feature_view.aggregation,
+                    "feature_names": json.dumps(feature_view.feature_names),
+                    "description": feature_view.description,
+                    "owner": feature_view.owner,
+                    "lifecycle_status": feature_view.lifecycle_status,
+                    "created_at": feature_view.created_at,
+                    "updated_at": feature_view.updated_at,
+                },
+            )
+            s.commit()
+        return feature_view
+
+    def get_feature_view_by_name(self, name: str) -> FeatureView | None:
+        with self.session() as s:
+            row = s.execute(text("SELECT * FROM feature_views WHERE name = :name"), {"name": name}).mappings().first()
+            return _row_to_feature_view(row) if row else None
+
+    def list_feature_views(self, *, entity: str | None = None, owner: str | None = None) -> list[FeatureView]:
+        clauses: list[str] = []
+        params: dict[str, Any] = {}
+        if entity:
+            clauses.append("entity = :entity")
+            params["entity"] = entity
+        if owner:
+            clauses.append("owner = :owner")
+            params["owner"] = owner
+        where_clause = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        with self.session() as s:
+            rows = s.execute(text(f"SELECT * FROM feature_views {where_clause} ORDER BY name"), params).mappings().all()  # noqa: S608
+            return [_row_to_feature_view(row) for row in rows]
+
+    def upsert_feature_set(self, feature_set: FeatureSet) -> FeatureSet:
+        expected = self._expected_entity_grain(feature_set.target_entity)
+        if expected:
+            with self.session() as s:
+                for feature_name in feature_set.feature_names:
+                    row = (
+                        s.execute(
+                            text("SELECT entity_grain, leakage_risk FROM features WHERE name = :name"),
+                            {"name": feature_name},
+                        )
+                        .mappings()
+                        .first()
+                    )
+                    if row is None:
+                        raise ValueError(f"feature_set references unknown feature: {feature_name}")
+                    if (
+                        row.get("entity_grain")
+                        and row.get("entity_grain") != expected
+                        and feature_name not in feature_set.rollup_rules
+                    ):
+                        target = feature_set.target_entity
+                        raise ValueError(
+                            f"feature {feature_name} requires explicit rollup rule when target_entity={target}"
+                        )
+
+        with self.session() as s:
+            s.execute(
+                text(
+                    "INSERT INTO feature_sets ("
+                    "id, name, target_entity, feature_names, rollup_rules, use_case, description, owner, "
+                    "lifecycle_status, created_at, updated_at"
+                    ") VALUES ("
+                    ":id, :name, :target_entity, :feature_names, :rollup_rules, :use_case, :description, :owner, "
+                    ":lifecycle_status, :created_at, :updated_at"
+                    ") ON CONFLICT(name) DO UPDATE SET "
+                    "target_entity = excluded.target_entity, "
+                    "feature_names = excluded.feature_names, "
+                    "rollup_rules = excluded.rollup_rules, "
+                    "use_case = excluded.use_case, "
+                    "description = excluded.description, "
+                    "owner = excluded.owner, "
+                    "lifecycle_status = excluded.lifecycle_status, "
+                    "updated_at = excluded.updated_at"
+                ),
+                {
+                    "id": feature_set.id,
+                    "name": feature_set.name,
+                    "target_entity": feature_set.target_entity,
+                    "feature_names": json.dumps(feature_set.feature_names),
+                    "rollup_rules": json.dumps(feature_set.rollup_rules),
+                    "use_case": feature_set.use_case,
+                    "description": feature_set.description,
+                    "owner": feature_set.owner,
+                    "lifecycle_status": feature_set.lifecycle_status,
+                    "created_at": feature_set.created_at,
+                    "updated_at": feature_set.updated_at,
+                },
+            )
+            s.commit()
+        return feature_set
+
+    def get_feature_set_by_name(self, name: str) -> FeatureSet | None:
+        with self.session() as s:
+            row = s.execute(text("SELECT * FROM feature_sets WHERE name = :name"), {"name": name}).mappings().first()
+            return _row_to_feature_set(row) if row else None
+
+    def list_feature_sets(self, *, target_entity: str | None = None, owner: str | None = None) -> list[FeatureSet]:
+        clauses: list[str] = []
+        params: dict[str, Any] = {}
+        if target_entity:
+            clauses.append("target_entity = :target_entity")
+            params["target_entity"] = target_entity
+        if owner:
+            clauses.append("owner = :owner")
+            params["owner"] = owner
+        where_clause = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        with self.session() as s:
+            rows = s.execute(text(f"SELECT * FROM feature_sets {where_clause} ORDER BY name"), params).mappings().all()  # noqa: S608
+            return [_row_to_feature_set(row) for row in rows]
+
     # --- Features ---
 
     def upsert_feature(self, feature: Feature) -> Feature:
@@ -1245,11 +1751,21 @@ class LocalBackend(CatalogBackend):
                 text(
                     "INSERT INTO features "
                     "(id, name, data_source_id, column_name, dtype, description, tags, owner, stats, "
-                    " created_at, updated_at) "
+                    " entity_grain, business_metric_name, metric_domain, lifecycle_stage, metric_group, metric_level, "
+                    " business_objective, leakage_risk, created_at, updated_at) "
                     "VALUES (:id, :name, :sid, :col, :dtype, :description, :tags, :owner, :stats, "
-                    "        :created_at, :updated_at) "
+                    "        :entity_grain, :business_metric_name, :metric_domain, :lifecycle_stage, :metric_group, "
+                    "        :metric_level, :business_objective, :leakage_risk, :created_at, :updated_at) "
                     "ON CONFLICT(data_source_id, column_name) DO UPDATE SET "
                     "  dtype = excluded.dtype, "
+                    "  entity_grain = excluded.entity_grain, "
+                    "  business_metric_name = excluded.business_metric_name, "
+                    "  metric_domain = excluded.metric_domain, "
+                    "  lifecycle_stage = excluded.lifecycle_stage, "
+                    "  metric_group = excluded.metric_group, "
+                    "  metric_level = excluded.metric_level, "
+                    "  business_objective = excluded.business_objective, "
+                    "  leakage_risk = excluded.leakage_risk, "
                     "  stats = excluded.stats, "
                     "  updated_at = excluded.updated_at"
                 ),
@@ -1263,6 +1779,14 @@ class LocalBackend(CatalogBackend):
                     "tags": json.dumps(feature.tags),
                     "owner": feature.owner,
                     "stats": json.dumps(feature.stats),
+                    "entity_grain": feature.entity_grain,
+                    "business_metric_name": feature.business_metric_name,
+                    "metric_domain": feature.metric_domain,
+                    "lifecycle_stage": feature.lifecycle_stage,
+                    "metric_group": feature.metric_group,
+                    "metric_level": feature.metric_level,
+                    "business_objective": feature.business_objective,
+                    "leakage_risk": feature.leakage_risk,
                     "created_at": feature.created_at,
                     "updated_at": feature.updated_at,
                 },
@@ -1417,7 +1941,128 @@ class LocalBackend(CatalogBackend):
             row = s.execute(text("SELECT * FROM features WHERE name = :name"), {"name": name}).mappings().first()
             return _row_to_feature(row) if row else None
 
-    _VERSIONED_FIELDS = frozenset({"description", "tags", "owner", "dtype", "column_name", "data_source_id"})
+    # --- Business metrics ---
+
+    def _validate_business_metric_features(self, metric: BusinessMetric) -> None:
+        missing: list[str] = []
+        with self.session() as s:
+            for feature_name in metric.mapped_features:
+                row = s.execute(text("SELECT 1 FROM features WHERE name = :name"), {"name": feature_name}).first()
+                if row is None:
+                    missing.append(feature_name)
+        if missing:
+            raise ValueError(f"mapped_features references unknown feature(s): {', '.join(missing)}")
+
+    def upsert_business_metric(self, metric: BusinessMetric) -> BusinessMetric:
+        self._validate_business_metric_features(metric)
+        with self.session() as s:
+            s.execute(
+                text(
+                    "INSERT INTO business_metrics ("
+                    "id, name, business_metric_name, business_definition, metric_domain, lifecycle_stage, "
+                    "metric_group, metric_level, entity_grain, aggregation_rule, mapped_features, owner, "
+                    "lifecycle_status, "
+                    "allowed_use_cases, created_at, updated_at"
+                    ") VALUES ("
+                    ":id, :name, :business_metric_name, :business_definition, :metric_domain, :lifecycle_stage, "
+                    ":metric_group, :metric_level, :entity_grain, :aggregation_rule, :mapped_features, "
+                    ":owner, :lifecycle_status, "
+                    ":allowed_use_cases, :created_at, :updated_at"
+                    ") ON CONFLICT(name) DO UPDATE SET "
+                    "business_metric_name = excluded.business_metric_name, "
+                    "business_definition = excluded.business_definition, "
+                    "metric_domain = excluded.metric_domain, "
+                    "lifecycle_stage = excluded.lifecycle_stage, "
+                    "metric_group = excluded.metric_group, "
+                    "metric_level = excluded.metric_level, "
+                    "entity_grain = excluded.entity_grain, "
+                    "aggregation_rule = excluded.aggregation_rule, "
+                    "mapped_features = excluded.mapped_features, "
+                    "owner = excluded.owner, "
+                    "lifecycle_status = excluded.lifecycle_status, "
+                    "allowed_use_cases = excluded.allowed_use_cases, "
+                    "updated_at = excluded.updated_at"
+                ),
+                {
+                    "id": metric.id,
+                    "name": metric.name,
+                    "business_metric_name": metric.business_metric_name,
+                    "business_definition": metric.business_definition,
+                    "metric_domain": metric.metric_domain,
+                    "lifecycle_stage": metric.lifecycle_stage,
+                    "metric_group": metric.metric_group,
+                    "metric_level": metric.metric_level,
+                    "entity_grain": metric.entity_grain,
+                    "aggregation_rule": metric.aggregation_rule,
+                    "mapped_features": json.dumps(metric.mapped_features),
+                    "owner": metric.owner,
+                    "lifecycle_status": metric.lifecycle_status,
+                    "allowed_use_cases": json.dumps(metric.allowed_use_cases),
+                    "created_at": metric.created_at,
+                    "updated_at": metric.updated_at,
+                },
+            )
+            s.commit()
+        return metric
+
+    def get_business_metric_by_name(self, name: str) -> BusinessMetric | None:
+        with self.session() as s:
+            row = (
+                s.execute(text("SELECT * FROM business_metrics WHERE name = :name"), {"name": name}).mappings().first()
+            )
+            return _row_to_business_metric(row) if row else None
+
+    def list_business_metrics(
+        self,
+        *,
+        metric_domain: str | None = None,
+        lifecycle_stage: str | None = None,
+        metric_level: str | None = None,
+        owner: str | None = None,
+    ) -> list[BusinessMetric]:
+        clauses: list[str] = []
+        params: dict[str, Any] = {}
+        if metric_domain:
+            clauses.append("metric_domain = :metric_domain")
+            params["metric_domain"] = metric_domain
+        if lifecycle_stage:
+            clauses.append("lifecycle_stage = :lifecycle_stage")
+            params["lifecycle_stage"] = lifecycle_stage
+        if metric_level:
+            clauses.append("metric_level = :metric_level")
+            params["metric_level"] = metric_level
+        if owner:
+            clauses.append("owner = :owner")
+            params["owner"] = owner
+        where_clause = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        with self.session() as s:
+            rows = (
+                s.execute(
+                    text(f"SELECT * FROM business_metrics {where_clause} ORDER BY name"),  # noqa: S608
+                    params,
+                )
+                .mappings()
+                .all()
+            )
+            return [_row_to_business_metric(row) for row in rows]
+
+    _VERSIONED_FIELDS = frozenset(
+        {
+            "description",
+            "tags",
+            "owner",
+            "dtype",
+            "column_name",
+            "data_source_id",
+            "business_metric_name",
+            "metric_domain",
+            "lifecycle_stage",
+            "metric_group",
+            "metric_level",
+            "business_objective",
+            "leakage_risk",
+        }
+    )
 
     def _snapshot_feature(
         self,
@@ -2125,8 +2770,9 @@ class LocalBackend(CatalogBackend):
         with self.session() as s:
             s.execute(
                 text(
-                    "INSERT INTO feature_groups (id, name, description, project, owner, created_at, updated_at) "
-                    "VALUES (:id, :name, :description, :project, :owner, :created_at, :updated_at)"
+                    "INSERT INTO feature_groups (id, name, description, project, owner, lifecycle_status, "
+                    "created_at, updated_at) "
+                    "VALUES (:id, :name, :description, :project, :owner, :lifecycle_status, :created_at, :updated_at)"
                 ),
                 {
                     "id": group.id,
@@ -2134,6 +2780,7 @@ class LocalBackend(CatalogBackend):
                     "description": group.description,
                     "project": group.project,
                     "owner": group.owner,
+                    "lifecycle_status": group.lifecycle_status,
                     "created_at": group.created_at,
                     "updated_at": group.updated_at,
                 },
@@ -2162,7 +2809,7 @@ class LocalBackend(CatalogBackend):
             return [FeatureGroup(**dict(r)) for r in rows]
 
     def update_group(self, group_id: str, **kwargs: object) -> None:
-        allowed = {"description", "project", "owner"}
+        allowed = {"description", "project", "owner", "lifecycle_status"}
         updates = {k: v for k, v in kwargs.items() if k in allowed}
         if not updates:
             return
@@ -2271,7 +2918,9 @@ class LocalBackend(CatalogBackend):
                 s.execute(
                     text(
                         "SELECT f.id, f.name, f.dtype, f.description, f.tags, f.owner, f.stats, "
-                        "       f.definition, f.definition_type, f.column_name, "
+                        "       f.definition, f.definition_type, f.column_name, f.entity_grain, "
+                        "       f.business_metric_name, f.metric_domain, f.lifecycle_stage, "
+                        "       f.metric_group, f.metric_level, f.business_objective, f.leakage_risk, "
                         "       ds.path AS source_path, ds.format AS source_format, ds.name AS source_name, "
                         "       ds.entity_key AS source_entity_key, "
                         "       ds.event_timestamp_column AS source_event_timestamp_column, "
@@ -2304,6 +2953,14 @@ class LocalBackend(CatalogBackend):
                         "definition": r.get("definition"),
                         "definition_type": r.get("definition_type"),
                         "column_name": r.get("column_name") or "",
+                        "entity_grain": r.get("entity_grain"),
+                        "business_metric_name": r.get("business_metric_name"),
+                        "metric_domain": r.get("metric_domain"),
+                        "lifecycle_stage": r.get("lifecycle_stage"),
+                        "metric_group": r.get("metric_group"),
+                        "metric_level": r.get("metric_level"),
+                        "business_objective": r.get("business_objective"),
+                        "leakage_risk": r.get("leakage_risk") or "low",
                         "source_path": r.get("source_path") or "",
                         "source_format": r.get("source_format") or "",
                         "source_name": r.get("source_name") or "",
@@ -2320,6 +2977,7 @@ class LocalBackend(CatalogBackend):
                     "description": group.description,
                     "project": group.project,
                     "owner": group.owner,
+                    "lifecycle_status": group.lifecycle_status,
                 },
                 "version_number": next_version,
                 "frozen_at": frozen_at.isoformat(),

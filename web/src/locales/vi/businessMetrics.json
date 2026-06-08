@@ -1,0 +1,54 @@
+{
+  "page": {
+    "title": "Business Metrics",
+    "subtitle": "Liên kết metric nghiệp vụ với feature kỹ thuật",
+    "count_one": "{{count}} metric",
+    "count_other": "{{count}} metrics"
+  },
+  "filters": {
+    "all_domains": "Tất cả domain",
+    "all_stages": "Tất cả giai đoạn",
+    "all_levels": "Tất cả level",
+    "domain_placeholder": "Metric domain",
+    "stage_placeholder": "Lifecycle stage",
+    "level_placeholder": "Metric level",
+    "objective_placeholder": "Business objective",
+    "owner_placeholder": "Chủ sở hữu",
+    "search_placeholder": "Tìm metric..."
+  },
+  "columns": {
+    "name": "Metric",
+    "domain": "Domain",
+    "stage": "Stage",
+    "level": "Level",
+    "owner": "Chủ sở hữu",
+    "features": "Feature liên kết",
+    "status": "Trạng thái"
+  },
+  "detail": {
+    "select_hint": "Chọn một business metric để xem mapping.",
+    "definition": "Định nghĩa nghiệp vụ",
+    "objective": "Mục tiêu nghiệp vụ",
+    "technical_grain": "Technical grain",
+    "aggregation": "Quy tắc rollup / aggregation",
+    "mapped_features": "Feature được map",
+    "use_cases": "Use case được phép",
+    "group": "Metric group",
+    "mapped_count": "Đã map {{count}} feature",
+    "no_features": "Chưa có feature được map",
+    "feature_link": "Mở feature"
+  },
+  "status": {
+    "draft": "Nháp",
+    "validated": "Đã xác thực",
+    "production": "Sản xuất",
+    "deprecated": "Đã ngừng dùng"
+  },
+  "empty": {
+    "title": "Chưa có business metric",
+    "hint": "Điều chỉnh bộ lọc hoặc tạo mới registry."
+  },
+  "actions": {
+    "refresh": "Làm mới"
+  }
+}

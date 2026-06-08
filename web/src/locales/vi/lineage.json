@@ -1,7 +1,7 @@
 {
   "page": {
     "title": "Lineage Feature",
-    "subtitle": "Đồ thị phụ thuộc. Mũi tên đi từ feature cha đến feature con."
+    "subtitle": "Đồ thị phụ thuộc. Mũi tên đi từ node cha đến node con — theo dõi cách feature, business metric và feature set đi xuống."
   },
   "filter_placeholder": "Tìm node...",
   "actions": {
@@ -35,6 +35,7 @@
   "tooltip": {
     "source": "Nguồn",
     "dtype": "Kiểu",
+    "kind": "Loại",
     "owner": "Phụ trách",
     "owner_unset": "chưa đặt",
     "transform": "Phép biến đổi",

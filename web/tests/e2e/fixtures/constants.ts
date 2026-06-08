@@ -9,6 +9,7 @@ export const BACKEND_URL = `http://127.0.0.1:${BACKEND_PORT}`
 export const FRONTEND_URL = `http://localhost:${FRONTEND_PORT}`
 
 export const REPO_ROOT = resolve(__dirname, '../../../..')
+export const VENV_PYTHON = resolve(REPO_ROOT, '.venv/bin/python')
 export const FIXTURES_PARQUET_DIR = resolve(REPO_ROOT, 'tests/fixtures')
 export const TMP_DIR = resolve(__dirname, '../.tmp')
 export const TEST_DB_PATH = resolve(TMP_DIR, 'e2e.db')

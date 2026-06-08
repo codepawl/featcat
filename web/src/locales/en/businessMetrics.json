@@ -1,0 +1,54 @@
+{
+  "page": {
+    "title": "Business Metrics",
+    "subtitle": "Map customer metrics to technical features",
+    "count_one": "{{count}} metric",
+    "count_other": "{{count}} metrics"
+  },
+  "filters": {
+    "all_domains": "All domains",
+    "all_stages": "All stages",
+    "all_levels": "All levels",
+    "domain_placeholder": "Metric domain",
+    "stage_placeholder": "Lifecycle stage",
+    "level_placeholder": "Metric level",
+    "objective_placeholder": "Business objective",
+    "owner_placeholder": "Owner",
+    "search_placeholder": "Search metrics..."
+  },
+  "columns": {
+    "name": "Metric",
+    "domain": "Domain",
+    "stage": "Stage",
+    "level": "Level",
+    "owner": "Owner",
+    "features": "Mapped features",
+    "status": "Status"
+  },
+  "detail": {
+    "select_hint": "Select a business metric to see its mapping.",
+    "definition": "Business definition",
+    "objective": "Business objective",
+    "technical_grain": "Technical grain",
+    "aggregation": "Rollup / aggregation",
+    "mapped_features": "Mapped features",
+    "use_cases": "Allowed use cases",
+    "group": "Metric group",
+    "mapped_count": "{{count}} features mapped",
+    "no_features": "No mapped features",
+    "feature_link": "Open feature"
+  },
+  "status": {
+    "draft": "Draft",
+    "validated": "Validated",
+    "production": "Production",
+    "deprecated": "Deprecated"
+  },
+  "empty": {
+    "title": "No business metrics found",
+    "hint": "Adjust filters or create a new registry entry."
+  },
+  "actions": {
+    "refresh": "Refresh"
+  }
+}

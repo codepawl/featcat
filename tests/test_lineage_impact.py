@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 from fastapi.testclient import TestClient
 
 from featcat.catalog.local import LocalBackend
-from featcat.catalog.models import DataSource, Feature
+from featcat.catalog.models import BusinessMetric, DataSource, Feature, FeatureSet, FeatureView
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -26,8 +28,12 @@ def lineage_db(tmp_path: Path) -> LocalBackend:
     """
     db = LocalBackend(str(tmp_path / "lineage.db"))
     db.init_db()
-    src_a = db.add_source(DataSource(name="src_a", path="/a.parquet"))
-    src_b = db.add_source(DataSource(name="src_b", path="/b.parquet"))
+    a_path = tmp_path / "a.parquet"
+    b_path = tmp_path / "b.parquet"
+    pq.write_table(pa.table({"feat_a1": [1], "feat_a2": [2], "feat_a3": [3], "col_x": [1], "col_y": [2]}), a_path)
+    pq.write_table(pa.table({"feat_b1": [1], "feat_orphan": [0]}), b_path)
+    src_a = db.add_source(DataSource(name="src_a", path=str(a_path)))
+    src_b = db.add_source(DataSource(name="src_b", path=str(b_path)))
 
     feat_a1 = db.upsert_feature(
         Feature(name="src_a.feat_a1", data_source_id=src_a.id, column_name="feat_a1", dtype="float64")
@@ -217,3 +223,62 @@ class TestLineageFullEndpoint:
             assert n["source"] in {"src_a", "src_b"}
             assert "dtype" in n
             assert "owner" in n
+
+    def test_full_endpoint_includes_metrics_and_feature_sets(self, tmp_path: Path) -> None:
+        db = LocalBackend(str(tmp_path / "registry_lineage.db"))
+        db.init_db()
+        source_path = tmp_path / "src.parquet"
+        pq.write_table(pa.table({"bad_signal_days_7d": [1, 2, 3]}), source_path)
+        src = db.add_source(DataSource(name="src", path=str(source_path)))
+        feature = db.upsert_feature(
+            Feature(name="src.bad_signal_days_7d", data_source_id=src.id, column_name="bad_signal_days_7d")
+        )
+        db.upsert_feature_view(
+            FeatureView(
+                name="customer_network_view",
+                entity="customer",
+                source_name="src",
+                feature_names=[feature.name],
+            )
+        )
+        db.upsert_business_metric(
+            BusinessMetric(
+                name="network.bad_signal_days_7d",
+                business_metric_name="bad_signal_days_7d",
+                metric_domain="network_quality",
+                lifecycle_stage="consume",
+                metric_level="customer",
+                entity_grain="customer_id",
+                aggregation_rule="sum by customer_id",
+                mapped_features=[feature.name],
+            )
+        )
+        db.upsert_feature_set(
+            FeatureSet(
+                name="churn.customer_set",
+                target_entity="customer",
+                feature_names=[feature.name],
+                rollup_rules={feature.name: "sum by customer_id"},
+            )
+        )
+
+        resp = self._client(db).get("/api/lineage/full")
+        assert resp.status_code == 200
+        body = resp.json()
+
+        names = {n["name"] for n in body["nodes"]}
+        assert names == {
+            "src.bad_signal_days_7d",
+            "customer_network_view",
+            "network.bad_signal_days_7d",
+            "churn.customer_set",
+        }
+        assert {edge["parent"] for edge in body["edges"]} == {
+            "src.bad_signal_days_7d",
+            "customer_network_view",
+        }
+        assert {edge["child"] for edge in body["edges"]} == {
+            "src.bad_signal_days_7d",
+            "network.bad_signal_days_7d",
+            "churn.customer_set",
+        }

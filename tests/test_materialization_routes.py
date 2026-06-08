@@ -8,8 +8,14 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from featcat.catalog.local import LocalBackend
-from featcat.catalog.models import DataSource, Feature
-from featcat.server.routes.online import OnlineMaterializationRequest, materialize_online_features, router
+from featcat.catalog.models import DataSource, Feature, FeatureView
+from featcat.server.routes.online import (
+    OnlineFeatureViewMaterializationRequest,
+    OnlineMaterializationRequest,
+    materialize_online_feature_view,
+    materialize_online_features,
+    router,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -149,8 +155,46 @@ def test_materialization_route_returns_structured_validation_failure(tmp_path: P
     }
 
 
+def test_feature_view_materialization_route_resolves_registry(tmp_path: Path) -> None:
+    db = _setup_backend(
+        tmp_path,
+        data={
+            "customer_id": [1, 1],
+            "event_ts": ["2026-05-25T09:00:00Z", "2026-05-25T10:00:00Z"],
+            "avg_spend_30d": [10.0, 20.0],
+        },
+    )
+    db.upsert_feature_view(
+        FeatureView(
+            name="transactions_view",
+            entity="customer",
+            source_name="transactions",
+            feature_names=["transactions.avg_spend_30d"],
+        )
+    )
+    try:
+        response = materialize_online_feature_view(
+            OnlineFeatureViewMaterializationRequest(
+                feature_view_name="transactions_view",
+                project="churn",
+                actor="api-test",
+            ),
+            db=db,
+        )
+    finally:
+        db.close()
+
+    payload = response.model_dump()
+    assert payload["is_valid"] is True
+    assert payload["source_name"] == "transactions"
+    assert payload["feature_view"] == "transactions_view"
+    assert payload["feature_columns"] == ["avg_spend_30d"]
+    assert payload["written"] == 1
+
+
 def test_materialization_route_is_registered_without_testclient() -> None:
     routes = {(route.path, tuple(sorted(route.methods or []))) for route in router.routes}
 
     assert ("/materialize", ("POST",)) in routes
+    assert ("/materialize-feature-view", ("POST",)) in routes
     assert ("/materializations", ("GET",)) in routes

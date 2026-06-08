@@ -379,3 +379,63 @@ def materialize_latest_from_source(
         skipped_older=write_result.skipped_older,
         skipped_same_timestamp=write_result.skipped_same_timestamp,
     )
+
+
+def materialize_latest_from_feature_view(
+    db: CatalogBackend,
+    *,
+    feature_view_name: str,
+    project: str = "",
+) -> MaterializationResult:
+    """Materialize a registered FeatureView by resolving its source and feature list."""
+    feature_view = db.get_feature_view_by_name(feature_view_name)
+    if feature_view is None:
+        return MaterializationResult(
+            is_valid=False,
+            errors=[
+                _issue(
+                    "feature_view_not_found",
+                    f"Feature view is not registered: {feature_view_name}",
+                    "feature_view",
+                )
+            ],
+            source_name="",
+            project=project,
+            feature_view=feature_view_name,
+            feature_columns=[],
+        )
+    feature_columns: list[str] = []
+    for feature_name in feature_view.feature_names:
+        feature = db.get_feature_by_name(feature_name)
+        if feature is None:
+            return MaterializationResult(
+                is_valid=False,
+                errors=[
+                    _issue(
+                        "feature_not_found",
+                        f"FeatureView references unknown feature: {feature_name}",
+                        "feature_names",
+                    )
+                ],
+                source_name=feature_view.source_name,
+                project=project,
+                feature_view=feature_view.name,
+                feature_columns=list(feature_columns),
+            )
+        feature_columns.append(feature.column_name)
+    if not feature_view.source_name.strip():
+        return MaterializationResult(
+            is_valid=False,
+            errors=[_issue("missing_source_name", "FeatureView must define source_name", "source_name")],
+            source_name="",
+            project=project,
+            feature_view=feature_view.name,
+            feature_columns=feature_columns,
+        )
+    return materialize_latest_from_source(
+        db,
+        source_name=feature_view.source_name,
+        feature_columns=feature_columns,
+        project=project,
+        feature_view=feature_view.name,
+    )

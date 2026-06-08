@@ -4,6 +4,11 @@ import { Layout } from './components/Layout'
 
 const Dashboard = lazy(() => import('./pages/Dashboard').then((m) => ({ default: m.Dashboard })))
 const Features = lazy(() => import('./pages/Features').then((m) => ({ default: m.Features })))
+const BusinessMetrics = lazy(() => import('./pages/BusinessMetrics').then((m) => ({ default: m.BusinessMetrics })))
+const Entities = lazy(() => import('./pages/Entities').then((m) => ({ default: m.Entities })))
+const EntityRelationships = lazy(() => import('./pages/EntityRelationships').then((m) => ({ default: m.EntityRelationships })))
+const FeatureViews = lazy(() => import('./pages/FeatureViews').then((m) => ({ default: m.FeatureViews })))
+const FeatureSets = lazy(() => import('./pages/FeatureSets').then((m) => ({ default: m.FeatureSets })))
 const Groups = lazy(() => import('./pages/Groups').then((m) => ({ default: m.Groups })))
 const GroupDetail = lazy(() => import('./pages/GroupDetail').then((m) => ({ default: m.GroupDetail })))
 const Sources = lazy(() => import('./pages/Sources').then((m) => ({ default: m.Sources })))
@@ -45,6 +50,16 @@ export default function App() {
             <Route path="/search" element={<SearchPage />} />
             <Route path="/features" element={<Features />} />
             <Route path="/features/:name" element={<Features />} />
+            <Route path="/business-metrics" element={<BusinessMetrics />} />
+            <Route path="/business-metrics/:name" element={<BusinessMetrics />} />
+            <Route path="/entities" element={<Entities />} />
+            <Route path="/entities/:name" element={<Entities />} />
+            <Route path="/entity-relationships" element={<EntityRelationships />} />
+            <Route path="/entity-relationships/:name" element={<EntityRelationships />} />
+            <Route path="/feature-views" element={<FeatureViews />} />
+            <Route path="/feature-views/:name" element={<FeatureViews />} />
+            <Route path="/feature-sets" element={<FeatureSets />} />
+            <Route path="/feature-sets/:name" element={<FeatureSets />} />
             <Route path="/groups" element={<Groups />} />
             <Route path="/groups/:name" element={<GroupDetail />} />
             <Route path="/sources" element={<Sources />} />

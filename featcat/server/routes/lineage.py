@@ -8,6 +8,8 @@ this router is for catalog-wide queries.
 
 from __future__ import annotations
 
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
 
@@ -37,7 +39,7 @@ def lineage_impact(
 
 @router.get("/full")
 def lineage_full(db=Depends(get_db)) -> dict:  # noqa: B008
-    """Return the catalog-wide feature→feature lineage graph (T1.1c).
+    """Return the catalog-wide lineage graph for features, metrics, and feature sets.
 
     Shape::
 
@@ -48,7 +50,7 @@ def lineage_full(db=Depends(get_db)) -> dict:  # noqa: B008
 
     Empty catalogs (or catalogs with no recorded lineage) return
     ``{"nodes": [], "edges": []}``. Source-column → feature edges are
-    excluded — this endpoint feeds a pure feature-to-feature flowchart;
+    excluded — this endpoint feeds the feature registry flowchart;
     raw column dependencies are surfaced via ``/api/lineage/impact``.
     """
     # Routes don't normally hit raw SQL, but the lineage table isn't on the
@@ -72,7 +74,23 @@ def lineage_full(db=Depends(get_db)) -> dict:  # noqa: B008
             .all()
         )
 
-        if not edges_rows:
+        metric_rows = (
+            s.execute(text("SELECT name, metric_domain, owner, mapped_features FROM business_metrics ORDER BY name"))
+            .mappings()
+            .all()
+        )
+        feature_view_rows = (
+            s.execute(text("SELECT name, source_name, owner, feature_names FROM feature_views ORDER BY name"))
+            .mappings()
+            .all()
+        )
+        feature_set_rows = (
+            s.execute(text("SELECT name, target_entity, owner, feature_names FROM feature_sets ORDER BY name"))
+            .mappings()
+            .all()
+        )
+
+        if not edges_rows and not metric_rows and not feature_view_rows and not feature_set_rows:
             return {"nodes": [], "edges": []}
 
         edges: list[dict] = []
@@ -89,18 +107,29 @@ def lineage_full(db=Depends(get_db)) -> dict:  # noqa: B008
             names.add(r["child_name"])
             names.add(r["parent_name"])
 
-        from sqlalchemy import bindparam
+        for r in metric_rows:
+            names.update(feature_name for feature_name in json.loads(r["mapped_features"] or "[]") if feature_name)
 
-        feat_rows = (
-            s.execute(
-                text("SELECT name, dtype, owner FROM features WHERE name IN :names").bindparams(
-                    bindparam("names", expanding=True)
-                ),
-                {"names": list(names)},
+        for r in feature_view_rows:
+            names.update(feature_name for feature_name in json.loads(r["feature_names"] or "[]") if feature_name)
+
+        for r in feature_set_rows:
+            names.update(feature_name for feature_name in json.loads(r["feature_names"] or "[]") if feature_name)
+
+        feat_rows = []
+        if names:
+            from sqlalchemy import bindparam
+
+            feat_rows = (
+                s.execute(
+                    text("SELECT name, dtype, owner FROM features WHERE name IN :names").bindparams(
+                        bindparam("names", expanding=True)
+                    ),
+                    {"names": list(names)},
+                )
+                .mappings()
+                .all()
             )
-            .mappings()
-            .all()
-        )
 
     nodes: list[dict] = []
     for r in feat_rows:
@@ -113,4 +142,67 @@ def lineage_full(db=Depends(get_db)) -> dict:  # noqa: B008
                 "owner": r["owner"] or "",
             }
         )
-    return {"nodes": nodes, "edges": edges}
+
+    node_index = {node["name"]: node for node in nodes}
+
+    for r in metric_rows:
+        name = r["name"]
+        node_index[name] = {
+            "name": name,
+            "source": r["metric_domain"] or "business_metric",
+            "dtype": "business_metric",
+            "owner": r["owner"] or "",
+        }
+        mapped_features = json.loads(r["mapped_features"] or "[]")
+        for feature_name in mapped_features:
+            if feature_name:
+                edges.append(
+                    {
+                        "child": name,
+                        "parent": feature_name,
+                        "transform": "",
+                        "detected_method": "registry",
+                    }
+                )
+
+    for r in feature_view_rows:
+        name = r["name"]
+        node_index[name] = {
+            "name": name,
+            "source": r["source_name"] or "feature_view",
+            "dtype": "feature_view",
+            "owner": r["owner"] or "",
+        }
+        feature_names = json.loads(r["feature_names"] or "[]")
+        for feature_name in feature_names:
+            if feature_name:
+                edges.append(
+                    {
+                        "child": feature_name,
+                        "parent": name,
+                        "transform": "",
+                        "detected_method": "registry",
+                    }
+                )
+
+    for r in feature_set_rows:
+        name = r["name"]
+        node_index[name] = {
+            "name": name,
+            "source": r["target_entity"] or "feature_set",
+            "dtype": "feature_set",
+            "owner": r["owner"] or "",
+        }
+        feature_names = json.loads(r["feature_names"] or "[]")
+        for feature_name in feature_names:
+            if feature_name:
+                edges.append(
+                    {
+                        "child": name,
+                        "parent": feature_name,
+                        "transform": "",
+                        "detected_method": "registry",
+                    }
+                )
+
+    return {"nodes": list(node_index.values()), "edges": edges}

@@ -8,8 +8,8 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from featcat.catalog.local import LocalBackend
-from featcat.catalog.materialization import materialize_latest_from_source
-from featcat.catalog.models import DataSource, Feature
+from featcat.catalog.materialization import materialize_latest_from_feature_view, materialize_latest_from_source
+from featcat.catalog.models import DataSource, Feature, FeatureView
 from featcat.catalog.online_store import get_online_features
 
 if TYPE_CHECKING:
@@ -60,11 +60,15 @@ def _read_feature(
     *,
     entity_key: dict[str, Any],
     feature_ref: str = "transactions.avg_spend_30d",
+    project: str = "",
+    feature_view: str = "",
 ) -> tuple[Any, bool]:
     result = get_online_features(
         db,
         entity_keys=[entity_key],
         feature_refs=[feature_ref],
+        project=project,
+        feature_view=feature_view,
     )
     row = result.rows[0]
     return row.features[feature_ref], row.metadata[feature_ref].found
@@ -301,3 +305,45 @@ def test_validation_failure_does_not_write_online_values(tmp_path: Path) -> None
     assert result.requested == 0
     assert value is None
     assert found is False
+
+
+def test_feature_view_materialization_resolves_feature_columns(tmp_path: Path) -> None:
+    db = _setup_backend(
+        tmp_path,
+        data={
+            "customer_id": [1, 1, 2],
+            "event_ts": [
+                "2026-05-25T09:00:00Z",
+                "2026-05-25T10:00:00Z",
+                "2026-05-25T08:00:00Z",
+            ],
+            "bad_signal_days_7d": [1, 2, 3],
+        },
+        feature_columns=["bad_signal_days_7d"],
+    )
+    db.upsert_feature_view(
+        FeatureView(
+            name="network.bad_signal_view",
+            entity="customer",
+            source_name="transactions",
+            feature_names=["transactions.bad_signal_days_7d"],
+        )
+    )
+    try:
+        result = materialize_latest_from_feature_view(
+            db,
+            feature_view_name="network.bad_signal_view",
+        )
+        value, found = _read_feature(
+            db,
+            entity_key={"customer_id": 1},
+            feature_ref="transactions.bad_signal_days_7d",
+            feature_view="network.bad_signal_view",
+        )
+    finally:
+        db.close()
+
+    assert result.is_valid is True
+    assert result.feature_view == "network.bad_signal_view"
+    assert result.feature_columns == ["bad_signal_days_7d"]
+    assert (value, found) == (2, True)

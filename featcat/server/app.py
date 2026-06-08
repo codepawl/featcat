@@ -113,9 +113,14 @@ def build_app() -> FastAPI:
     from .routes.admin import router as admin_router
     from .routes.ai import router as ai_router
     from .routes.bulk import router as bulk_router
+    from .routes.business_metrics import router as business_metrics_router
     from .routes.datasets import router as datasets_router
     from .routes.docs import router as docs_router
+    from .routes.entities import router as entities_router
+    from .routes.entity_relationships import router as entity_relationships_router
     from .routes.export import router as export_router
+    from .routes.feature_sets import router as feature_sets_router
+    from .routes.feature_views import router as feature_views_router
     from .routes.features import router as features_router
     from .routes.groups import router as groups_router
     from .routes.health import router as health_router
@@ -134,6 +139,10 @@ def build_app() -> FastAPI:
     app.include_router(health_router, prefix="/api", tags=["health"])
     app.include_router(sources_router, prefix="/api/sources", tags=["sources"])
     app.include_router(features_router, prefix="/api/features", tags=["features"])
+    app.include_router(entities_router, prefix="/api/entities", tags=["entities"])
+    app.include_router(entity_relationships_router, prefix="/api/entity-relationships", tags=["entity-relationships"])
+    app.include_router(feature_views_router, prefix="/api/feature-views", tags=["feature-views"])
+    app.include_router(feature_sets_router, prefix="/api/feature-sets", tags=["feature-sets"])
     app.include_router(docs_router, prefix="/api/docs", tags=["docs"])
     app.include_router(monitor_router, prefix="/api/monitor", tags=["monitor"])
     app.include_router(ai_router, prefix="/api/ai", tags=["ai"])
@@ -142,6 +151,7 @@ def build_app() -> FastAPI:
     app.include_router(groups_router, prefix="/api/groups", tags=["groups"])
     app.include_router(actions_router, prefix="/api/actions", tags=["actions"])
     app.include_router(admin_router, prefix="/api/admin", tags=["admin"])
+    app.include_router(business_metrics_router, prefix="/api/business-metrics", tags=["business-metrics"])
     app.include_router(usage_router, prefix="/api/usage", tags=["usage"])
     app.include_router(scan_router, prefix="/api/scan-bulk", tags=["scan"])
     app.include_router(export_router, prefix="/api/export", tags=["export"])

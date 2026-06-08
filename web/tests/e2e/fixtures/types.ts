@@ -48,6 +48,90 @@ export interface FeatureGroupRow {
   updated_at: string
 }
 
+export interface EntityRow {
+  id: string
+  name: string
+  primary_keys: string[]
+  join_keys: string[]
+  description: string
+  owner: string
+  source_of_truth: string
+  lifecycle_status: string
+  created_at: string
+  updated_at: string
+}
+
+export interface EntityRelationshipJoinKeyRow {
+  left_key: string
+  right_key: string
+}
+
+export interface EntityRelationshipRow {
+  id: string
+  name: string
+  left_entity: string
+  right_entity: string
+  relation_type: string
+  join_keys: EntityRelationshipJoinKeyRow[]
+  valid_from: string | null
+  valid_to: string | null
+  event_time: string | null
+  description: string
+  owner: string
+  lifecycle_status: string
+  created_at: string
+  updated_at: string
+}
+
+export interface FeatureViewRow {
+  id: string
+  name: string
+  entity: string
+  source_name: string
+  source_entity: string | null
+  relationship: string | null
+  aggregation: string | null
+  feature_names: string[]
+  description: string
+  owner: string
+  lifecycle_status: string
+  created_at: string
+  updated_at: string
+}
+
+export interface FeatureSetRow {
+  id: string
+  name: string
+  target_entity: string
+  feature_names: string[]
+  rollup_rules: Record<string, string>
+  use_case: string
+  description: string
+  owner: string
+  lifecycle_status: string
+  created_at: string
+  updated_at: string
+}
+
+export interface BusinessMetricRow {
+  id: string
+  name: string
+  business_metric_name: string
+  business_definition: string
+  metric_domain: string
+  lifecycle_stage: string
+  metric_group: string
+  metric_level: string
+  entity_grain: string
+  aggregation_rule: string
+  mapped_features: string[]
+  owner: string
+  lifecycle_status: string
+  allowed_use_cases: string[]
+  created_at: string
+  updated_at: string
+}
+
 export interface BulkScanResponse {
   found: number
   registered_sources: number

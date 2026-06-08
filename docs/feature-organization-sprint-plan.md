@@ -416,6 +416,65 @@ customer_contract = EntityRelationship(
 )
 ```
 
+Ví dụ SDK cho churn prediction:
+
+```python
+with FeatcatSDK() as sdk:
+    sdk.register_data_source(
+        DataSource(name="device_signal_daily", path="s3://lake/device_signal_daily.parquet")
+    )
+    sdk.register_entity(Entity(name="customer", primary_keys=["customer_id"], join_keys=["customer_id"]))
+    sdk.register_entity(Entity(name="device", primary_keys=["device_id"], join_keys=["device_id", "customer_id"]))
+    sdk.register_relationship(
+        EntityRelationship(
+            name="customer_has_devices",
+            left_entity="customer",
+            right_entity="device",
+            relation_type="one_to_many",
+            join_keys=[JoinKey(left_key="customer_id", right_key="customer_id")],
+        )
+    )
+    sdk.register_feature(
+        Feature(
+            name="device_signal_daily.bad_signal_days_7d",
+            data_source_id="...",
+            column_name="bad_signal_days_7d",
+            entity_grain="device_id",
+        )
+    )
+    sdk.register_feature_view(
+        FeatureView(
+            name="network_quality_customer_7d_view",
+            entity="customer",
+            source_name="device_signal_daily",
+            source_entity="device",
+            relationship="customer_has_devices",
+            aggregation="count_distinct(day where signal_quality = 'bad') by customer_id",
+            feature_names=["device_signal_daily.bad_signal_days_7d"],
+        )
+    )
+    sdk.register_business_metric(
+        BusinessMetric(
+            name="network_quality.bad_signal_days_7d",
+            business_metric_name="bad_signal_days_7d",
+            metric_domain="network_quality",
+            lifecycle_stage="consume",
+            metric_level="customer",
+            entity_grain="customer_id",
+            aggregation_rule="roll up device signal days to customer",
+            mapped_features=["network_quality_customer_7d_view.bad_signal_days_7d"],
+        )
+    )
+    sdk.register_feature_set(
+        FeatureSet(
+            name="churn_prediction_features_v1",
+            target_entity="customer",
+            feature_names=["device_signal_daily.bad_signal_days_7d"],
+            rollup_rules={"device_signal_daily.bad_signal_days_7d": "roll up to customer"},
+        )
+    )
+```
+
 ### 2.9 Online Store
 
 Online Store phục vụ truy vấn feature theo entity key cho inference.

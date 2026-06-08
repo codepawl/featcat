@@ -26,12 +26,14 @@ class GroupCreate(BaseModel):
     description: str = ""
     project: str = ""
     owner: str = ""
+    lifecycle_status: str = "draft"
 
 
 class GroupUpdate(BaseModel):
     description: str | None = None
     project: str | None = None
     owner: str | None = None
+    lifecycle_status: str | None = None
 
 
 class MembersAdd(BaseModel):
@@ -53,7 +55,13 @@ def list_groups(project: str | None = None, db=Depends(get_db)):  # noqa: B008
 @router.post("")
 def create_group(body: GroupCreate, db=Depends(get_db)):  # noqa: B008
     """Create a new feature group."""
-    group = FeatureGroup(name=body.name, description=body.description, project=body.project, owner=body.owner)
+    group = FeatureGroup(
+        name=body.name,
+        description=body.description,
+        project=body.project,
+        owner=body.owner,
+        lifecycle_status=body.lifecycle_status,
+    )
     try:
         db.create_group(group)
     except Exception as e:
@@ -229,7 +237,7 @@ def group_monitoring(name: str, db=Depends(get_db)):  # noqa: B008
             severity = (latest or {}).get("severity") or "unknown"
             severity_counts[severity] = severity_counts.get(severity, 0) + 1
             psi = (latest or {}).get("psi")
-            if isinstance(psi, (int, float)):
+            if isinstance(psi, int | float):
                 psi_values.append(float(psi))
             checked = (latest or {}).get("checked_at")
             checked_str: str | None
@@ -339,6 +347,7 @@ class FreezeResponse(BaseModel):
     frozen_by: str
     note: str
     member_count: int
+    warnings: list[str] = []
 
 
 class VersionSummary(BaseModel):
@@ -374,6 +383,14 @@ def _annotate_snapshot_with_stale(db, snapshot_json: str) -> tuple[dict, list[st
     """
     snapshot = json.loads(snapshot_json)
     warnings: list[str] = []
+    group = snapshot.get("group") or {}
+    if group.get("lifecycle_status") == "production":
+        for feature in snapshot.get("features", []):
+            if (feature.get("leakage_risk") or "low").lower() == "high":
+                warnings.append(
+                    f"Feature '{feature.get('name')}' has high leakage risk in "
+                    f"production feature set '{group.get('name')}'."
+                )
     for feature in snapshot.get("features", []):
         current = db.get_feature_by_name(feature.get("name", ""))
         if current is None:
@@ -392,6 +409,7 @@ def freeze_group(name: str, body: FreezeRequest, db=Depends(get_db)):  # noqa: B
         raise HTTPException(status_code=400, detail=f"Group is empty: {name}")
     version = db.freeze_group(group.id, note=body.note, frozen_by=body.frozen_by)
     member_count = _snapshot_member_count(version.snapshot_json)
+    _, warnings = _annotate_snapshot_with_stale(db, version.snapshot_json)
     return FreezeResponse(
         group=name,
         version_number=version.version_number,
@@ -399,6 +417,7 @@ def freeze_group(name: str, body: FreezeRequest, db=Depends(get_db)):  # noqa: B
         frozen_by=version.frozen_by,
         note=version.note,
         member_count=member_count,
+        warnings=warnings,
     )
 
 

@@ -78,12 +78,238 @@ class Feature(BaseModel):
     definition_type: str | None = None  # "sql" | "python" | "manual"
     definition_updated_at: datetime | None = None
     generation_hints: str | None = None
+    entity_grain: str | None = None
+    business_metric_name: str | None = None
+    metric_domain: str | None = None
+    lifecycle_stage: str | None = None
+    metric_group: str | None = None
+    metric_level: str | None = None
+    business_objective: str | None = None
+    leakage_risk: str = "low"
     created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)
     # T3.1 lifecycle status — plain label, not a permission gate.
     status: str = "draft"
     status_changed_at: datetime | None = None
     status_notes: str | None = None
+
+
+METRIC_DOMAINS = {
+    "network_quality",
+    "device_intel",
+    "customer_experience",
+    "billing",
+    "service_ops",
+    "contact",
+    "customer_profile",
+}
+LIFECYCLE_STAGES = {"consume", "manage", "leave"}
+METRIC_LEVELS = {"device", "contract", "customer", "mixed"}
+LIFECYCLE_STATUSES = {"draft", "validated", "production", "deprecated"}
+RELATION_TYPES = {"one_to_one", "one_to_many", "many_to_one", "many_to_many"}
+
+
+class Entity(BaseModel):
+    """Business or technical entity used as a catalog grain."""
+
+    id: str = Field(default_factory=_new_id)
+    name: str
+    primary_keys: list[str] = Field(default_factory=list)
+    join_keys: list[str] = Field(default_factory=list)
+    description: str = ""
+    owner: str = ""
+    source_of_truth: str = ""
+    lifecycle_status: str = "draft"
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
+
+    @model_validator(mode="after")
+    def _validate_entity(self) -> Entity:
+        if not self.name.strip():
+            raise ValueError("name is required")
+        if not self.primary_keys:
+            raise ValueError("primary_keys must be non-empty")
+        if any(not key.strip() for key in self.primary_keys):
+            raise ValueError("primary_keys must not contain empty values")
+        if any(not key.strip() for key in self.join_keys):
+            raise ValueError("join_keys must not contain empty values")
+        if self.lifecycle_status not in LIFECYCLE_STATUSES:
+            raise ValueError(f"lifecycle_status must be one of {sorted(LIFECYCLE_STATUSES)}")
+        return self
+
+
+class EntityRelationshipJoinKey(BaseModel):
+    """One join-key mapping between two entities."""
+
+    left_key: str
+    right_key: str
+
+    @model_validator(mode="after")
+    def _validate_join_key(self) -> EntityRelationshipJoinKey:
+        if not self.left_key.strip() or not self.right_key.strip():
+            raise ValueError("join keys must not be empty")
+        return self
+
+
+class EntityRelationship(BaseModel):
+    """Relationship metadata between two entities."""
+
+    id: str = Field(default_factory=_new_id)
+    name: str
+    left_entity: str
+    right_entity: str
+    relation_type: str
+    join_keys: list[EntityRelationshipJoinKey] = Field(default_factory=list)
+    valid_from: str | None = None
+    valid_to: str | None = None
+    event_time: str | None = None
+    description: str = ""
+    owner: str = ""
+    lifecycle_status: str = "draft"
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
+
+    @model_validator(mode="after")
+    def _validate_relationship(self) -> EntityRelationship:
+        if not self.name.strip():
+            raise ValueError("name is required")
+        if not self.left_entity.strip() or not self.right_entity.strip():
+            raise ValueError("left_entity and right_entity are required")
+        if self.left_entity == self.right_entity:
+            raise ValueError("left_entity and right_entity must differ")
+        if self.relation_type not in RELATION_TYPES:
+            raise ValueError(f"relation_type must be one of {sorted(RELATION_TYPES)}")
+        if not self.join_keys:
+            raise ValueError("join_keys must be non-empty")
+        if self.lifecycle_status not in LIFECYCLE_STATUSES:
+            raise ValueError(f"lifecycle_status must be one of {sorted(LIFECYCLE_STATUSES)}")
+        return self
+
+
+class BusinessMetric(BaseModel):
+    """Business-facing metric mapped to one or more technical features."""
+
+    id: str = Field(default_factory=_new_id)
+    name: str
+    business_metric_name: str
+    business_definition: str = ""
+    metric_domain: str
+    lifecycle_stage: str
+    metric_group: str = ""
+    metric_level: str
+    entity_grain: str
+    aggregation_rule: str = ""
+    mapped_features: list[str] = Field(default_factory=list)
+    owner: str = ""
+    lifecycle_status: str = "draft"
+    allowed_use_cases: list[str] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
+
+    @model_validator(mode="after")
+    def _validate_business_metric(self) -> BusinessMetric:
+        if not self.name.strip():
+            raise ValueError("name is required")
+        if not self.business_metric_name.strip():
+            raise ValueError("business_metric_name is required")
+        if self.metric_domain not in METRIC_DOMAINS:
+            raise ValueError(f"metric_domain must be one of {sorted(METRIC_DOMAINS)}")
+        if self.lifecycle_stage not in LIFECYCLE_STAGES:
+            raise ValueError(f"lifecycle_stage must be one of {sorted(LIFECYCLE_STAGES)}")
+        if self.metric_level not in METRIC_LEVELS:
+            raise ValueError(f"metric_level must be one of {sorted(METRIC_LEVELS)}")
+        if not self.entity_grain.strip():
+            raise ValueError("entity_grain is required")
+        if self.metric_level == "mixed" and not self.aggregation_rule.strip():
+            raise ValueError("aggregation_rule is required when metric_level is mixed")
+        technical_level = self._infer_entity_level(self.entity_grain)
+        if technical_level and technical_level != self.metric_level and not self.aggregation_rule.strip():
+            raise ValueError("aggregation_rule is required when metric_level differs from entity_grain")
+        if not self.mapped_features:
+            raise ValueError("mapped_features must be non-empty")
+        if any(not feature_ref.strip() for feature_ref in self.mapped_features):
+            raise ValueError("mapped_features must not contain empty values")
+        if self.lifecycle_status not in LIFECYCLE_STATUSES:
+            raise ValueError(f"lifecycle_status must be one of {sorted(LIFECYCLE_STATUSES)}")
+        return self
+
+    @staticmethod
+    def _infer_entity_level(entity_grain: str) -> str | None:
+        grain = entity_grain.strip().lower()
+        if grain.endswith("_id"):
+            grain = grain[:-3]
+        if grain in METRIC_LEVELS:
+            return grain
+        return None
+
+
+class FeatureView(BaseModel):
+    """A grouped feature view over a target entity."""
+
+    id: str = Field(default_factory=_new_id)
+    name: str
+    entity: str
+    source_name: str = ""
+    source_entity: str | None = None
+    relationship: str | None = None
+    aggregation: str = ""
+    feature_names: list[str] = Field(default_factory=list)
+    description: str = ""
+    owner: str = ""
+    lifecycle_status: str = "draft"
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
+
+    @model_validator(mode="after")
+    def _validate_feature_view(self) -> FeatureView:
+        if not self.name.strip():
+            raise ValueError("name is required")
+        if not self.entity.strip():
+            raise ValueError("entity is required")
+        if not self.feature_names:
+            raise ValueError("feature_names must be non-empty")
+        if any(not feature_name.strip() for feature_name in self.feature_names):
+            raise ValueError("feature_names must not contain empty values")
+        if self.source_entity and self.source_entity.strip() and self.source_entity != self.entity:
+            if not self.relationship:
+                raise ValueError("relationship is required when source_entity differs from entity")
+            if not self.aggregation.strip():
+                raise ValueError("aggregation is required when source_entity differs from entity")
+        if self.lifecycle_status not in LIFECYCLE_STATUSES:
+            raise ValueError(f"lifecycle_status must be one of {sorted(LIFECYCLE_STATUSES)}")
+        return self
+
+
+class FeatureSet(BaseModel):
+    """A model/use-case specific selection of features."""
+
+    id: str = Field(default_factory=_new_id)
+    name: str
+    target_entity: str
+    feature_names: list[str] = Field(default_factory=list)
+    rollup_rules: dict[str, str] = Field(default_factory=dict)
+    use_case: str = ""
+    description: str = ""
+    owner: str = ""
+    lifecycle_status: str = "draft"
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
+
+    @model_validator(mode="after")
+    def _validate_feature_set(self) -> FeatureSet:
+        if not self.name.strip():
+            raise ValueError("name is required")
+        if not self.target_entity.strip():
+            raise ValueError("target_entity is required")
+        if not self.feature_names:
+            raise ValueError("feature_names must be non-empty")
+        if any(not feature_name.strip() for feature_name in self.feature_names):
+            raise ValueError("feature_names must not contain empty values")
+        if any(not rule.strip() for rule in self.rollup_rules.values()):
+            raise ValueError("rollup_rules must not contain empty values")
+        if self.lifecycle_status not in LIFECYCLE_STATUSES:
+            raise ValueError(f"lifecycle_status must be one of {sorted(LIFECYCLE_STATUSES)}")
+        return self
 
 
 class FeatureDoc(BaseModel):
@@ -114,6 +340,7 @@ class FeatureGroup(BaseModel):
     description: str = ""
     project: str = ""
     owner: str = ""
+    lifecycle_status: str = "draft"
     created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)
 

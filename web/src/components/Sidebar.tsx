@@ -8,6 +8,8 @@ import {
   Clock,
   Cog,
   Database,
+  BarChart3,
+  Layers3,
   FolderKanban,
   Gauge,
   GitBranch,
@@ -21,6 +23,7 @@ import {
   MessageSquare,
   PanelLeftClose,
   PanelLeftOpen,
+  Users,
   type LucideIcon,
   Search as SearchIcon,
   Settings,
@@ -32,6 +35,11 @@ type NavKey =
   | 'dashboard'
   | 'search'
   | 'features'
+  | 'businessMetrics'
+  | 'entities'
+  | 'entityRelationships'
+  | 'featureViews'
+  | 'featureSets'
   | 'groups'
   | 'sources'
   | 'monitoring'
@@ -70,6 +78,11 @@ const GROUPS: readonly NavGroup[] = [
     items: [
       { to: '/search', key: 'search', icon: SearchIcon },
       { to: '/features', key: 'features', icon: Database },
+      { to: '/business-metrics', key: 'businessMetrics', icon: BarChart3 },
+      { to: '/entities', key: 'entities', icon: Users },
+      { to: '/entity-relationships', key: 'entityRelationships', icon: GitFork },
+      { to: '/feature-views', key: 'featureViews', icon: Layers3 },
+      { to: '/feature-sets', key: 'featureSets', icon: FolderKanban },
       { to: '/groups', key: 'groups', icon: FolderKanban },
       { to: '/sources', key: 'sources', icon: HardDrive },
     ],

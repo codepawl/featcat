@@ -46,6 +46,7 @@ def db_with_group(tmp_path: Path) -> LocalBackend:
             description="user age in years",
             tags=["user", "demographic"],
             stats={"mean": 35.2, "null_pct": 0.01},
+            entity_grain="customer_id",
         )
     )
     f2 = db.upsert_feature(
@@ -111,6 +112,7 @@ class TestFreezeGroup:
         assert age["source_entity_key"] == "user_id"
         assert age["source_event_timestamp_column"] == "event_ts"
         assert age["source_created_timestamp_column"] == "created_ts"
+        assert age["entity_grain"] == "customer_id"
         assert age["tags"] == ["user", "demographic"]
         assert age["stats"]["mean"] == 35.2
 
@@ -185,6 +187,35 @@ class TestFreezeRoutes:
         assert {f["name"] for f in body["snapshot"]["features"]} == {"src.user_age", "src.signup_country"}
         # All features still present → no warnings on a fresh snapshot.
         assert body["warnings"] == []
+
+    def test_freeze_warns_on_high_leakage_in_production_group(self, db_with_group: LocalBackend) -> None:
+        source = db_with_group.get_source_by_name("src")
+        assert source is not None
+        risk_feature = db_with_group.upsert_feature(
+            Feature(
+                name="src.payment_delay_count_30d",
+                data_source_id=source.id,
+                column_name="payment_delay_count_30d",
+                dtype="int64",
+                leakage_risk="high",
+            )
+        )
+        group = db_with_group.create_group(
+            FeatureGroup(
+                name="production-set",
+                description="Production feature set",
+                owner="ml-platform",
+                lifecycle_status="production",
+            )
+        )
+        db_with_group.add_group_members(group.id, [risk_feature.id])
+
+        client = _client(db_with_group)
+        resp = client.post("/api/groups/production-set/freeze", json={"note": "prod"})
+
+        assert resp.status_code == 200
+        assert resp.json()["warnings"]
+        assert "high leakage risk" in resp.json()["warnings"][0].lower()
 
     def test_get_version_404_for_unknown_n(self, db_with_group: LocalBackend) -> None:
         client = _client(db_with_group)

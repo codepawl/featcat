@@ -10,7 +10,11 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, ValidationError
 
-from ...catalog.materialization import MaterializationResult, materialize_latest_from_source
+from ...catalog.materialization import (
+    MaterializationResult,
+    materialize_latest_from_feature_view,
+    materialize_latest_from_source,
+)
 from ...catalog.materialization_audit import record_materialization_audit, record_materialization_error_audit
 from ...catalog.materialization_scheduler import run_materialization_schedule_once
 from ...catalog.models import (
@@ -84,6 +88,12 @@ class OnlineMaterializationRequest(BaseModel):
     feature_columns: list[str] = Field(default_factory=list)
     project: str = ""
     feature_view: str = ""
+    actor: str | None = None
+
+
+class OnlineFeatureViewMaterializationRequest(BaseModel):
+    feature_view_name: str
+    project: str = ""
     actor: str | None = None
 
 
@@ -321,6 +331,35 @@ def materialize_online_features(
             project=body.project,
             feature_view=body.feature_view,
             feature_columns=body.feature_columns,
+            error=exc,
+            actor=actor,
+        )
+        raise
+
+    record_materialization_audit(db, result=result, actor=actor)
+    return OnlineMaterializationResponse.model_validate(asdict(result))
+
+
+@router.post("/materialize-feature-view", response_model=OnlineMaterializationResponse)
+def materialize_online_feature_view(
+    body: OnlineFeatureViewMaterializationRequest,
+    db=Depends(get_db),
+) -> OnlineMaterializationResponse:
+    """Materialize a registered FeatureView into the online store."""
+    actor = body.actor or "api"
+    try:
+        result = materialize_latest_from_feature_view(
+            db,
+            feature_view_name=body.feature_view_name,
+            project=body.project,
+        )
+    except Exception as exc:
+        record_materialization_error_audit(
+            db,
+            source_name="",
+            project=body.project,
+            feature_view=body.feature_view_name,
+            feature_columns=[],
             error=exc,
             actor=actor,
         )

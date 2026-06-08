@@ -8,6 +8,7 @@ const BACKEND_PORT = 8101
 const FRONTEND_PORT = 5174
 const BACKEND_URL = `http://127.0.0.1:${BACKEND_PORT}`
 const FRONTEND_URL = `http://localhost:${FRONTEND_PORT}`
+const CHROMIUM_EXECUTABLE = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ?? '/usr/bin/google-chrome'
 
 const REPO_ROOT = resolve(__dirname, '..')
 const TMP_DIR = resolve(__dirname, 'tests/e2e/.tmp')
@@ -35,14 +36,20 @@ export default defineConfig({
     baseURL: FRONTEND_URL,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
+    video: 'off',
     actionTimeout: 10_000,
     navigationTimeout: 30_000,
   },
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: {
+        ...devices['Desktop Chrome'],
+        launchOptions: {
+          executablePath: CHROMIUM_EXECUTABLE,
+          args: ['--no-sandbox'],
+        },
+      },
     },
   ],
   webServer: [

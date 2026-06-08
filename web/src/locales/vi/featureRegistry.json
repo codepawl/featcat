@@ -1,0 +1,167 @@
+{
+  "entities": {
+    "page": {
+      "title": "Entity",
+      "subtitle": "Grain catalog dùng để join và serving",
+      "count_one": "{{count}} entity",
+      "count_other": "{{count}} entity"
+    },
+    "filters": {
+      "search_placeholder": "Tìm entity...",
+      "owner_placeholder": "Người phụ trách"
+    },
+    "columns": {
+      "name": "Entity",
+      "owner": "Người phụ trách",
+      "primary_keys": "Primary keys",
+      "join_keys": "Join keys",
+      "status": "Trạng thái"
+    },
+    "detail": {
+      "select_hint": "Chọn một entity để xem grain.",
+      "primary_keys": "Primary keys",
+      "join_keys": "Join keys",
+      "source_of_truth": "Source of truth",
+      "description": "Mô tả",
+      "relationships_link": "Mở quan hệ"
+    },
+    "status": {
+      "draft": "Bản nháp",
+      "validated": "Đã xác thực",
+      "production": "Production",
+      "deprecated": "Ngưng dùng"
+    },
+    "empty": {
+      "title": "Chưa có entity",
+      "hint": "Điều chỉnh bộ lọc hoặc tạo registry mới."
+    }
+  },
+  "relationships": {
+    "page": {
+      "title": "Relationships",
+      "subtitle": "Liên kết rõ ràng giữa các entity",
+      "count_one": "{{count}} relationship",
+      "count_other": "{{count}} relationship"
+    },
+    "filters": {
+      "search_placeholder": "Tìm relationship...",
+      "left_placeholder": "Entity trái",
+      "right_placeholder": "Entity phải"
+    },
+    "columns": {
+      "name": "Relationship",
+      "left": "Trái",
+      "right": "Phải",
+      "type": "Loại",
+      "status": "Trạng thái"
+    },
+    "detail": {
+      "select_hint": "Chọn một relationship để xem join keys.",
+      "join_keys": "Join keys",
+      "temporal": "Temporal",
+      "description": "Mô tả",
+      "left_link": "Mở entity"
+    },
+    "status": {
+      "draft": "Bản nháp",
+      "validated": "Đã xác thực",
+      "production": "Production",
+      "deprecated": "Ngưng dùng"
+    },
+    "empty": {
+      "title": "Chưa có relationship",
+      "hint": "Điều chỉnh bộ lọc hoặc tạo registry mới."
+    }
+  },
+  "featureViews": {
+    "page": {
+      "title": "Feature View",
+      "subtitle": "Các view kỹ thuật được tạo từ data source và entity relationship",
+      "count_one": "{{count}} feature view",
+      "count_other": "{{count}} feature view"
+    },
+    "filters": {
+      "entity_placeholder": "Entity",
+      "owner_placeholder": "Người phụ trách",
+      "search_placeholder": "Tìm feature view..."
+    },
+    "columns": {
+      "name": "View",
+      "entity": "Entity",
+      "source": "Nguồn",
+      "owner": "Người phụ trách",
+      "features": "Features",
+      "status": "Trạng thái"
+    },
+    "detail": {
+      "select_hint": "Chọn một feature view để xem mapping.",
+      "source_entity": "Source entity",
+      "relationship": "Quan hệ",
+      "aggregation": "Aggregation",
+      "description": "Mô tả",
+      "features": "Feature đã map",
+      "feature_link": "Mở feature",
+      "no_features": "Chưa có feature được map"
+    },
+    "status": {
+      "draft": "Bản nháp",
+      "validated": "Đã xác thực",
+      "production": "Production",
+      "deprecated": "Ngưng dùng"
+    },
+    "empty": {
+      "title": "Chưa có feature view",
+      "hint": "Điều chỉnh bộ lọc hoặc tạo registry mới."
+    },
+    "actions": {
+      "refresh": "Làm mới"
+    }
+  },
+  "featureSets": {
+    "page": {
+      "title": "Feature Set",
+      "subtitle": "Các bundle phục vụ được tổ chức theo target entity và rule rollup",
+      "count_one": "{{count}} feature set",
+      "count_other": "{{count}} feature set"
+    },
+    "filters": {
+      "entity_placeholder": "Target entity",
+      "owner_placeholder": "Người phụ trách",
+      "search_placeholder": "Tìm feature set..."
+    },
+    "columns": {
+      "name": "Set",
+      "target_entity": "Target entity",
+      "use_case": "Use case",
+      "owner": "Người phụ trách",
+      "features": "Features",
+      "status": "Trạng thái"
+    },
+    "detail": {
+      "select_hint": "Chọn một feature set để xem rule phục vụ.",
+      "use_case": "Use case",
+      "description": "Mô tả",
+      "rollup_rules": "Rollup rules",
+      "features": "Feature đã chọn",
+      "feature_link": "Mở feature",
+      "no_features": "Chưa có feature được chọn"
+    },
+    "validation": {
+      "ok": "Feature set production đã pass validation.",
+      "high_leakage": "{{count}} feature được chọn có rủi ro leakage cao: {{features}}"
+    },
+    "status": {
+      "draft": "Bản nháp",
+      "validated": "Đã xác thực",
+      "production": "Production",
+      "deprecated": "Ngưng dùng"
+    },
+    "empty": {
+      "title": "Chưa có feature set",
+      "hint": "Điều chỉnh bộ lọc hoặc tạo registry mới."
+    },
+    "actions": {
+      "refresh": "Làm mới"
+    }
+  }
+}

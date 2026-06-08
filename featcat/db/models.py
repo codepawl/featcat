@@ -95,6 +95,14 @@ class Feature(Base):
     definition_type: Mapped[str | None] = mapped_column(Text)
     definition_updated_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
     generation_hints: Mapped[str | None] = mapped_column(Text)
+    entity_grain: Mapped[str | None] = mapped_column(Text)
+    business_metric_name: Mapped[str | None] = mapped_column(Text)
+    metric_domain: Mapped[str | None] = mapped_column(Text)
+    lifecycle_stage: Mapped[str | None] = mapped_column(Text)
+    metric_group: Mapped[str | None] = mapped_column(Text)
+    metric_level: Mapped[str | None] = mapped_column(Text)
+    business_objective: Mapped[str | None] = mapped_column(Text)
+    leakage_risk: Mapped[str] = mapped_column(Text, nullable=False, default="low", server_default="low")
     # T1.2 — embedding for vector similarity search. ``vector(384)`` on postgres
     # (HNSW-indexed via Alembic migration), JSON-encoded TEXT on sqlite.
     # Populated by featcat/ai/embeddings.py; nullable so features without
@@ -108,6 +116,118 @@ class Feature(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False, default="draft", server_default="draft")
     status_changed_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
     status_notes: Mapped[str | None] = mapped_column(Text)
+
+
+class Entity(Base):
+    __tablename__ = "entities"
+    __table_args__ = (
+        Index("idx_entities_name", "name"),
+        Index("idx_entities_owner", "owner"),
+    )
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    name: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+    primary_keys: Mapped[str] = mapped_column(Text, nullable=False, default="[]", server_default="[]")
+    join_keys: Mapped[str] = mapped_column(Text, nullable=False, default="[]", server_default="[]")
+    description: Mapped[str] = mapped_column(Text, default="", server_default="")
+    owner: Mapped[str] = mapped_column(Text, default="", server_default="")
+    source_of_truth: Mapped[str] = mapped_column(Text, default="", server_default="")
+    lifecycle_status: Mapped[str] = mapped_column(Text, nullable=False, default="draft", server_default="draft")
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+
+
+class EntityRelationship(Base):
+    __tablename__ = "entity_relationships"
+    __table_args__ = (
+        Index("idx_entity_relationships_left", "left_entity"),
+        Index("idx_entity_relationships_right", "right_entity"),
+        Index("idx_entity_relationships_type", "relation_type"),
+    )
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    name: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+    left_entity: Mapped[str] = mapped_column(Text, nullable=False)
+    right_entity: Mapped[str] = mapped_column(Text, nullable=False)
+    relation_type: Mapped[str] = mapped_column(Text, nullable=False)
+    join_keys: Mapped[str] = mapped_column(Text, nullable=False, default="[]", server_default="[]")
+    valid_from: Mapped[str | None] = mapped_column(Text)
+    valid_to: Mapped[str | None] = mapped_column(Text)
+    event_time: Mapped[str | None] = mapped_column(Text)
+    description: Mapped[str] = mapped_column(Text, default="", server_default="")
+    owner: Mapped[str] = mapped_column(Text, default="", server_default="")
+    lifecycle_status: Mapped[str] = mapped_column(Text, nullable=False, default="draft", server_default="draft")
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+
+
+class FeatureView(Base):
+    __tablename__ = "feature_views"
+    __table_args__ = (
+        Index("idx_feature_views_entity", "entity"),
+        Index("idx_feature_views_owner", "owner"),
+    )
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    name: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+    entity: Mapped[str] = mapped_column(Text, nullable=False)
+    source_name: Mapped[str] = mapped_column(Text, default="", server_default="")
+    source_entity: Mapped[str | None] = mapped_column(Text)
+    relationship: Mapped[str | None] = mapped_column(Text)
+    aggregation: Mapped[str] = mapped_column(Text, default="", server_default="")
+    feature_names: Mapped[str] = mapped_column(Text, nullable=False, default="[]", server_default="[]")
+    description: Mapped[str] = mapped_column(Text, default="", server_default="")
+    owner: Mapped[str] = mapped_column(Text, default="", server_default="")
+    lifecycle_status: Mapped[str] = mapped_column(Text, nullable=False, default="draft", server_default="draft")
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+
+
+class FeatureSet(Base):
+    __tablename__ = "feature_sets"
+    __table_args__ = (
+        Index("idx_feature_sets_target", "target_entity"),
+        Index("idx_feature_sets_owner", "owner"),
+    )
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    name: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+    target_entity: Mapped[str] = mapped_column(Text, nullable=False)
+    feature_names: Mapped[str] = mapped_column(Text, nullable=False, default="[]", server_default="[]")
+    rollup_rules: Mapped[str] = mapped_column(Text, nullable=False, default="{}", server_default="{}")
+    use_case: Mapped[str] = mapped_column(Text, default="", server_default="")
+    description: Mapped[str] = mapped_column(Text, default="", server_default="")
+    owner: Mapped[str] = mapped_column(Text, default="", server_default="")
+    lifecycle_status: Mapped[str] = mapped_column(Text, nullable=False, default="draft", server_default="draft")
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+
+
+class BusinessMetric(Base):
+    __tablename__ = "business_metrics"
+    __table_args__ = (
+        Index("idx_business_metrics_domain", "metric_domain"),
+        Index("idx_business_metrics_stage", "lifecycle_stage"),
+        Index("idx_business_metrics_level", "metric_level"),
+        Index("idx_business_metrics_owner", "owner"),
+    )
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    name: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+    business_metric_name: Mapped[str] = mapped_column(Text, nullable=False)
+    business_definition: Mapped[str] = mapped_column(Text, default="", server_default="")
+    metric_domain: Mapped[str] = mapped_column(Text, nullable=False)
+    lifecycle_stage: Mapped[str] = mapped_column(Text, nullable=False)
+    metric_group: Mapped[str] = mapped_column(Text, default="", server_default="")
+    metric_level: Mapped[str] = mapped_column(Text, nullable=False)
+    entity_grain: Mapped[str] = mapped_column(Text, nullable=False)
+    aggregation_rule: Mapped[str] = mapped_column(Text, default="", server_default="")
+    mapped_features: Mapped[str] = mapped_column(Text, nullable=False, default="[]", server_default="[]")
+    owner: Mapped[str] = mapped_column(Text, default="", server_default="")
+    lifecycle_status: Mapped[str] = mapped_column(Text, nullable=False, default="draft", server_default="draft")
+    allowed_use_cases: Mapped[str] = mapped_column(Text, nullable=False, default="[]", server_default="[]")
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
 
 
 class FeatureDoc(Base):
@@ -333,6 +453,7 @@ class FeatureGroup(Base):
     description: Mapped[str] = mapped_column(Text, default="", server_default="")
     project: Mapped[str] = mapped_column(Text, default="", server_default="")
     owner: Mapped[str] = mapped_column(Text, default="", server_default="")
+    lifecycle_status: Mapped[str] = mapped_column(Text, nullable=False, default="draft", server_default="draft")
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
 
@@ -512,11 +633,15 @@ __all__ = [
     "ActionItem",
     "Base",
     "DataSource",
+    "Entity",
+    "EntityRelationship",
     "Feature",
     "FeatureDoc",
     "FeatureGroup",
     "FeatureGroupMember",
     "FeatureLineage",
+    "FeatureSet",
+    "FeatureView",
     "FeatureVersion",
     "JobLog",
     "JobSchedule",

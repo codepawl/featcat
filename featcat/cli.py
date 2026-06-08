@@ -20,7 +20,17 @@ from sqlalchemy import text
 
 from .catalog.factory import get_backend
 from .catalog.local import DEFAULT_DB, LocalBackend
-from .catalog.models import DataSource, Feature, FeatureGroup, OnlineFeatureWrite
+from .catalog.models import (
+    BusinessMetric,
+    DataSource,
+    Entity,
+    EntityRelationship,
+    Feature,
+    FeatureGroup,
+    FeatureSet,
+    FeatureView,
+    OnlineFeatureWrite,
+)
 from .catalog.scanner import detect_file_format, discover_files, scan_source
 from .catalog.storage import is_s3_uri
 from .catalog.usage import log_feature_usage, resolve_user
@@ -34,6 +44,11 @@ if TYPE_CHECKING:
 app = typer.Typer(name="featcat", help="Lightweight AI-powered Feature Catalog")
 source_app = typer.Typer(help="Manage data sources")
 feature_app = typer.Typer(help="Manage features")
+entity_app = typer.Typer(help="Manage entities")
+relationship_app = typer.Typer(help="Manage entity relationships")
+feature_view_app = typer.Typer(help="Manage feature views")
+feature_set_app = typer.Typer(help="Manage feature sets")
+metric_app = typer.Typer(help="Business metrics registry")
 doc_app = typer.Typer(help="AI-generated feature documentation")
 monitor_app = typer.Typer(help="Feature quality monitoring")
 cache_app = typer.Typer(help="Manage LLM response cache")
@@ -61,6 +76,11 @@ backup_app = typer.Typer(
 )
 app.add_typer(source_app, name="source")
 app.add_typer(feature_app, name="feature")
+app.add_typer(entity_app, name="entity")
+app.add_typer(relationship_app, name="relationship")
+app.add_typer(feature_view_app, name="feature-view")
+app.add_typer(feature_set_app, name="feature-set")
+app.add_typer(metric_app, name="metric")
 app.add_typer(doc_app, name="doc")
 app.add_typer(monitor_app, name="monitor")
 app.add_typer(cache_app, name="cache")
@@ -137,6 +157,16 @@ def _read_jsonl_objects(path: Path, *, label: str) -> list[dict[str, Any]]:
             raise typer.Exit(1)
         objects.append(row)
     return objects
+
+
+def _config_section(data: dict[str, Any], *keys: str) -> list[dict[str, Any]]:
+    for key in keys:
+        value = data.get(key)
+        if isinstance(value, dict):
+            return [value]
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, dict)]
+    return []
 
 
 def _confirm_typing(name: str, impact_summary: str, *, skip: bool = False) -> bool:
@@ -236,6 +266,112 @@ def setup_cmd(
         raise typer.Exit(1) from None
 
     console.print(f"\n[bold]Next steps:[/bold]\n  cd {target}\n  docker compose up -d\n  featcat doctor   # verify")
+
+
+@app.command("apply")
+def apply_cmd(
+    config_path: Path = typer.Argument(  # noqa: B008
+        ..., help="YAML config file with sources/entities/relationships/features/metrics/feature sets"
+    ),
+) -> None:
+    """Apply a registry config file in dependency order."""
+    from .config import _load_yaml
+
+    data = _load_yaml(config_path)
+    if not data:
+        console.print(f"[red]Config file is empty or invalid:[/red] {config_path}")
+        raise typer.Exit(1)
+
+    db = _get_db()
+    created: dict[str, int] = {
+        "sources": 0,
+        "entities": 0,
+        "relationships": 0,
+        "features": 0,
+        "feature_views": 0,
+        "business_metrics": 0,
+        "feature_sets": 0,
+    }
+    try:
+        for item in _config_section(data, "sources", "source"):
+            source = DataSource.model_validate(item)
+            existing = db.get_source_by_name(source.name)
+            if existing is None:
+                db.add_source(source)
+                created["sources"] += 1
+            elif existing.path == source.path and existing.storage_type == source.storage_type:
+                db.update_source(
+                    source.name,
+                    description=source.description or None,
+                    format=source.format,
+                    entity_key=source.entity_key,
+                    event_timestamp_column=source.event_timestamp_column,
+                    created_timestamp_column=source.created_timestamp_column,
+                )
+            else:
+                console.print(f"[red]Source already exists with different path:[/red] {source.name}")
+                raise typer.Exit(1)
+
+        for item in _config_section(data, "entities", "entity"):
+            entity = Entity.model_validate(item)
+            db.upsert_entity(entity)
+            created["entities"] += 1
+
+        for item in _config_section(data, "relationships", "entity_relationships", "relationship"):
+            relationship = EntityRelationship.model_validate(item)
+            db.upsert_entity_relationship(relationship)
+            created["relationships"] += 1
+
+        for item in _config_section(data, "features", "feature"):
+            payload = dict(item)
+            source_name = payload.pop("source_name", None) or payload.pop("data_source_name", None)
+            source_id = payload.get("data_source_id")
+            if not source_id:
+                if not source_name:
+                    console.print(
+                        "[red]Feature is missing data source reference:[/red] use source_name or data_source_id"
+                    )
+                    raise typer.Exit(1)
+                source = db.get_source_by_name(source_name)
+                if source is None:
+                    console.print(f"[red]Source not found for feature:[/red] {source_name}")
+                    raise typer.Exit(1)
+                payload["data_source_id"] = source.id
+            if not payload.get("name") and source_name and payload.get("column_name"):
+                payload["name"] = f"{source_name}.{payload['column_name']}"
+            feature = Feature.model_validate(payload)
+            db.upsert_feature(feature)
+            created["features"] += 1
+
+        for item in _config_section(data, "feature_views", "feature_view"):
+            payload = dict(item)
+            if "features" in payload and "feature_names" not in payload:
+                payload["feature_names"] = payload.pop("features")
+            feature_view = FeatureView.model_validate(payload)
+            db.upsert_feature_view(feature_view)
+            created["feature_views"] += 1
+
+        for item in _config_section(data, "business_metrics", "business_metric", "metrics", "metric"):
+            payload = dict(item)
+            if "features" in payload and "mapped_features" not in payload:
+                payload["mapped_features"] = payload.pop("features")
+            metric = BusinessMetric.model_validate(payload)
+            db.upsert_business_metric(metric)
+            created["business_metrics"] += 1
+
+        for item in _config_section(data, "feature_sets", "feature_set"):
+            payload = dict(item)
+            if "features" in payload and "feature_names" not in payload:
+                payload["feature_names"] = payload.pop("features")
+            feature_set = FeatureSet.model_validate(payload)
+            db.upsert_feature_set(feature_set)
+            created["feature_sets"] += 1
+    finally:
+        db.close()
+
+    console.print(
+        "[green]Applied config:[/green] " + ", ".join(f"{key}={value}" for key, value in created.items() if value > 0)
+    )
 
 
 @app.command()
@@ -1003,6 +1139,61 @@ def online_materialize(
         raise typer.Exit(1)
 
 
+@online_app.command("materialize-view")
+def online_materialize_view(
+    feature_view_name: str = typer.Option(..., "--feature-view-name", help="Registered FeatureView name"),
+    project: str = typer.Option("", "--project", help="Project namespace"),
+    json_output: bool = typer.Option(False, "--json", "-j", help="Emit structured JSON"),
+) -> None:
+    """Materialize the registered FeatureView into the online store."""
+    from .catalog.materialization import materialize_latest_from_feature_view
+    from .catalog.materialization_audit import record_materialization_audit, record_materialization_error_audit
+
+    db = _get_db()
+    try:
+        db.init_db()
+        try:
+            result = materialize_latest_from_feature_view(
+                db,
+                feature_view_name=feature_view_name,
+                project=project,
+            )
+        except Exception as exc:
+            record_materialization_error_audit(
+                db,
+                source_name="",
+                project=project,
+                feature_view=feature_view_name,
+                feature_columns=[],
+                error=exc,
+                actor=resolve_user(),
+            )
+            console.print(f"[red]Online materialization error:[/red] {exc}")
+            raise typer.Exit(1) from None
+        record_materialization_audit(db, result=result, actor=resolve_user())
+    finally:
+        db.close()
+
+    payload = asdict(result)
+    if json_output:
+        print(json.dumps(payload, indent=2, default=str))
+    elif result.is_valid:
+        console.print(
+            "[green]Online materialization complete:[/green] "
+            f"feature_view={result.feature_view} source={result.source_name} "
+            f"entities={result.entity_count} features={result.feature_count} "
+            f"requested={result.requested} written={result.written}"
+        )
+    else:
+        console.print("[red]Online materialization failed:[/red]")
+        for error in result.errors:
+            field = f" ({error.field})" if error.field else ""
+            console.print(f"  [red]{error.code}[/red]{field}: {error.message}")
+
+    if not result.is_valid:
+        raise typer.Exit(1)
+
+
 @app.command("materialize")
 def materialize(
     source: str = typer.Option(..., "--source", help="Registered DataSource name"),
@@ -1017,6 +1208,20 @@ def materialize(
         features=features,
         project=project,
         feature_view=feature_view,
+        json_output=json_output,
+    )
+
+
+@app.command("materialize-view")
+def materialize_view(
+    feature_view_name: str = typer.Option(..., "--feature-view-name", help="Registered FeatureView name"),
+    project: str = typer.Option("", "--project", help="Project namespace"),
+    json_output: bool = typer.Option(False, "--json", "-j", help="Emit structured JSON"),
+) -> None:
+    """Materialize a registered FeatureView to the online store."""
+    online_materialize_view(
+        feature_view_name=feature_view_name,
+        project=project,
         json_output=json_output,
     )
 
@@ -1636,6 +1841,14 @@ def feature_info(
     console.print(f"  Dtype:       {feature.dtype}")
     console.print(f"  Description: {feature.description or '(none)'}")
     console.print(f"  Owner:       {feature.owner or '(none)'}")
+    console.print(f"  Metric:      {feature.business_metric_name or '(none)'}")
+    console.print(f"  Domain:      {feature.metric_domain or '(none)'}")
+    console.print(f"  Stage:       {feature.lifecycle_stage or '(none)'}")
+    console.print(f"  Group:       {feature.metric_group or '(none)'}")
+    console.print(f"  Level:       {feature.metric_level or '(none)'}")
+    console.print(f"  Entity:      {feature.entity_grain or '(none)'}")
+    console.print(f"  Objective:   {feature.business_objective or '(none)'}")
+    console.print(f"  Leakage:     {feature.leakage_risk}")
     console.print(f"  Tags:        {', '.join(feature.tags) if feature.tags else '(none)'}")
     console.print(f"  Source ID:   {feature.data_source_id}")
     console.print(f"  Created:     {feature.created_at}")
@@ -1900,6 +2113,516 @@ def feature_search(
         table.add_row(f.name, f.column_name, f.dtype, tags_str)
 
     console.print(table)
+
+
+@entity_app.command("list")
+def entity_list(
+    json_output: bool = typer.Option(False, "--json", "-j", help="Emit JSON to stdout instead of a table"),
+) -> None:
+    """List registered entities."""
+    db = _get_db()
+    entities = db.list_entities()
+    db.close()
+
+    def _render() -> None:
+        if not entities:
+            console.print("[dim]No entities registered[/dim]")
+            return
+        table = Table(title=f"Entities ({len(entities)})")
+        table.add_column("Name", style="cyan")
+        table.add_column("Primary Keys")
+        table.add_column("Join Keys")
+        table.add_column("Owner")
+        table.add_column("Status")
+        for entity in entities:
+            table.add_row(
+                entity.name,
+                ", ".join(entity.primary_keys),
+                ", ".join(entity.join_keys),
+                entity.owner or "-",
+                entity.lifecycle_status,
+            )
+        console.print(table)
+
+    _emit([entity.model_dump(mode="json") for entity in entities], _render, json_mode=json_output)
+
+
+@entity_app.command("info")
+def entity_info(name: str = typer.Argument(help="Entity name")) -> None:
+    """Show detailed information about an entity."""
+    db = _get_db()
+    entity = db.get_entity_by_name(name)
+    db.close()
+
+    if entity is None:
+        console.print(f"[red]Entity not found:[/red] {name}")
+        raise typer.Exit(1)
+
+    console.print(f"\n[bold cyan]{entity.name}[/bold cyan]")
+    console.print(f"  Primary keys: {', '.join(entity.primary_keys)}")
+    console.print(f"  Join keys:    {', '.join(entity.join_keys) if entity.join_keys else '(none)'}")
+    console.print(f"  Owner:        {entity.owner or '(none)'}")
+    console.print(f"  Source:       {entity.source_of_truth or '(none)'}")
+    console.print(f"  Status:       {entity.lifecycle_status}")
+    console.print(f"  Description:  {entity.description or '(none)'}")
+
+
+@entity_app.command("upsert")
+def entity_upsert(
+    name: str = typer.Argument(help="Entity name"),
+    primary_key: list[str] = typer.Option(  # noqa: B008
+        ...,
+        "--primary-key",
+        help="Primary key (repeatable)",
+    ),
+    join_key: list[str] = typer.Option(  # noqa: B008
+        [],
+        "--join-key",
+        help="Join key (repeatable)",
+    ),
+    description: str = typer.Option("", "--description", help="Entity description"),
+    owner: str = typer.Option("", "--owner", help="Owner team or person"),
+    source_of_truth: str = typer.Option("", "--source-of-truth", help="Source of truth"),
+    lifecycle_status: str = typer.Option(  # noqa: B008
+        "draft",
+        "--lifecycle-status",
+        help="draft | validated | production | deprecated",
+    ),
+) -> None:
+    """Create or update an entity registry entry."""
+    db = _get_db()
+    try:
+        entity = Entity(
+            name=name,
+            primary_keys=primary_key,
+            join_keys=join_key,
+            description=description,
+            owner=owner,
+            source_of_truth=source_of_truth,
+            lifecycle_status=lifecycle_status,
+        )
+        persisted = db.upsert_entity(entity)
+    finally:
+        db.close()
+    console.print(f"[green]Updated entity:[/green] {persisted.name}")
+
+
+@relationship_app.command("list")
+def relationship_list(
+    left_entity: str | None = typer.Option(None, "--left-entity", help="Filter by left entity"),
+    right_entity: str | None = typer.Option(None, "--right-entity", help="Filter by right entity"),
+    relation_type: str | None = typer.Option(None, "--relation-type", help="Filter by relation type"),
+    json_output: bool = typer.Option(False, "--json", "-j", help="Emit JSON to stdout instead of a table"),
+) -> None:
+    """List entity relationships."""
+    db = _get_db()
+    relationships = db.list_entity_relationships(
+        left_entity=left_entity,
+        right_entity=right_entity,
+        relation_type=relation_type,
+    )
+    db.close()
+
+    def _render() -> None:
+        if not relationships:
+            console.print("[dim]No entity relationships registered[/dim]")
+            return
+        table = Table(title=f"Entity Relationships ({len(relationships)})")
+        table.add_column("Name", style="cyan")
+        table.add_column("Left")
+        table.add_column("Right")
+        table.add_column("Type")
+        table.add_column("Join Keys")
+        for rel in relationships:
+            table.add_row(
+                rel.name,
+                rel.left_entity,
+                rel.right_entity,
+                rel.relation_type,
+                ", ".join(f"{jk.left_key}->{jk.right_key}" for jk in rel.join_keys),
+            )
+        console.print(table)
+
+    _emit([rel.model_dump(mode="json") for rel in relationships], _render, json_mode=json_output)
+
+
+@relationship_app.command("info")
+def relationship_info(name: str = typer.Argument(help="Relationship name")) -> None:
+    """Show detailed information about a relationship."""
+    db = _get_db()
+    relationship = db.get_entity_relationship_by_name(name)
+    db.close()
+
+    if relationship is None:
+        console.print(f"[red]Entity relationship not found:[/red] {name}")
+        raise typer.Exit(1)
+
+    console.print(f"\n[bold cyan]{relationship.name}[/bold cyan]")
+    console.print(f"  Left:        {relationship.left_entity}")
+    console.print(f"  Right:       {relationship.right_entity}")
+    console.print(f"  Type:        {relationship.relation_type}")
+    console.print(f"  Join keys:   {', '.join(f'{jk.left_key}->{jk.right_key}' for jk in relationship.join_keys)}")
+    console.print(f"  Event time:   {relationship.event_time or '(none)'}")
+    console.print(f"  Valid from:   {relationship.valid_from or '(none)'}")
+    console.print(f"  Valid to:     {relationship.valid_to or '(none)'}")
+    console.print(f"  Owner:        {relationship.owner or '(none)'}")
+    console.print(f"  Status:       {relationship.lifecycle_status}")
+    console.print(f"  Description:  {relationship.description or '(none)'}")
+
+
+@relationship_app.command("upsert")
+def relationship_upsert(
+    name: str = typer.Argument(help="Relationship name"),
+    left_entity: str = typer.Option(..., "--left-entity", help="Left entity"),
+    right_entity: str = typer.Option(..., "--right-entity", help="Right entity"),
+    relation_type: str = typer.Option(  # noqa: B008
+        ...,
+        "--relation-type",
+        help="one_to_one | one_to_many | many_to_one | many_to_many",
+    ),
+    left_key: list[str] = typer.Option(  # noqa: B008
+        ...,
+        "--left-key",
+        help="Left key (repeatable)",
+    ),
+    right_key: list[str] = typer.Option(  # noqa: B008
+        ...,
+        "--right-key",
+        help="Right key (repeatable)",
+    ),
+    valid_from: str | None = typer.Option(None, "--valid-from", help="Optional valid-from column"),
+    valid_to: str | None = typer.Option(None, "--valid-to", help="Optional valid-to column"),
+    event_time: str | None = typer.Option(None, "--event-time", help="Optional event time column"),
+    description: str = typer.Option("", "--description", help="Relationship description"),
+    owner: str = typer.Option("", "--owner", help="Owner team or person"),
+    lifecycle_status: str = typer.Option(  # noqa: B008
+        "draft",
+        "--lifecycle-status",
+        help="draft | validated | production | deprecated",
+    ),
+) -> None:
+    """Create or update an entity relationship registry entry."""
+    db = _get_db()
+    try:
+        join_keys = [dict(left_key=left, right_key=right) for left, right in zip(left_key, right_key, strict=False)]
+        relationship = EntityRelationship(
+            name=name,
+            left_entity=left_entity,
+            right_entity=right_entity,
+            relation_type=relation_type,
+            join_keys=join_keys,
+            valid_from=valid_from,
+            valid_to=valid_to,
+            event_time=event_time,
+            description=description,
+            owner=owner,
+            lifecycle_status=lifecycle_status,
+        )
+        persisted = db.upsert_entity_relationship(relationship)
+    finally:
+        db.close()
+    console.print(f"[green]Updated entity relationship:[/green] {persisted.name}")
+
+
+@feature_view_app.command("list")
+def feature_view_list(
+    entity: str | None = typer.Option(None, "--entity", help="Filter by entity"),  # noqa: B008
+    owner: str | None = typer.Option(None, "--owner", help="Filter by owner"),  # noqa: B008
+    json_output: bool = typer.Option(False, "--json", "-j", help="Emit JSON to stdout instead of a table"),  # noqa: B008
+) -> None:
+    """List feature views."""
+    db = _get_db()
+    items = db.list_feature_views(entity=entity, owner=owner)
+    db.close()
+
+    def _render() -> None:
+        if not items:
+            console.print("[dim]No feature views registered[/dim]")
+            return
+        table = Table(title=f"Feature Views ({len(items)})")
+        table.add_column("Name", style="cyan")
+        table.add_column("Entity")
+        table.add_column("Owner")
+        table.add_column("Features")
+        for item in items:
+            table.add_row(item.name, item.entity, item.owner or "-", ", ".join(item.feature_names))
+        console.print(table)
+
+    _emit([item.model_dump(mode="json") for item in items], _render, json_mode=json_output)
+
+
+@feature_view_app.command("info")
+def feature_view_info(name: str = typer.Argument(help="Feature view name")) -> None:
+    """Show feature view details."""
+    db = _get_db()
+    item = db.get_feature_view_by_name(name)
+    db.close()
+    if item is None:
+        console.print(f"[red]Feature view not found:[/red] {name}")
+        raise typer.Exit(1)
+    console.print(f"\n[bold cyan]{item.name}[/bold cyan]")
+    console.print(f"  Entity:      {item.entity}")
+    console.print(f"  Source:      {item.source_name or '(none)'}")
+    console.print(f"  Source ent.: {item.source_entity or '(none)'}")
+    console.print(f"  Relationship:{item.relationship or '(none)'}")
+    console.print(f"  Aggregation: {item.aggregation or '(none)'}")
+    console.print(f"  Owner:       {item.owner or '(none)'}")
+    console.print(f"  Status:      {item.lifecycle_status}")
+    console.print(f"  Features:    {', '.join(item.feature_names)}")
+
+
+@feature_view_app.command("upsert")
+def feature_view_upsert(
+    name: str = typer.Argument(help="Feature view name"),
+    entity: str = typer.Option(..., "--entity", help="Target entity"),  # noqa: B008
+    source_name: str = typer.Option("", "--source-name", help="Source name"),  # noqa: B008
+    source_entity: str | None = typer.Option(None, "--source-entity", help="Source entity"),  # noqa: B008
+    relationship: str | None = typer.Option(None, "--relationship", help="Relationship name"),  # noqa: B008
+    aggregation: str = typer.Option("", "--aggregation", help="Aggregation rule"),  # noqa: B008
+    feature_name: list[str] = typer.Option(..., "--feature-name", help="Feature name (repeatable)"),  # noqa: B008
+    description: str = typer.Option("", "--description", help="Description"),  # noqa: B008
+    owner: str = typer.Option("", "--owner", help="Owner"),  # noqa: B008
+    lifecycle_status: str = typer.Option(
+        "draft",
+        "--lifecycle-status",
+        help="draft | validated | production | deprecated",
+    ),  # noqa: B008
+) -> None:
+    db = _get_db()
+    try:
+        item = FeatureView(
+            name=name,
+            entity=entity,
+            source_name=source_name,
+            source_entity=source_entity,
+            relationship=relationship,
+            aggregation=aggregation,
+            feature_names=feature_name,
+            description=description,
+            owner=owner,
+            lifecycle_status=lifecycle_status,
+        )
+        persisted = db.upsert_feature_view(item)
+    finally:
+        db.close()
+    console.print(f"[green]Updated feature view:[/green] {persisted.name}")
+
+
+@feature_set_app.command("list")
+def feature_set_list(
+    target_entity: str | None = typer.Option(None, "--target-entity", help="Filter by target entity"),  # noqa: B008
+    owner: str | None = typer.Option(None, "--owner", help="Filter by owner"),  # noqa: B008
+    json_output: bool = typer.Option(False, "--json", "-j", help="Emit JSON to stdout instead of a table"),  # noqa: B008
+) -> None:
+    """List feature sets."""
+    db = _get_db()
+    items = db.list_feature_sets(target_entity=target_entity, owner=owner)
+    db.close()
+
+    def _render() -> None:
+        if not items:
+            console.print("[dim]No feature sets registered[/dim]")
+            return
+        table = Table(title=f"Feature Sets ({len(items)})")
+        table.add_column("Name", style="cyan")
+        table.add_column("Target")
+        table.add_column("Owner")
+        table.add_column("Features")
+        for item in items:
+            table.add_row(item.name, item.target_entity, item.owner or "-", ", ".join(item.feature_names))
+        console.print(table)
+
+    _emit([item.model_dump(mode="json") for item in items], _render, json_mode=json_output)
+
+
+@feature_set_app.command("info")
+def feature_set_info(name: str = typer.Argument(help="Feature set name")) -> None:
+    """Show feature set details."""
+    db = _get_db()
+    item = db.get_feature_set_by_name(name)
+    db.close()
+    if item is None:
+        console.print(f"[red]Feature set not found:[/red] {name}")
+        raise typer.Exit(1)
+    console.print(f"\n[bold cyan]{item.name}[/bold cyan]")
+    console.print(f"  Target:      {item.target_entity}")
+    console.print(f"  Use case:    {item.use_case or '(none)'}")
+    console.print(f"  Owner:       {item.owner or '(none)'}")
+    console.print(f"  Status:      {item.lifecycle_status}")
+    console.print(f"  Rollups:     {item.rollup_rules or {}}")
+    console.print(f"  Features:    {', '.join(item.feature_names)}")
+
+
+@feature_set_app.command("upsert")
+def feature_set_upsert(
+    name: str = typer.Argument(help="Feature set name"),
+    target_entity: str = typer.Option(..., "--target-entity", help="Target entity"),  # noqa: B008
+    feature_name: list[str] = typer.Option(..., "--feature-name", help="Feature name (repeatable)"),  # noqa: B008
+    use_case: str = typer.Option("", "--use-case", help="Use case"),  # noqa: B008
+    description: str = typer.Option("", "--description", help="Description"),  # noqa: B008
+    owner: str = typer.Option("", "--owner", help="Owner"),  # noqa: B008
+    lifecycle_status: str = typer.Option(
+        "draft",
+        "--lifecycle-status",
+        help="draft | validated | production | deprecated",
+    ),  # noqa: B008
+) -> None:
+    db = _get_db()
+    try:
+        item = FeatureSet(
+            name=name,
+            target_entity=target_entity,
+            feature_names=feature_name,
+            use_case=use_case,
+            description=description,
+            owner=owner,
+            lifecycle_status=lifecycle_status,
+        )
+        persisted = db.upsert_feature_set(item)
+    finally:
+        db.close()
+    console.print(f"[green]Updated feature set:[/green] {persisted.name}")
+
+
+@metric_app.command("list")
+def metric_list(
+    metric_domain: str | None = typer.Option(None, "--metric-domain", help="Filter by metric domain"),
+    lifecycle_stage: str | None = typer.Option(None, "--lifecycle-stage", help="Filter by lifecycle stage"),
+    metric_level: str | None = typer.Option(None, "--metric-level", help="Filter by metric level"),
+    business_objective: str | None = typer.Option(None, "--business-objective", help="Filter by objective text"),
+    owner: str | None = typer.Option(None, "--owner", help="Filter by owner"),
+    search: str | None = typer.Option(None, "--search", "-s", help="Keyword search"),
+    json_output: bool = typer.Option(False, "--json", "-j", help="Emit JSON to stdout instead of a table"),
+) -> None:
+    """List business metrics with taxonomy filters."""
+    db = _get_db()
+    metrics = db.list_business_metrics(
+        metric_domain=metric_domain,
+        lifecycle_stage=lifecycle_stage,
+        metric_level=metric_level,
+        owner=owner,
+    )
+    db.close()
+
+    if business_objective:
+        metrics = [m for m in metrics if business_objective.lower() in (m.business_definition or "").lower()]
+    if search:
+        needle = search.lower()
+        metrics = [
+            m
+            for m in metrics
+            if needle in m.name.lower()
+            or needle in m.business_metric_name.lower()
+            or needle in m.business_definition.lower()
+            or any(needle in feature.lower() for feature in m.mapped_features)
+        ]
+
+    def _render() -> None:
+        if not metrics:
+            console.print("[dim]No business metrics match these filters[/dim]")
+            return
+
+        table = Table(title=f"Business Metrics ({len(metrics)})")
+        table.add_column("Name", style="cyan")
+        table.add_column("Metric")
+        table.add_column("Domain")
+        table.add_column("Stage")
+        table.add_column("Level")
+        table.add_column("Owner")
+        table.add_column("Mapped Features")
+        for metric in metrics:
+            table.add_row(
+                metric.name,
+                metric.business_metric_name,
+                metric.metric_domain,
+                metric.lifecycle_stage,
+                metric.metric_level,
+                metric.owner or "-",
+                ", ".join(metric.mapped_features),
+            )
+        console.print(table)
+
+    _emit([m.model_dump(mode="json") for m in metrics], _render, json_mode=json_output)
+
+
+@metric_app.command("info")
+def metric_info(
+    name: str = typer.Argument(help="Business metric name"),
+) -> None:
+    """Show detailed information about a business metric."""
+    db = _get_db()
+    metric = db.get_business_metric_by_name(name)
+    db.close()
+
+    if metric is None:
+        console.print(f"[red]Business metric not found:[/red] {name}")
+        raise typer.Exit(1)
+
+    console.print(f"\n[bold cyan]{metric.name}[/bold cyan]")
+    console.print(f"  Metric:      {metric.business_metric_name}")
+    console.print(f"  Domain:      {metric.metric_domain}")
+    console.print(f"  Stage:       {metric.lifecycle_stage}")
+    console.print(f"  Level:       {metric.metric_level}")
+    console.print(f"  Entity grain:{metric.entity_grain}")
+    console.print(f"  Rollup:      {metric.aggregation_rule or '(none)'}")
+    console.print(f"  Objective:   {metric.business_definition or '(none)'}")
+    console.print(f"  Owner:       {metric.owner or '(none)'}")
+    console.print(f"  Status:      {metric.lifecycle_status}")
+    console.print(f"  Use cases:   {', '.join(metric.allowed_use_cases) if metric.allowed_use_cases else '(none)'}")
+    console.print(f"  Features:    {', '.join(metric.mapped_features)}")
+
+
+@metric_app.command("upsert")
+def metric_upsert(
+    name: str = typer.Argument(help="Registry name for the business metric"),
+    business_metric_name: str = typer.Option(..., "--business-metric-name", help="Business-facing metric name"),
+    business_definition: str = typer.Option("", "--business-definition", help="Business definition"),
+    metric_domain: str = typer.Option(..., "--metric-domain", help="Metric domain"),
+    lifecycle_stage: str = typer.Option(..., "--lifecycle-stage", help="Lifecycle stage"),
+    metric_group: str = typer.Option("", "--metric-group", help="Metric group"),
+    metric_level: str = typer.Option(..., "--metric-level", help="Metric level"),
+    entity_grain: str = typer.Option(..., "--entity-grain", help="Technical grain used for joins/serving"),
+    aggregation_rule: str = typer.Option("", "--aggregation-rule", help="Required when rollup is needed"),
+    mapped_features: list[str] = typer.Option(  # noqa: B008
+        ...,
+        "--mapped-feature",
+        help="Technical feature mapped to the metric",
+    ),
+    owner: str = typer.Option("", "--owner", help="Owner team or person"),
+    lifecycle_status: str = typer.Option(
+        "draft",
+        "--lifecycle-status",
+        help="draft | validated | production | deprecated",
+    ),
+    allowed_use_cases: list[str] | None = typer.Option(  # noqa: B008
+        None, "--allowed-use-case", help="Allowed use case for the metric"
+    ),
+) -> None:  # noqa: B008
+    """Create or update a business metric registry entry."""
+    db = _get_db()
+    try:
+        if allowed_use_cases is None:
+            allowed_use_cases = []
+        metric = BusinessMetric(
+            name=name,
+            business_metric_name=business_metric_name,
+            business_definition=business_definition,
+            metric_domain=metric_domain,
+            lifecycle_stage=lifecycle_stage,
+            metric_group=metric_group,
+            metric_level=metric_level,
+            entity_grain=entity_grain,
+            aggregation_rule=aggregation_rule,
+            mapped_features=mapped_features,
+            owner=owner,
+            lifecycle_status=lifecycle_status,
+            allowed_use_cases=allowed_use_cases,
+        )
+        persisted = db.upsert_business_metric(metric)
+    finally:
+        db.close()
+
+    console.print(f"[green]Updated business metric:[/green] {persisted.name}")
 
 
 @feature_app.command("history")

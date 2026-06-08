@@ -1,5 +1,5 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { useEffect, useState, useCallback, useRef, type ReactNode } from 'react'
+import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { RefreshCw, Check, AlertTriangle, Shield, FileText, FolderSearch, X, ChevronDown, ChevronRight, Pencil, Download, Tag as TagIcon, FolderPlus, Trash2 } from 'lucide-react'
 import { PageHeader } from '../components/PageHeader'
@@ -38,6 +38,14 @@ interface FeatureRow {
   dtype: string
   tags: string[]
   owner: string
+  entity_grain?: string | null
+  business_metric_name?: string | null
+  metric_domain?: string | null
+  lifecycle_stage?: string | null
+  metric_group?: string | null
+  metric_level?: string | null
+  business_objective?: string | null
+  leakage_risk?: string | null
   column_name: string
   stats: Record<string, number>
   created_at: string
@@ -752,6 +760,26 @@ function FeatureDetailModal({ feature, onClose, onDocGenerated }: { feature: Fea
           <MetaItem label={t('meta.data_type')} value={feature.dtype} mono />
           <MetaItem label={t('meta.column')} value={feature.column_name} mono />
           <MetaItem label={t('meta.owner')} value={feature.owner || '-'} />
+          {feature.entity_grain && <MetaItem label={t('meta.entity_grain')} value={feature.entity_grain} />}
+          {feature.business_metric_name && (
+            <MetaItem
+              label={t('meta.business_metric_name')}
+              value={
+                <Link
+                  to={`/business-metrics?search=${encodeURIComponent(feature.business_metric_name)}`}
+                  className="text-brand hover:underline"
+                >
+                  {feature.business_metric_name}
+                </Link>
+              }
+            />
+          )}
+          {feature.metric_domain && <MetaItem label={t('meta.metric_domain')} value={feature.metric_domain} />}
+          {feature.lifecycle_stage && <MetaItem label={t('meta.lifecycle_stage')} value={feature.lifecycle_stage} />}
+          {feature.metric_group && <MetaItem label={t('meta.metric_group')} value={feature.metric_group} />}
+          {feature.metric_level && <MetaItem label={t('meta.metric_level')} value={feature.metric_level} />}
+          {feature.business_objective && <MetaItem label={t('meta.business_objective')} value={feature.business_objective} />}
+          {feature.leakage_risk && <MetaItem label={t('meta.leakage_risk')} value={feature.leakage_risk} />}
           {feature.created_at && <MetaItem label={t('meta.created')} value={timeAgo(feature.created_at)} />}
           {feature.updated_at && <MetaItem label={t('meta.updated')} value={timeAgo(feature.updated_at)} />}
         </div>
@@ -993,7 +1021,7 @@ function Section({ title, children, last, glossaryKey }: { title: string; childr
 }
 
 
-function MetaItem({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+function MetaItem({ label, value, mono }: { label: string; value: ReactNode; mono?: boolean }) {
   return (
     <div>
       <div className="text-[10px] text-[var(--text-tertiary)] uppercase tracking-wide">{label}</div>

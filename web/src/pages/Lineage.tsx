@@ -37,6 +37,7 @@ interface ApiNode {
   source: string
   dtype: string
   owner: string
+  kind?: string
 }
 
 interface ApiEdge {
@@ -371,6 +372,7 @@ export function Lineage() {
       tooltip.html(`
         <div style="font-weight:600;margin-bottom:4px">${d.name}</div>
         <div style="color:var(--text-secondary)">${t('tooltip.dtype')}: ${d.dtype || '-'} &nbsp;|&nbsp; ${t('tooltip.source')}: ${d.source || '-'}</div>
+        <div style="color:var(--text-secondary)">${t('tooltip.kind')}: ${d.kind || d.dtype || '-'}</div>
         <div style="color:var(--text-secondary)">${t('tooltip.owner')}: ${d.owner || t('tooltip.owner_unset')}</div>
         <div style="color:var(--text-tertiary);margin-top:4px;border-top:1px solid var(--border-subtle);padding-top:4px">
           ↑ ${t('tooltip.upstream')}: ${upstreamCount} &nbsp;—&nbsp; ↓ ${t('tooltip.downstream')}: ${downstreamCount}
@@ -561,7 +563,7 @@ export function Lineage() {
         const x = n.x ?? 0, y = n.y ?? 0
         let alpha = 0.95
         if (reach) alpha = reach.all.has(n.id) ? 1 : 0.15
-        if (search && !`${n.name} ${n.source} ${n.dtype} ${n.owner}`.toLowerCase().includes(search)) {
+        if (search && !`${n.name} ${n.source} ${n.dtype} ${n.kind || ''} ${n.owner}`.toLowerCase().includes(search)) {
           alpha = Math.min(alpha, 0.18)
         }
         ctx.globalAlpha = alpha
@@ -660,6 +662,7 @@ export function Lineage() {
         tooltip.html(`
           <div style="font-weight:600;margin-bottom:4px">${hit.name}</div>
           <div style="color:var(--text-secondary)">${t('tooltip.dtype')}: ${hit.dtype || '-'} &nbsp;|&nbsp; ${t('tooltip.source')}: ${hit.source || '-'}</div>
+          <div style="color:var(--text-secondary)">${t('tooltip.kind')}: ${hit.kind || hit.dtype || '-'}</div>
           <div style="color:var(--text-secondary)">${t('tooltip.owner')}: ${hit.owner || t('tooltip.owner_unset')}</div>
           <div style="color:var(--text-tertiary);margin-top:4px;border-top:1px solid var(--border-subtle);padding-top:4px">
             ↑ ${t('tooltip.upstream')}: ${upstreamCount} &nbsp;—&nbsp; ↓ ${t('tooltip.downstream')}: ${downstreamCount}
@@ -826,7 +829,7 @@ export function Lineage() {
       return
     }
     nodeG.each(function (d) {
-      const text = `${d.name} ${d.source} ${d.dtype} ${d.owner}`.toLowerCase()
+      const text = `${d.name} ${d.source} ${d.dtype} ${d.kind || ''} ${d.owner}`.toLowerCase()
       const match = text.includes(q)
       d3.select(this).select('rect').attr('opacity', match ? 1 : 0.15)
       d3.select(this).selectAll('text').attr('opacity', match ? 1 : 0.18)

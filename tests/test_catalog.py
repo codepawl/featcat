@@ -5,12 +5,24 @@ from __future__ import annotations
 import sqlite3
 from typing import TYPE_CHECKING
 
+import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 from sqlalchemy import text
 from typer.testing import CliRunner
 
 from featcat.catalog.local import LocalBackend
-from featcat.catalog.models import ColumnInfo, DataSource, Feature, FeatureGroup
+from featcat.catalog.models import (
+    BusinessMetric,
+    ColumnInfo,
+    DataSource,
+    Entity,
+    EntityRelationship,
+    Feature,
+    FeatureGroup,
+    FeatureSet,
+    FeatureView,
+)
 from featcat.catalog.scanner import scan_source
 from featcat.cli import app
 
@@ -39,6 +51,102 @@ class TestModels:
         f = Feature(name="test.col", data_source_id="abc", column_name="col")
         assert f.tags == []
         assert f.stats == {}
+        assert f.leakage_risk == "low"
+        assert f.entity_grain is None
+        assert f.business_metric_name is None
+
+    def test_business_metric_validation(self):
+        metric = BusinessMetric(
+            name="network_quality.bad_signal_days_7d",
+            business_metric_name="bad_signal_days_7d",
+            business_definition="So ngay tin hieu kem trong 7 ngay gan nhat",
+            metric_domain="network_quality",
+            lifecycle_stage="consume",
+            metric_group="signal",
+            metric_level="customer",
+            entity_grain="customer_id",
+            mapped_features=["network_quality_customer_7d.bad_signal_days_7d"],
+        )
+
+        assert metric.lifecycle_status == "draft"
+        assert metric.allowed_use_cases == []
+
+        with pytest.raises(ValueError, match="metric_domain"):
+            BusinessMetric(
+                name="invalid.domain",
+                business_metric_name="bad_signal_days_7d",
+                metric_domain="invalid",
+                lifecycle_stage="consume",
+                metric_level="customer",
+                entity_grain="customer_id",
+                mapped_features=["network_quality_customer_7d.bad_signal_days_7d"],
+            )
+
+        with pytest.raises(ValueError, match="mapped_features"):
+            BusinessMetric(
+                name="network_quality.empty",
+                business_metric_name="empty_metric",
+                metric_domain="network_quality",
+                lifecycle_stage="consume",
+                metric_level="customer",
+                entity_grain="customer_id",
+            )
+
+        with pytest.raises(ValueError, match="aggregation_rule"):
+            BusinessMetric(
+                name="network_quality.mixed",
+                business_metric_name="mixed",
+                metric_domain="network_quality",
+                lifecycle_stage="consume",
+                metric_level="mixed",
+                entity_grain="device_id",
+                mapped_features=["network_quality_customer_7d.bad_signal_days_7d"],
+            )
+
+    def test_entity_validation(self):
+        entity = Entity(
+            name="customer",
+            primary_keys=["customer_id"],
+            join_keys=["customer_id"],
+            description="Customer level entity",
+            owner="data-platform",
+        )
+        assert entity.lifecycle_status == "draft"
+
+        with pytest.raises(ValueError, match="primary_keys"):
+            Entity(name="bad", primary_keys=[], join_keys=["customer_id"])
+
+        with pytest.raises(ValueError, match="lifecycle_status"):
+            Entity(name="bad", primary_keys=["customer_id"], join_keys=["customer_id"], lifecycle_status="x")
+
+    def test_entity_relationship_validation(self):
+        rel = EntityRelationship(
+            name="customer_has_contracts",
+            left_entity="customer",
+            right_entity="contract",
+            relation_type="one_to_many",
+            join_keys=[{"left_key": "customer_id", "right_key": "customer_id"}],
+            valid_from="contract_start_date",
+        )
+        assert rel.lifecycle_status == "draft"
+
+        with pytest.raises(ValueError, match="relation_type"):
+            EntityRelationship(
+                name="bad",
+                left_entity="customer",
+                right_entity="contract",
+                relation_type="invalid",
+                join_keys=[{"left_key": "customer_id", "right_key": "customer_id"}],
+            )
+
+        with pytest.raises(ValueError, match="join_keys"):
+            EntityRelationship(
+                name="bad",
+                left_entity="customer",
+                right_entity="contract",
+                relation_type="one_to_many",
+                join_keys=[],
+            )
 
     def test_column_info(self):
         ci = ColumnInfo(column_name="x", dtype="int64", stats={"mean": 5.0})
@@ -88,11 +196,13 @@ class TestDB:
             column_name="col1",
             dtype="int64",
             stats={"mean": 10},
+            entity_grain="customer_id",
         )
         db.upsert_feature(f)
         features = db.list_features()
         assert len(features) == 1
         assert features[0].stats["mean"] == 10
+        assert features[0].entity_grain == "customer_id"
 
         # Upsert with new stats
         f2 = Feature(
@@ -101,11 +211,13 @@ class TestDB:
             column_name="col1",
             dtype="int64",
             stats={"mean": 20},
+            entity_grain="customer_id",
         )
         db.upsert_feature(f2)
         features = db.list_features()
         assert len(features) == 1
         assert features[0].stats["mean"] == 20
+        assert features[0].entity_grain == "customer_id"
 
     def test_feature_tags(self, db: CatalogDB):
         source = DataSource(name="src", path="/x")
@@ -142,6 +254,168 @@ class TestDB:
 
         results = db.search_features("billing")
         assert len(results) == 1
+
+    def test_business_metric_crud_and_filters(self, db: CatalogDB):
+        source = DataSource(name="network_quality_customer_7d", path="/network")
+        db.add_source(source)
+        feature = Feature(
+            name="network_quality_customer_7d.bad_signal_days_7d",
+            data_source_id=source.id,
+            column_name="bad_signal_days_7d",
+            dtype="int64",
+        )
+        db.upsert_feature(feature)
+
+        metric = BusinessMetric(
+            name="network_quality.bad_signal_days_7d",
+            business_metric_name="bad_signal_days_7d",
+            business_definition="So ngay tin hieu kem trong 7 ngay gan nhat",
+            metric_domain="network_quality",
+            lifecycle_stage="consume",
+            metric_group="signal",
+            metric_level="customer",
+            entity_grain="customer_id",
+            mapped_features=[feature.name],
+            owner="network-data",
+            allowed_use_cases=["churn"],
+        )
+
+        db.upsert_business_metric(metric)
+        got = db.get_business_metric_by_name(metric.name)
+
+        assert got is not None
+        assert got.business_metric_name == "bad_signal_days_7d"
+        assert got.mapped_features == [feature.name]
+        assert got.allowed_use_cases == ["churn"]
+
+        filtered = db.list_business_metrics(
+            metric_domain="network_quality",
+            lifecycle_stage="consume",
+            metric_level="customer",
+            owner="network-data",
+        )
+        assert [m.name for m in filtered] == [metric.name]
+
+        updated = metric.model_copy(update={"owner": "ml-platform", "lifecycle_status": "validated"})
+        db.upsert_business_metric(updated)
+        got = db.get_business_metric_by_name(metric.name)
+        assert got is not None
+        assert got.owner == "ml-platform"
+        assert got.lifecycle_status == "validated"
+
+    def test_business_metric_rejects_unknown_mapped_feature(self, db: CatalogDB):
+        metric = BusinessMetric(
+            name="network_quality.missing",
+            business_metric_name="missing",
+            metric_domain="network_quality",
+            lifecycle_stage="consume",
+            metric_level="customer",
+            entity_grain="customer_id",
+            mapped_features=["missing.feature"],
+        )
+
+        with pytest.raises(ValueError, match="unknown feature"):
+            db.upsert_business_metric(metric)
+
+    def test_entity_and_relationship_crud(self, db: CatalogDB):
+        customer = Entity(
+            name="customer",
+            primary_keys=["customer_id"],
+            join_keys=["customer_id"],
+            owner="data-platform",
+        )
+        contract = Entity(
+            name="contract",
+            primary_keys=["contract_id"],
+            join_keys=["contract_id", "customer_id"],
+            owner="data-platform",
+        )
+        db.upsert_entity(customer)
+        db.upsert_entity(contract)
+
+        rel = EntityRelationship(
+            name="customer_has_contracts",
+            left_entity="customer",
+            right_entity="contract",
+            relation_type="one_to_many",
+            join_keys=[{"left_key": "customer_id", "right_key": "customer_id"}],
+            description="One customer can have multiple contracts",
+            owner="data-platform",
+        )
+        db.upsert_entity_relationship(rel)
+
+        got_entity = db.get_entity_by_name("customer")
+        assert got_entity is not None
+        assert got_entity.primary_keys == ["customer_id"]
+
+        got_rel = db.get_entity_relationship_by_name("customer_has_contracts")
+        assert got_rel is not None
+        assert got_rel.left_entity == "customer"
+        assert got_rel.join_keys[0].left_key == "customer_id"
+        assert got_rel.join_keys[0].right_key == "customer_id"
+
+        assert [e.name for e in db.list_entities()] == ["contract", "customer"]
+        assert [r.name for r in db.list_entity_relationships(left_entity="customer")] == ["customer_has_contracts"]
+
+    def test_feature_view_and_set_crud(self, db: CatalogDB, tmp_path: Path):
+        source_path = tmp_path / "src.parquet"
+        pq.write_table(
+            pa.table({"bad_signal_days_7d": [1], "contract_level_metric": [2]}),
+            source_path,
+        )
+        source = DataSource(name="src", path=str(source_path))
+        db.add_source(source)
+        db.upsert_feature(
+            Feature(
+                name="src.bad_signal_days_7d",
+                data_source_id=source.id,
+                column_name="bad_signal_days_7d",
+                entity_grain="customer_id",
+            )
+        )
+        db.upsert_feature(
+            Feature(
+                name="src.contract_level_metric",
+                data_source_id=source.id,
+                column_name="contract_level_metric",
+                entity_grain="contract_id",
+            )
+        )
+
+        view = FeatureView(
+            name="customer_network_view",
+            entity="customer",
+            source_name="src",
+            feature_names=["src.bad_signal_days_7d"],
+            owner="platform",
+        )
+        db.upsert_feature_view(view)
+        got_view = db.get_feature_view_by_name("customer_network_view")
+        assert got_view is not None
+        assert got_view.entity == "customer"
+        assert got_view.feature_names == ["src.bad_signal_days_7d"]
+
+        feature_set = FeatureSet(
+            name="churn_features_v1",
+            target_entity="customer",
+            feature_names=["src.bad_signal_days_7d"],
+            owner="ml-platform",
+        )
+        db.upsert_feature_set(feature_set)
+        got_set = db.get_feature_set_by_name("churn_features_v1")
+        assert got_set is not None
+        assert got_set.target_entity == "customer"
+        assert got_set.feature_names == ["src.bad_signal_days_7d"]
+
+        with pytest.raises(ValueError, match="rollup rule"):
+            db.upsert_feature_set(
+                FeatureSet(
+                    name="bad_set",
+                    target_entity="customer",
+                    feature_names=["src.contract_level_metric"],
+                    rollup_rules={},
+                )
+            )
 
 
 class TestSourceMutations:

@@ -3,6 +3,8 @@ import common from '../locales/en/common.json'
 import sidebar from '../locales/en/sidebar.json'
 import dashboard from '../locales/en/dashboard.json'
 import features from '../locales/en/features.json'
+import businessMetrics from '../locales/en/businessMetrics.json'
+import featureRegistry from '../locales/en/featureRegistry.json'
 import groups from '../locales/en/groups.json'
 import sources from '../locales/en/sources.json'
 import similarity from '../locales/en/similarity.json'
@@ -30,6 +32,8 @@ declare module 'i18next' {
       sidebar: typeof sidebar
       dashboard: typeof dashboard
       features: typeof features
+      businessMetrics: typeof businessMetrics
+      featureRegistry: typeof featureRegistry
       groups: typeof groups
       sources: typeof sources
       similarity: typeof similarity

@@ -1,0 +1,167 @@
+{
+  "entities": {
+    "page": {
+      "title": "Entities",
+      "subtitle": "Catalog grains used for joins and serving",
+      "count_one": "{{count}} entity",
+      "count_other": "{{count}} entities"
+    },
+    "filters": {
+      "search_placeholder": "Search entities...",
+      "owner_placeholder": "Owner"
+    },
+    "columns": {
+      "name": "Entity",
+      "owner": "Owner",
+      "primary_keys": "Primary keys",
+      "join_keys": "Join keys",
+      "status": "Status"
+    },
+    "detail": {
+      "select_hint": "Select an entity to inspect its grain.",
+      "primary_keys": "Primary keys",
+      "join_keys": "Join keys",
+      "source_of_truth": "Source of truth",
+      "description": "Description",
+      "relationships_link": "Open relationships"
+    },
+    "status": {
+      "draft": "Draft",
+      "validated": "Validated",
+      "production": "Production",
+      "deprecated": "Deprecated"
+    },
+    "empty": {
+      "title": "No entities found",
+      "hint": "Adjust filters or create a registry entry."
+    }
+  },
+  "relationships": {
+    "page": {
+      "title": "Relationships",
+      "subtitle": "Explicit links between entities",
+      "count_one": "{{count}} relationship",
+      "count_other": "{{count}} relationships"
+    },
+    "filters": {
+      "search_placeholder": "Search relationships...",
+      "left_placeholder": "Left entity",
+      "right_placeholder": "Right entity"
+    },
+    "columns": {
+      "name": "Relationship",
+      "left": "Left",
+      "right": "Right",
+      "type": "Type",
+      "status": "Status"
+    },
+    "detail": {
+      "select_hint": "Select a relationship to inspect join keys.",
+      "join_keys": "Join keys",
+      "temporal": "Temporal",
+      "description": "Description",
+      "left_link": "Open entity"
+    },
+    "status": {
+      "draft": "Draft",
+      "validated": "Validated",
+      "production": "Production",
+      "deprecated": "Deprecated"
+    },
+    "empty": {
+      "title": "No relationships found",
+      "hint": "Adjust filters or create a registry entry."
+    }
+  },
+  "featureViews": {
+    "page": {
+      "title": "Feature Views",
+      "subtitle": "Technical views built from data sources and entity relationships",
+      "count_one": "{{count}} feature view",
+      "count_other": "{{count}} feature views"
+    },
+    "filters": {
+      "entity_placeholder": "Entity",
+      "owner_placeholder": "Owner",
+      "search_placeholder": "Search feature views..."
+    },
+    "columns": {
+      "name": "View",
+      "entity": "Entity",
+      "source": "Source",
+      "owner": "Owner",
+      "features": "Features",
+      "status": "Status"
+    },
+    "detail": {
+      "select_hint": "Select a feature view to inspect its mapping.",
+      "source_entity": "Source entity",
+      "relationship": "Relationship",
+      "aggregation": "Aggregation",
+      "description": "Description",
+      "features": "Mapped features",
+      "feature_link": "Open feature",
+      "no_features": "No mapped features"
+    },
+    "status": {
+      "draft": "Draft",
+      "validated": "Validated",
+      "production": "Production",
+      "deprecated": "Deprecated"
+    },
+    "empty": {
+      "title": "No feature views found",
+      "hint": "Adjust filters or create a registry entry."
+    },
+    "actions": {
+      "refresh": "Refresh"
+    }
+  },
+  "featureSets": {
+    "page": {
+      "title": "Feature Sets",
+      "subtitle": "Serving bundles organized by the target entity and rollup rules",
+      "count_one": "{{count}} feature set",
+      "count_other": "{{count}} feature sets"
+    },
+    "filters": {
+      "entity_placeholder": "Target entity",
+      "owner_placeholder": "Owner",
+      "search_placeholder": "Search feature sets..."
+    },
+    "columns": {
+      "name": "Set",
+      "target_entity": "Target entity",
+      "use_case": "Use case",
+      "owner": "Owner",
+      "features": "Features",
+      "status": "Status"
+    },
+    "detail": {
+      "select_hint": "Select a feature set to inspect its serving rules.",
+      "use_case": "Use case",
+      "description": "Description",
+      "rollup_rules": "Rollup rules",
+      "features": "Selected features",
+      "feature_link": "Open feature",
+      "no_features": "No selected features"
+    },
+    "validation": {
+      "ok": "Validation passed for this production feature set.",
+      "high_leakage": "{{count}} selected feature has high leakage risk: {{features}}"
+    },
+    "status": {
+      "draft": "Draft",
+      "validated": "Validated",
+      "production": "Production",
+      "deprecated": "Deprecated"
+    },
+    "empty": {
+      "title": "No feature sets found",
+      "hint": "Adjust filters or create a registry entry."
+    },
+    "actions": {
+      "refresh": "Refresh"
+    }
+  }
+}

@@ -56,6 +56,165 @@ export interface DataSourceDTO {
   updated_at: string
 }
 
+export interface FeatureBusinessMetadata {
+  entity_grain?: string | null
+  business_metric_name?: string | null
+  metric_domain?: string | null
+  lifecycle_stage?: string | null
+  metric_group?: string | null
+  metric_level?: string | null
+  business_objective?: string | null
+  leakage_risk?: string | null
+}
+
+export interface EntityDTO {
+  id: string
+  name: string
+  primary_keys: string[]
+  join_keys: string[]
+  description: string
+  owner: string
+  source_of_truth: string
+  lifecycle_status: string
+  created_at: string
+  updated_at: string
+}
+
+export interface EntityUpsert {
+  name: string
+  primary_keys?: string[]
+  join_keys?: string[]
+  description?: string
+  owner?: string
+  source_of_truth?: string
+  lifecycle_status?: string
+}
+
+export interface EntityRelationshipJoinKeyDTO {
+  left_key: string
+  right_key: string
+}
+
+export interface EntityRelationshipDTO {
+  id: string
+  name: string
+  left_entity: string
+  right_entity: string
+  relation_type: string
+  join_keys: EntityRelationshipJoinKeyDTO[]
+  valid_from: string | null
+  valid_to: string | null
+  event_time: string | null
+  description: string
+  owner: string
+  lifecycle_status: string
+  created_at: string
+  updated_at: string
+}
+
+export interface EntityRelationshipUpsert {
+  name: string
+  left_entity: string
+  right_entity: string
+  relation_type: string
+  join_keys?: EntityRelationshipJoinKeyDTO[]
+  valid_from?: string | null
+  valid_to?: string | null
+  event_time?: string | null
+  description?: string
+  owner?: string
+  lifecycle_status?: string
+}
+
+export interface BusinessMetricDTO {
+  id: string
+  name: string
+  business_metric_name: string
+  business_definition: string
+  metric_domain: string
+  lifecycle_stage: string
+  metric_group: string
+  metric_level: string
+  entity_grain: string
+  aggregation_rule: string
+  mapped_features: string[]
+  owner: string
+  lifecycle_status: string
+  allowed_use_cases: string[]
+  created_at: string
+  updated_at: string
+}
+
+export interface FeatureViewDTO {
+  id: string
+  name: string
+  entity: string
+  source_name: string
+  source_entity: string | null
+  relationship: string | null
+  aggregation: string | null
+  feature_names: string[]
+  description: string
+  owner: string
+  lifecycle_status: string
+  created_at: string
+  updated_at: string
+}
+
+export interface FeatureViewUpsert {
+  name: string
+  entity: string
+  source_name: string
+  source_entity?: string | null
+  relationship?: string | null
+  aggregation?: string | null
+  feature_names?: string[]
+  description?: string
+  owner?: string
+  lifecycle_status?: string
+}
+
+export interface FeatureSetDTO {
+  id: string
+  name: string
+  target_entity: string
+  feature_names: string[]
+  rollup_rules: Record<string, string>
+  use_case: string
+  description: string
+  owner: string
+  lifecycle_status: string
+  created_at: string
+  updated_at: string
+}
+
+export interface FeatureSetUpsert {
+  name: string
+  target_entity: string
+  feature_names?: string[]
+  rollup_rules?: Record<string, string>
+  use_case?: string
+  description?: string
+  owner?: string
+  lifecycle_status?: string
+}
+
+export interface BusinessMetricUpsert {
+  name: string
+  business_metric_name: string
+  business_definition?: string
+  metric_domain: string
+  lifecycle_stage: string
+  metric_group?: string
+  metric_level: string
+  entity_grain: string
+  aggregation_rule?: string
+  mapped_features?: string[]
+  owner?: string
+  lifecycle_status?: string
+  allowed_use_cases?: string[]
+}
+
 export interface SourceCreate {
   name: string
   path: string
@@ -367,6 +526,91 @@ export const api = {
         `/features/by-name/status?name=${encodeURIComponent(name)}`,
         { method: 'POST', body: JSON.stringify(body) },
       ),
+  },
+  entities: {
+    list: () => cachedRequest<EntityDTO[]>('/entities'),
+    get: (name: string) => cachedRequest<EntityDTO>(`/entities/by-name?name=${encodeURIComponent(name)}`),
+    upsert: (data: EntityUpsert) =>
+      request<EntityDTO>('/entities', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+  },
+  entityRelationships: {
+    list: (params?: { left_entity?: string; right_entity?: string; relation_type?: string }) => {
+      const qs = new URLSearchParams()
+      if (params?.left_entity) qs.set('left_entity', params.left_entity)
+      if (params?.right_entity) qs.set('right_entity', params.right_entity)
+      if (params?.relation_type) qs.set('relation_type', params.relation_type)
+      const suffix = qs.toString() ? `?${qs.toString()}` : ''
+      return cachedRequest<EntityRelationshipDTO[]>(`/entity-relationships${suffix}`)
+    },
+    get: (name: string) =>
+      cachedRequest<EntityRelationshipDTO>(`/entity-relationships/by-name?name=${encodeURIComponent(name)}`),
+    upsert: (data: EntityRelationshipUpsert) =>
+      request<EntityRelationshipDTO>('/entity-relationships', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+  },
+  featureViews: {
+    list: (params?: { entity?: string; owner?: string }) => {
+      const qs = new URLSearchParams()
+      if (params?.entity) qs.set('entity', params.entity)
+      if (params?.owner) qs.set('owner', params.owner)
+      const suffix = qs.toString() ? `?${qs.toString()}` : ''
+      return cachedRequest<FeatureViewDTO[]>(`/feature-views${suffix}`)
+    },
+    get: (name: string) =>
+      cachedRequest<FeatureViewDTO>(`/feature-views/by-name?name=${encodeURIComponent(name)}`),
+    upsert: (data: FeatureViewUpsert) =>
+      request<FeatureViewDTO>('/feature-views', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+  },
+  featureSets: {
+    list: (params?: { target_entity?: string; owner?: string }) => {
+      const qs = new URLSearchParams()
+      if (params?.target_entity) qs.set('target_entity', params.target_entity)
+      if (params?.owner) qs.set('owner', params.owner)
+      const suffix = qs.toString() ? `?${qs.toString()}` : ''
+      return cachedRequest<FeatureSetDTO[]>(`/feature-sets${suffix}`)
+    },
+    get: (name: string) =>
+      cachedRequest<FeatureSetDTO>(`/feature-sets/by-name?name=${encodeURIComponent(name)}`),
+    upsert: (data: FeatureSetUpsert) =>
+      request<FeatureSetDTO>('/feature-sets', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+  },
+  businessMetrics: {
+    list: (params?: {
+      metric_domain?: string
+      lifecycle_stage?: string
+      metric_level?: string
+      business_objective?: string
+      owner?: string
+      search?: string
+    }) => {
+      const qs = new URLSearchParams()
+      if (params?.metric_domain) qs.set('metric_domain', params.metric_domain)
+      if (params?.lifecycle_stage) qs.set('lifecycle_stage', params.lifecycle_stage)
+      if (params?.metric_level) qs.set('metric_level', params.metric_level)
+      if (params?.business_objective) qs.set('business_objective', params.business_objective)
+      if (params?.owner) qs.set('owner', params.owner)
+      if (params?.search) qs.set('search', params.search)
+      const suffix = qs.toString() ? `?${qs.toString()}` : ''
+      return cachedRequest<BusinessMetricDTO[]>(`/business-metrics${suffix}`)
+    },
+    get: (name: string) =>
+      cachedRequest<BusinessMetricDTO>(`/business-metrics/by-name?name=${encodeURIComponent(name)}`),
+    upsert: (data: BusinessMetricUpsert) =>
+      request<BusinessMetricDTO>('/business-metrics', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
   },
   docs: {
     get: (name: string) => cachedRequest<Record<string, unknown>>(`/docs/by-name?name=${encodeURIComponent(name)}`),
