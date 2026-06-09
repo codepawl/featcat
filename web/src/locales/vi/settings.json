@@ -29,5 +29,13 @@
     "clear_expired": "Xóa mục hết hạn",
     "clear_all": "Xóa tất cả",
     "confirm_clear": "Xóa TOÀN BỘ phản hồi LLM đã cache?"
+  },
+  "status": {
+    "title": "Trạng thái hệ thống",
+    "server": "Server",
+    "llm_label": "AI / LLM",
+    "connected": "Đã kết nối",
+    "disconnected": "Mất kết nối",
+    "checking": "đang kiểm tra..."
   }
 }

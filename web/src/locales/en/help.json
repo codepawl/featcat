@@ -1,12 +1,80 @@
 {
   "page": {
     "title": "Help & Glossary",
-    "subtitle": "Definitions for every score, severity, and metric you'll see in featcat. Hover any ⓘ icon in the UI to peek at the same content inline."
+    "subtitle": "Definitions for every score, severity, and metric you'll see in featcat. Hover any ⓘ icon in the UI to peek at the same content inline, then jump here for full context."
   },
   "toc": {
     "title": "On this page"
   },
   "common": {
     "formula_label": "Formula"
+  },
+  "sections": {
+    "quick_links": "Jump to the right place",
+    "quick_links_subtitle": "Most support work starts in one of these pages. Open the pages below when a term looks confusing.",
+    "how_to_read": "How to read this glossary",
+    "how_to_read_body": "Each card explains what a term means, where it comes from, and what to do when you need to act on it.",
+    "how_to_read_item_1": "Higher scores are usually better, but inspect the trend instead of one-off value changes.",
+    "how_to_read_item_2": "When status changes from warning to critical, check the related feature history before changing monitoring baselines.",
+    "how_to_read_item_3": "Use the in-page links to jump from a definition back to the dashboard, monitor, and action surfaces."
+  },
+  "quick_links": {
+    "dashboard": {
+      "label": "Dashboard",
+      "description": "Review catalog-wide health and recent signals."
+    },
+    "monitoring": {
+      "label": "Monitoring",
+      "description": "Inspect drift and quality checks with metric-level detail."
+    },
+    "features": {
+      "label": "Feature Browser",
+      "description": "Open feature-level docs, stats, and usage details."
+    },
+    "actions": {
+      "label": "Action Items",
+      "description": "Track pending recommendations and close the loop with outcomes."
+    },
+    "audit": {
+      "label": "Audit Log",
+      "description": "Audit status changes, updates, and recommendation activity."
+    }
+  },
+  "term_context": {
+    "label": "Where you'll see it: ",
+    "next_action_label": "What to do: ",
+    "back_to_top": "Back to top",
+    "health_score": {
+      "where_seen": "Dashboard feature cards and feature table badges.",
+      "next_action": "Drill into the feature row and check docs coverage, drift checks, and usage activity for concrete causes."
+    },
+    "health_grade": {
+      "where_seen": "Feature table, group summary chips, and monitor cards.",
+      "next_action": "Use this as a triage priority, especially when grade moves from A/B to C/D."
+    },
+    "quality_score": {
+      "where_seen": "Search ranking, discovery results, and recommendation candidates.",
+      "next_action": "Improve metadata quality (name clarity, tags, and sample stats visibility) to raise discoverability."
+    },
+    "completeness": {
+      "where_seen": "Drift checks, monitoring trends, and feature detail quality panel.",
+      "next_action": "Compare latest and baseline windows before deciding whether null spikes are expected."
+    },
+    "psi": {
+      "where_seen": "Monitoring pages, alert banners, and quality trend cards.",
+      "next_action": "If PSI remains high after baseline review, inspect feature definition and upstream source changes."
+    },
+    "drift_severity": {
+      "where_seen": "Monitoring dashboard chips and action-item sources.",
+      "next_action": "Use warning to prepare checks, and treat critical as a blocking signal before feature reuse."
+    },
+    "monitoring_status": {
+      "where_seen": "Feature detail cards, group cards, and line items in monitoring views.",
+      "next_action": "Open recent monitor reports to confirm whether the status is missing baseline or an actual failure."
+    },
+    "action_item": {
+      "where_seen": "Actions page and feature-level activity streams.",
+      "next_action": "Move from pending to applied only when remediation is verified in code or docs."
+    }
   }
 }

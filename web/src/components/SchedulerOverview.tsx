@@ -47,6 +47,7 @@ import {
   type JobRun,
   type JobSummary,
 } from '../api'
+import { canWrite, useAuth } from '../auth'
 import { Badge } from './Badge'
 import { Skeleton } from './Skeleton'
 
@@ -105,6 +106,7 @@ const CRON_PRESETS = ['0 * * * *', '0 */6 * * *', '0 2 * * *', '0 3 * * 0'] as c
 
 export function SchedulerOverview({ jobLabel }: { jobLabel: (name: string) => string }) {
   const { t } = useTranslation('jobs')
+  const { auth } = useAuth()
   const [jobs, setJobs] = useState<JobSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [activeRuns, setActiveRuns] = useState<Set<string>>(new Set())
@@ -116,6 +118,7 @@ export function SchedulerOverview({ jobLabel }: { jobLabel: (name: string) => st
   const [editing, setEditing] = useState<JobSummary | null>(null)
   const [cronInput, setCronInput] = useState('')
   const [savingCron, setSavingCron] = useState(false)
+  const canMutate = canWrite(auth?.user)
 
   // Hidden-tab guard for polling.
   const visibleRef = useRef(typeof document !== 'undefined' ? !document.hidden : true)
@@ -302,6 +305,7 @@ export function SchedulerOverview({ jobLabel }: { jobLabel: (name: string) => st
                 onDetails={() => openDetail(j.name)}
                 onToggle={() => handleToggle(j)}
                 onEditSchedule={() => openEdit(j)}
+                canMutate={canMutate}
               />
             ))}
         {!loading && jobs.length === 0 && (
@@ -390,6 +394,7 @@ function SchedulerCard({
   onDetails,
   onToggle,
   onEditSchedule,
+  canMutate,
 }: {
   job: JobSummary
   jobLabel: (name: string) => string
@@ -399,6 +404,7 @@ function SchedulerCard({
   onDetails: () => void
   onToggle: () => void
   onEditSchedule: () => void
+  canMutate: boolean
 }) {
   const { t } = useTranslation('jobs')
   const status = running ? 'running' : job.last_status
@@ -451,7 +457,7 @@ function SchedulerCard({
               data-testid="job-card-menu"
               className="absolute right-0 top-7 z-20 min-w-[180px] bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg shadow-lg py-1"
             >
-              <MenuItem icon={<Pencil size={12} />} onClick={choose(onEditSchedule)}>
+              <MenuItem icon={<Pencil size={12} />} onClick={choose(onEditSchedule)} disabled={!canMutate}>
                 {t('job_card.actions.edit_schedule')}
               </MenuItem>
               <MenuItem icon={<ChevronRight size={12} />} onClick={choose(onDetails)}>
@@ -462,7 +468,7 @@ function SchedulerCard({
               <MenuItem
                 icon={running ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
                 onClick={choose(onRun)}
-                disabled={running}
+                disabled={running || !canMutate}
               >
                 {running
                   ? t('scheduler.trigger.running')
@@ -471,7 +477,7 @@ function SchedulerCard({
               <MenuItem
                 icon={<Power size={12} />}
                 onClick={choose(onToggle)}
-                disabled={toggling}
+                disabled={toggling || !canMutate}
               >
                 {job.enabled
                   ? t('job_card.actions.disable')

@@ -85,7 +85,7 @@ Features have a four-stage status: `draft → reviewed → certified → depreca
 featcat status set user_behavior.session_count_30d certified --notes "Q4 sign-off"
 ```
 
-The certification readiness check (`featcat status check`) flags missing prerequisites: doc, baseline, owner, group membership. Status changes log to `feature_status_history` for an audit trail.
+The certification readiness check (`featcat status check`) flags missing prerequisites: doc, baseline, owner, group membership. Status changes are captured in `feature_versions` for an audit trail.
 
 In the web UI, certified features get a green badge in the list and detail panel. You can filter by status and there's a Dashboard tile counting the production-ready set.
 

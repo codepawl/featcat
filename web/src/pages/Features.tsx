@@ -24,6 +24,7 @@ import { SearchInput } from '../components/SearchInput'
 import { Skeleton } from '../components/Skeleton'
 import { ScoreTooltip } from '../components/ScoreTooltip'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
+import { canWrite, useAuth } from '../auth'
 
 const PAGE_LIMIT = 50
 
@@ -92,6 +93,7 @@ function isFeatureStatus(v: string): v is FeatureStatus {
 
 export function Features() {
   const { t } = useTranslation('features')
+  const { auth } = useAuth()
   const { name: paramName } = useParams()
   const navigate = useNavigate()
   const [features, setFeatures] = useState<FeatureRow[]>([])
@@ -128,6 +130,7 @@ export function Features() {
   const [bulkBanner, setBulkBanner] = useState<{ kind: 'success' | 'error'; message: string } | null>(null)
   // For shift+click range selection on table rows.
   const lastCheckedRef = useRef<string | null>(null)
+  const canMutate = canWrite(auth?.user)
 
   // Pagination state — only consulted in paginated mode (see isPaginated below).
   // pageTotal carries the server's reported total count for "1-50 of 5234".
@@ -446,8 +449,8 @@ export function Features() {
         <FilterClearLink show={hasActiveFilters} onClick={clearAllFilters} label={t('actions.clear_all_filters')} />
         {(undocCount > 0 || batchJob !== null) && (
           <button
-            onClick={() => !batchJob && setGenModalOpen(true)}
-            disabled={batchJob !== null}
+            onClick={() => !batchJob && canMutate && setGenModalOpen(true)}
+            disabled={batchJob !== null || !canMutate}
             className="flex items-center gap-1.5 px-4 py-2 border border-[var(--border-default)] rounded-lg text-[13px] font-medium hover:bg-[var(--bg-secondary)] disabled:opacity-50 transition-colors"
           >
             {batchJob ? (
@@ -465,7 +468,11 @@ export function Features() {
             )}
           </button>
         )}
-        <button onClick={() => setScanModalOpen(true)} className="flex items-center gap-1.5 px-4 py-2 border border-[var(--border-default)] rounded-lg text-[13px] font-medium hover:bg-[var(--bg-secondary)] transition-colors">
+        <button
+          onClick={() => canMutate && setScanModalOpen(true)}
+          disabled={!canMutate}
+          className="flex items-center gap-1.5 px-4 py-2 border border-[var(--border-default)] rounded-lg text-[13px] font-medium hover:bg-[var(--bg-secondary)] disabled:opacity-50 transition-colors"
+        >
           <FolderSearch size={16} /> {t('actions.bulk_scan')}
         </button>
         {selectedForExport.size > 0 && (
@@ -492,20 +499,23 @@ export function Features() {
           </span>
           <div className="ml-auto flex flex-wrap items-center gap-2">
             <button
-              onClick={() => setBulkAddTagOpen(true)}
-              className="flex items-center gap-1.5 rounded-lg border border-[var(--border-default)] bg-[var(--bg-primary)] px-3 py-1.5 text-[12px] font-medium hover:bg-[var(--bg-secondary)]"
+              onClick={() => canMutate && setBulkAddTagOpen(true)}
+              disabled={!canMutate}
+              className="flex items-center gap-1.5 rounded-lg border border-[var(--border-default)] bg-[var(--bg-primary)] px-3 py-1.5 text-[12px] font-medium hover:bg-[var(--bg-secondary)] disabled:opacity-50"
             >
               <TagIcon size={13} /> {t('bulk.add_tag')}
             </button>
             <button
-              onClick={() => setBulkAddGroupOpen(true)}
-              className="flex items-center gap-1.5 rounded-lg border border-[var(--border-default)] bg-[var(--bg-primary)] px-3 py-1.5 text-[12px] font-medium hover:bg-[var(--bg-secondary)]"
+              onClick={() => canMutate && setBulkAddGroupOpen(true)}
+              disabled={!canMutate}
+              className="flex items-center gap-1.5 rounded-lg border border-[var(--border-default)] bg-[var(--bg-primary)] px-3 py-1.5 text-[12px] font-medium hover:bg-[var(--bg-secondary)] disabled:opacity-50"
             >
               <FolderPlus size={13} /> {t('bulk.add_to_group')}
             </button>
             <button
-              onClick={() => setBulkDeleteOpen(true)}
-              className="flex items-center gap-1.5 rounded-lg border border-[var(--danger)]/40 bg-[var(--bg-primary)] px-3 py-1.5 text-[12px] font-medium text-[var(--danger)] hover:bg-[var(--danger)]/10"
+              onClick={() => canMutate && setBulkDeleteOpen(true)}
+              disabled={!canMutate}
+              className="flex items-center gap-1.5 rounded-lg border border-[var(--danger)]/40 bg-[var(--bg-primary)] px-3 py-1.5 text-[12px] font-medium text-[var(--danger)] hover:bg-[var(--danger)]/10 disabled:opacity-50"
             >
               <Trash2 size={13} /> {t('bulk.delete')}
             </button>
@@ -542,7 +552,7 @@ export function Features() {
       </div>
 
       {selected && (
-        <FeatureDetailModal feature={selected} onClose={closeModal} onDocGenerated={load} />
+        <FeatureDetailModal feature={selected} canMutate={canMutate} onClose={closeModal} onDocGenerated={load} />
       )}
 
       <GenerateDocsModal
@@ -550,6 +560,7 @@ export function Features() {
         onClose={() => setGenModalOpen(false)}
         features={features}
         selectedSpecs={selectedForExport}
+        canMutate={canMutate}
         onStarted={(jobId, total) => {
           setGenModalOpen(false)
           const next: ActiveBatchJob = { jobId, total }
@@ -557,7 +568,12 @@ export function Features() {
           setBatchJob(next)
         }}
       />
-      <BulkScanModal open={scanModalOpen} onClose={() => setScanModalOpen(false)} onDone={() => { setScanModalOpen(false); load() }} />
+      <BulkScanModal
+        open={scanModalOpen}
+        canMutate={canMutate}
+        onClose={() => setScanModalOpen(false)}
+        onDone={() => { setScanModalOpen(false); load() }}
+      />
       <ExportModal
         open={exportOpen}
         onClose={() => setExportOpen(false)}
@@ -570,6 +586,7 @@ export function Features() {
         onClose={() => setBulkAddTagOpen(false)}
         selectedCount={selectedForExport.size}
         onConfirm={async (tag) => {
+          if (!canMutate) return
           const ids = resolveSelectedIds()
           if (ids.length === 0) return
           try {
@@ -592,6 +609,7 @@ export function Features() {
         onClose={() => setBulkAddGroupOpen(false)}
         selectedCount={selectedForExport.size}
         onConfirm={async (group) => {
+          if (!canMutate) return
           const ids = resolveSelectedIds()
           if (ids.length === 0) return
           try {
@@ -623,6 +641,7 @@ export function Features() {
         onClose={() => setBulkDeleteOpen(false)}
         names={[...selectedForExport]}
         onConfirm={async () => {
+          if (!canMutate) return
           const ids = resolveSelectedIds()
           if (ids.length === 0) return
           try {
@@ -645,7 +664,17 @@ export function Features() {
 }
 
 
-function FeatureDetailModal({ feature, onClose, onDocGenerated }: { feature: FeatureRow; onClose: () => void; onDocGenerated: () => void }) {
+function FeatureDetailModal({
+  feature,
+  canMutate,
+  onClose,
+  onDocGenerated,
+}: {
+  feature: FeatureRow
+  canMutate: boolean
+  onClose: () => void
+  onDocGenerated: () => void
+}) {
   const { t } = useTranslation('features')
   const [doc, setDoc] = useState<Record<string, unknown> | null>(null)
   const [docLoading, setDocLoading] = useState(true)
@@ -682,6 +711,7 @@ function FeatureDetailModal({ feature, onClose, onDocGenerated }: { feature: Fea
   }, [feature.name])
 
   const generateDoc = async () => {
+    if (!canMutate) return
     setGenerating(true)
     try {
       await api.docs.generate({ feature_name: feature.name })
@@ -695,6 +725,7 @@ function FeatureDetailModal({ feature, onClose, onDocGenerated }: { feature: Fea
   }
 
   const computeBaseline = async () => {
+    if (!canMutate) return
     setBlLoading(true)
     try {
       await api.monitor.baseline()
@@ -736,6 +767,7 @@ function FeatureDetailModal({ feature, onClose, onDocGenerated }: { feature: Fea
           <FeatureStatusTransition
             featureName={feature.name}
             current={feature.status}
+            disabled={!canMutate}
             onTransitioned={(newStatus) => {
               // Update the feature's in-memory status so the badge re-renders
               // immediately. The parent's `onDocGenerated` doubles as our
@@ -833,13 +865,20 @@ function FeatureDetailModal({ feature, onClose, onDocGenerated }: { feature: Fea
             <textarea value={defForm.definition} onChange={(e) => setDefForm((f) => ({ ...f, definition: e.target.value }))}
               rows={4} className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-xs font-mono focus:border-brand outline-none" />
             <div className="flex gap-2">
-              <button onClick={async () => {
-                await api.definitions.save(feature.name, defForm)
-                invalidateCache('/features')
-                const d = await api.definitions.get(feature.name)
-                setDefinition(d)
-                setDefEditing(false)
-              }} className="px-3 py-1.5 text-xs bg-brand text-white rounded-lg">{t('actions.save', { ns: 'common' })}</button>
+              <button
+                disabled={!canMutate}
+                onClick={async () => {
+                  if (!canMutate) return
+                  await api.definitions.save(feature.name, defForm)
+                  invalidateCache('/features')
+                  const d = await api.definitions.get(feature.name)
+                  setDefinition(d)
+                  setDefEditing(false)
+                }}
+                className="px-3 py-1.5 text-xs bg-brand text-white rounded-lg disabled:opacity-50"
+              >
+                {t('actions.save', { ns: 'common' })}
+              </button>
               <button onClick={() => setDefEditing(false)} className="px-3 py-1.5 text-xs border border-[var(--border-default)] rounded-lg">{t('actions.cancel', { ns: 'common' })}</button>
             </div>
           </div>
@@ -847,16 +886,34 @@ function FeatureDetailModal({ feature, onClose, onDocGenerated }: { feature: Fea
           <div>
             <div className="flex items-center gap-2 mb-2">
               <Badge variant="info">{String(definition.definition_type)}</Badge>
-              <button onClick={() => { setDefForm({ definition: String(definition.definition), definition_type: String(definition.definition_type) }); setDefEditing(true) }}
-                className="text-xs text-brand hover:underline">{t('actions.edit', { ns: 'common' })}</button>
+              <button
+                disabled={!canMutate}
+                onClick={() => {
+                  if (!canMutate) return
+                  setDefForm({ definition: String(definition.definition), definition_type: String(definition.definition_type) })
+                  setDefEditing(true)
+                }}
+                className="text-xs text-brand hover:underline disabled:opacity-50"
+              >
+                {t('actions.edit', { ns: 'common' })}
+              </button>
             </div>
             <pre className="bg-[var(--bg-secondary)] rounded-lg p-3 text-xs font-mono overflow-x-auto whitespace-pre-wrap">{String(definition.definition)}</pre>
           </div>
         ) : (
           <div className="flex items-center gap-3">
             <span className="text-sm text-[var(--text-tertiary)]">{t('definition.empty')}</span>
-            <button onClick={() => { setDefForm({ definition: '', definition_type: 'sql' }); setDefEditing(true) }}
-              className="text-xs text-brand hover:underline">{t('definition.add')}</button>
+            <button
+              disabled={!canMutate}
+              onClick={() => {
+                if (!canMutate) return
+                setDefForm({ definition: '', definition_type: 'sql' })
+                setDefEditing(true)
+              }}
+              className="text-xs text-brand hover:underline disabled:opacity-50"
+            >
+              {t('definition.add')}
+            </button>
           </div>
         )}
       </Section>
@@ -874,7 +931,7 @@ function FeatureDetailModal({ feature, onClose, onDocGenerated }: { feature: Fea
               </Badge>
               <button
                 onClick={generateDoc}
-                disabled={generating}
+                disabled={generating || !canMutate}
                 className="inline-flex items-center gap-1 text-xs text-brand hover:underline disabled:opacity-50"
               >
                 <RefreshCw size={11} className={generating ? 'animate-spin' : ''} />
@@ -908,7 +965,11 @@ function FeatureDetailModal({ feature, onClose, onDocGenerated }: { feature: Fea
               <div className="text-sm text-[var(--text-tertiary)]">{t('documentation.empty')}</div>
               <div className="text-xs text-[var(--text-tertiary)] mt-0.5">{t('documentation.empty_hint')}</div>
             </div>
-            <button onClick={generateDoc} disabled={generating} className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-brand text-white rounded-lg disabled:opacity-50">
+            <button
+              onClick={generateDoc}
+              disabled={generating || !canMutate}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-brand text-white rounded-lg disabled:opacity-50"
+            >
               <RefreshCw size={12} className={generating ? 'animate-spin' : ''} />
               {generating ? t('actions.generating', { ns: 'common' }) : t('actions.generate', { ns: 'common' })}
             </button>
@@ -924,26 +985,51 @@ function FeatureDetailModal({ feature, onClose, onDocGenerated }: { feature: Fea
               placeholder=""
               className="w-full bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-xs focus:border-brand outline-none" />
             <div className="flex gap-2">
-              <button onClick={async () => {
-                await api.hints.save(feature.name, hintDraft)
-                invalidateCache('/features')
-                setHintData({ hints: hintDraft })
-                setHintEditing(false)
-              }} className="px-3 py-1.5 text-xs bg-brand text-white rounded-lg">{t('actions.save', { ns: 'common' })}</button>
+              <button
+                disabled={!canMutate}
+                onClick={async () => {
+                  if (!canMutate) return
+                  await api.hints.save(feature.name, hintDraft)
+                  invalidateCache('/features')
+                  setHintData({ hints: hintDraft })
+                  setHintEditing(false)
+                }}
+                className="px-3 py-1.5 text-xs bg-brand text-white rounded-lg disabled:opacity-50"
+              >
+                {t('actions.save', { ns: 'common' })}
+              </button>
               <button onClick={() => setHintEditing(false)} className="px-3 py-1.5 text-xs border border-[var(--border-default)] rounded-lg">{t('actions.cancel', { ns: 'common' })}</button>
             </div>
           </div>
         ) : hintData?.hints ? (
           <div>
             <p className="text-sm text-[var(--text-secondary)] mb-1">{hintData.hints}</p>
-            <button onClick={() => { setHintDraft(hintData.hints || ''); setHintEditing(true) }}
-              className="text-xs text-brand hover:underline">{t('actions.edit', { ns: 'common' })}</button>
+            <button
+              disabled={!canMutate}
+              onClick={() => {
+                if (!canMutate) return
+                setHintDraft(hintData.hints || '')
+                setHintEditing(true)
+              }}
+              className="text-xs text-brand hover:underline disabled:opacity-50"
+            >
+              {t('actions.edit', { ns: 'common' })}
+            </button>
           </div>
         ) : (
           <div className="flex items-center gap-3">
             <span className="text-sm text-[var(--text-tertiary)]">{t('hints.empty')}</span>
-            <button onClick={() => { setHintDraft(''); setHintEditing(true) }}
-              className="text-xs text-brand hover:underline">{t('hints.add')}</button>
+            <button
+              disabled={!canMutate}
+              onClick={() => {
+                if (!canMutate) return
+                setHintDraft('')
+                setHintEditing(true)
+              }}
+              className="text-xs text-brand hover:underline disabled:opacity-50"
+            >
+              {t('hints.add')}
+            </button>
             <span className="text-[10px] text-[var(--text-tertiary)]" title={t('hints.info_tooltip')}>ℹ</span>
           </div>
         )}
@@ -996,7 +1082,11 @@ function FeatureDetailModal({ feature, onClose, onDocGenerated }: { feature: Fea
         ) : (
           <div className="flex items-center gap-3">
             <span className="text-sm text-[var(--text-tertiary)]">{t('monitoring.empty')}</span>
-            <button onClick={computeBaseline} disabled={blLoading} className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-brand text-white rounded-lg disabled:opacity-50">
+            <button
+              onClick={computeBaseline}
+              disabled={blLoading || !canMutate}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-brand text-white rounded-lg disabled:opacity-50"
+            >
               {blLoading ? t('actions.computing') : t('actions.compute_baseline')}
             </button>
           </div>
@@ -1031,11 +1121,12 @@ function MetaItem({ label, value, mono }: { label: string; value: ReactNode; mon
 }
 
 
-function GenerateDocsModal({ open, onClose, features, selectedSpecs, onStarted }: {
+function GenerateDocsModal({ open, onClose, features, selectedSpecs, canMutate, onStarted }: {
   open: boolean
   onClose: () => void
   features: FeatureRow[]
   selectedSpecs?: Set<string>
+  canMutate: boolean
   onStarted: (jobId: string, total: number) => void
 }) {
   const { t } = useTranslation('features')
@@ -1079,7 +1170,7 @@ function GenerateDocsModal({ open, onClose, features, selectedSpecs, onStarted }
   }
 
   const handleGenerate = async () => {
-    if (!canGenerate) return
+    if (!canGenerate || !canMutate) return
     setSubmitting(true)
     try {
       const specs = targetFeatures.map(f => f.name)
@@ -1126,7 +1217,7 @@ function GenerateDocsModal({ open, onClose, features, selectedSpecs, onStarted }
     <Modal open={open} onClose={onClose} title={t('generate_modal.title')} maxWidth="max-w-2xl" actions={
       <>
         <button onClick={onClose} className="px-4 py-2 text-sm border border-[var(--border-default)] rounded-lg">{t('actions.cancel', { ns: 'common' })}</button>
-        <button onClick={handleGenerate} disabled={submitting || !canGenerate}
+        <button onClick={handleGenerate} disabled={submitting || !canGenerate || !canMutate}
           className="px-4 py-2 text-sm bg-brand text-white rounded-lg disabled:opacity-50">
           {submitting ? 'Starting...' : `Generate ${targetCount} Docs`}
         </button>
@@ -1248,7 +1339,7 @@ function GenerateDocsModal({ open, onClose, features, selectedSpecs, onStarted }
                                 placeholder="Add a hint..."
                               />
                               <div className="flex gap-1">
-                                <button onClick={() => saveHint(f.name)} className="px-2 py-0.5 text-[10px] bg-brand text-white rounded">{t('actions.save', { ns: 'common' })}</button>
+                                <button onClick={() => saveHint(f.name)} disabled={!canMutate} className="px-2 py-0.5 text-[10px] bg-brand text-white rounded disabled:opacity-50">{t('actions.save', { ns: 'common' })}</button>
                                 <button onClick={() => setEditingHint(null)} className="px-2 py-0.5 text-[10px] border border-[var(--border-default)] rounded">{t('actions.cancel', { ns: 'common' })}</button>
                               </div>
                             </div>
@@ -1260,8 +1351,13 @@ function GenerateDocsModal({ open, onClose, features, selectedSpecs, onStarted }
                                 <span className="text-[11px] text-[var(--text-tertiary)]">none</span>
                               )}
                               <button
-                                onClick={() => { setHintDrafts(prev => ({ ...prev, [f.name]: hint ?? '' })); setEditingHint(f.name) }}
-                                className="text-[var(--text-tertiary)] hover:text-brand shrink-0 p-0.5"
+                                onClick={() => {
+                                  if (!canMutate) return
+                                  setHintDrafts(prev => ({ ...prev, [f.name]: hint ?? '' }))
+                                  setEditingHint(f.name)
+                                }}
+                                disabled={!canMutate}
+                                className="text-[var(--text-tertiary)] hover:text-brand shrink-0 p-0.5 disabled:opacity-50"
                                 title={t('generate_modal.edit_hint_title')}
                               >
                                 <Pencil size={10} />
@@ -1295,7 +1391,7 @@ function GenerateDocsModal({ open, onClose, features, selectedSpecs, onStarted }
 }
 
 
-function BulkScanModal({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: () => void }) {
+function BulkScanModal({ open, onClose, onDone, canMutate }: { open: boolean; onClose: () => void; onDone: () => void; canMutate: boolean }) {
   const { t } = useTranslation('features')
   const [form, setForm] = useState({ path: '', recursive: true, owner: localStorage.getItem('featcat_user') || '', dry_run: false })
   const [tags, setTags] = useState<string[]>([])
@@ -1310,6 +1406,7 @@ function BulkScanModal({ open, onClose, onDone }: { open: boolean; onClose: () =
   }
 
   const submit = async () => {
+    if (!canMutate) return
     setScanning(true)
     try {
       const res = await api.scanBulk({ path: form.path, recursive: form.recursive, owner: form.owner, tags, dry_run: form.dry_run })
@@ -1335,7 +1432,7 @@ function BulkScanModal({ open, onClose, onDone }: { open: boolean; onClose: () =
       ) : (
         <>
           <button onClick={onClose} className="px-4 py-2 text-sm border border-[var(--border-default)] rounded-lg">{t('actions.cancel', { ns: 'common' })}</button>
-          <button onClick={submit} disabled={!form.path || scanning} className="px-4 py-2 text-sm bg-brand text-white rounded-lg disabled:opacity-50">
+          <button onClick={submit} disabled={!form.path || scanning || !canMutate} className="px-4 py-2 text-sm bg-brand text-white rounded-lg disabled:opacity-50">
             {scanning ? 'Scanning...' : 'Scan'}
           </button>
         </>
@@ -1503,6 +1600,7 @@ const TYPE_DOT_COLORS: Record<string, string> = {
   tags: 'bg-slate-400',
   definition: 'bg-amber-500',
   metadata: 'bg-gray-400',
+  status: 'bg-blue-500',
 }
 
 

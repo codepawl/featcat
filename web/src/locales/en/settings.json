@@ -29,5 +29,13 @@
     "clear_expired": "Clear expired",
     "clear_all": "Clear all",
     "confirm_clear": "Drop ALL cached LLM responses?"
+  },
+  "status": {
+    "title": "System Status",
+    "server": "Server",
+    "llm_label": "AI / LLM",
+    "connected": "Connected",
+    "disconnected": "Disconnected",
+    "checking": "checking..."
   }
 }

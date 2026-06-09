@@ -27,5 +27,8 @@
   },
   "dropdown": {
     "see_all": "Xem tất cả kết quả cho \"{{query}}\""
+  },
+  "button": {
+    "search": "Tìm kiếm"
   }
 }

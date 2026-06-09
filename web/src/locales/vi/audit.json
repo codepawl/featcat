@@ -22,7 +22,8 @@
     "hints": "Gợi ý",
     "definition": "Định nghĩa",
     "tags": "Tag",
-    "metadata": "Metadata"
+    "metadata": "Metadata",
+    "status": "Trạng thái"
   },
   "empty": "Không có thay đổi nào trong khoảng thời gian này"
 }

@@ -22,7 +22,8 @@
     "hints": "Hints",
     "definition": "Definition",
     "tags": "Tags",
-    "metadata": "Metadata"
+    "metadata": "Metadata",
+    "status": "Status"
   },
   "empty": "No changes recorded in this period"
 }

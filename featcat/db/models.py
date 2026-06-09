@@ -285,6 +285,26 @@ class ScanLog(Base):
     triggered_by: Mapped[str] = mapped_column(Text, nullable=False)  # "api" | "cli" | "scheduler"
 
 
+class AccessRequest(Base):
+    """Company access request submitted from the auth UI."""
+
+    __tablename__ = "access_requests"
+    __table_args__ = (
+        Index("idx_access_requests_created_at", "created_at"),
+        UniqueConstraint("email", name="uq_access_requests_email"),
+    )
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    email: Mapped[str] = mapped_column(Text, nullable=False)
+    display_name: Mapped[str | None] = mapped_column(Text)
+    message: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="pending", server_default="pending")
+    reviewed_by: Mapped[str | None] = mapped_column(Text)
+    reviewed_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+
+
 class DatasetBuildAudit(Base):
     """Audit row written for API/CLI training dataset build requests."""
 

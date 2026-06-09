@@ -23,29 +23,29 @@ interface Props {
 export function ChatMessage({ role, children, above }: Props) {
   return (
     <div
-      className={`flex gap-3 py-4 animate-slide-up items-start ${role === 'user' ? 'flex-row-reverse' : ''}`}
+      className={`flex gap-4.5 py-5 animate-slide-up items-start ${role === 'user' ? 'flex-row-reverse' : ''}`}
     >
       <div
-        className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
+        className={`w-8.5 h-8.5 rounded-xl flex items-center justify-center shrink-0 shadow-sm transition-all duration-200 ${
           role === 'user'
-            ? 'bg-brand text-white'
-            : 'bg-brand/10 text-brand'
+            ? 'bg-gradient-to-br from-brand to-brand-emphasis text-white'
+            : 'bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-brand'
         }`}
       >
-        {role === 'user' ? <User size={16} /> : <Brain size={16} />}
+        {role === 'user' ? <User size={15} strokeWidth={2} /> : <Brain size={15} strokeWidth={2} />}
       </div>
       <div className={`min-w-0 flex-1 ${role === 'user' ? 'text-right' : ''}`}>
         {above && (
-          <div className="mb-1.5 max-w-[85%] text-left">
+          <div className="mb-2 max-w-[85%] text-left">
             {above}
           </div>
         )}
         {role === 'user' ? (
-          <div className="inline-block bg-brand text-white px-4 py-2.5 rounded-2xl rounded-br-sm text-sm max-w-[85%] text-left">
+          <div className="inline-block bg-gradient-to-tr from-brand to-brand-emphasis text-white px-4.5 py-3 rounded-2xl rounded-tr-sm text-[13.5px] leading-relaxed max-w-[85%] text-left shadow-sm">
             {children}
           </div>
         ) : (
-          <div className="inline-block bg-[var(--bg-secondary)] border border-[var(--border-default)] text-[var(--text-primary)] px-4 py-2.5 rounded-2xl rounded-tl-sm text-sm leading-relaxed max-w-[85%] text-left">
+          <div className="inline-block bg-[var(--bg-secondary)] text-[var(--text-primary)] px-4.5 py-3 rounded-2xl rounded-tl-sm text-[13.5px] leading-relaxed max-w-[85%] text-left shadow-sm">
             {children}
           </div>
         )}

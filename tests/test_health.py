@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import pytest
+from fastapi.testclient import TestClient
 
 from featcat.catalog.health import compute_health_score
+from featcat.catalog.local import LocalBackend
+from featcat.config import load_settings
 
 
 class TestComputeHealthScore:
@@ -117,22 +120,38 @@ class TestComputeHealthScore:
 class TestHealthAPI:
     @pytest.fixture()
     def client(self, tmp_path, monkeypatch):
-        pytest.importorskip("fastapi")
-        from fastapi.testclient import TestClient
-
+        from featcat.diagnostics.models import CheckResult, CheckStatus, GroupReport
         from featcat.server.app import build_app
 
         db_path = str(tmp_path / "test_health.db")
         monkeypatch.setenv("FEATCAT_CATALOG_DB_PATH", db_path)
+        monkeypatch.setenv("FEATCAT_LLM_BACKEND", "disabled")
+        monkeypatch.setenv("FEATCAT_SCHEDULER_ENABLED", "false")
 
-        def _raise(**kwargs):
-            raise RuntimeError("no LLM")
+        def _run_group(name: str, **kwargs):
+            if name == "db":
+                return GroupReport(
+                    group="db",
+                    checks=[
+                        CheckResult(name="db_reachable", status=CheckStatus.PASS),
+                        CheckResult(name="db_backend", status=CheckStatus.PASS),
+                    ],
+                )
+            return GroupReport(group=name, checks=[])
 
-        monkeypatch.setattr("featcat.llm.create_llm", _raise)
+        monkeypatch.setattr("featcat.diagnostics.run_group", _run_group)
 
-        app = build_app()
+        app = build_app(use_lifespan=False)
+        settings = load_settings()
+        backend = LocalBackend(settings.catalog_db_path)
+        backend.init_db()
+        app.state.backend = backend
+        app.state.settings = settings
+        app.state.llm = None
+        app.state.scheduler = None
         with TestClient(app) as c:
             yield c
+        backend.close()
 
     def test_list_features_includes_health(self, client):
         resp = client.get("/api/features")

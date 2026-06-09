@@ -147,7 +147,7 @@ These print after every completion. For load monitoring, instrument at the app s
 
 ## Audit trail
 
-Status changes (`features.status`) are logged to `feature_status_history` with `changed_by` and `notes`. Useful for "who certified `churn_v2.feature_X` and when?"
+Status changes (`features.status`) are logged in `feature_versions` with `changed_by` and `notes`. Useful for "who certified `churn_v2.feature_X` and when?"
 
 Source changes (path / description) are logged to the audit table when `FEATCAT_AUDIT_LOG=true` (off by default — adds write overhead).
 

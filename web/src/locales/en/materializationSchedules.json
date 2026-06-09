@@ -1,7 +1,7 @@
 {
   "page": {
-    "title": "Materialization Schedules",
-    "subtitle": "Interval schedules for online feature materialization"
+    "title": "Materialization",
+    "subtitle": "Interval runs for online feature materialization"
   },
   "table": {
     "title": "Schedules"
@@ -45,12 +45,12 @@
     "error": "Schedule action failed"
   },
   "empty": {
-    "title": "No materialization schedules yet",
-    "description": "Materialization schedules will appear after they are created through the CLI, API, or SDK."
+    "title": "No materialization configurations yet",
+    "description": "Materialization configurations will appear after they are created through the CLI, API, or SDK."
   },
   "error": {
-    "title": "Could not load materialization schedules",
-    "description": "The materialization schedule API failed.",
+    "title": "Could not load materializations",
+    "description": "The materialization API failed.",
     "retry": "Retry"
   }
 }

@@ -8,6 +8,7 @@ import os
 import sys
 import time
 from dataclasses import asdict
+from fnmatch import fnmatch
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -48,6 +49,7 @@ entity_app = typer.Typer(help="Manage entities")
 relationship_app = typer.Typer(help="Manage entity relationships")
 feature_view_app = typer.Typer(help="Manage feature views")
 feature_set_app = typer.Typer(help="Manage feature sets")
+flow_app = typer.Typer(help="End-to-end feature onboarding workflow")
 metric_app = typer.Typer(help="Business metrics registry")
 doc_app = typer.Typer(help="AI-generated feature documentation")
 monitor_app = typer.Typer(help="Feature quality monitoring")
@@ -75,12 +77,18 @@ backup_app = typer.Typer(
     invoke_without_command=True,
 )
 app.add_typer(source_app, name="source")
+app.add_typer(source_app, name="src")
 app.add_typer(feature_app, name="feature")
 app.add_typer(entity_app, name="entity")
+app.add_typer(entity_app, name="ent")
 app.add_typer(relationship_app, name="relationship")
+app.add_typer(relationship_app, name="rel")
 app.add_typer(feature_view_app, name="feature-view")
+app.add_typer(feature_view_app, name="fv")
 app.add_typer(feature_set_app, name="feature-set")
+app.add_typer(feature_set_app, name="fs")
 app.add_typer(metric_app, name="metric")
+app.add_typer(flow_app, name="flow")
 app.add_typer(doc_app, name="doc")
 app.add_typer(monitor_app, name="monitor")
 app.add_typer(cache_app, name="cache")
@@ -372,6 +380,233 @@ def apply_cmd(
     console.print(
         "[green]Applied config:[/green] " + ", ".join(f"{key}={value}" for key, value in created.items() if value > 0)
     )
+
+
+def _parse_feature_view_specs(
+    specs: list[str],
+    source_name: str,
+    columns: list[str],
+) -> list[tuple[str, list[str]]]:
+    """Parse ``name[:glob]`` specs into ``(name, feature_names)`` tuples."""
+    if not specs:
+        # Backward compatible shorthand: one view over all scanned features.
+        return [(f"{source_name}_all", [f"{source_name}.{c}" for c in columns])]
+
+    parsed: list[tuple[str, list[str]]] = []
+    seen_names: set[str] = set()
+    for raw in specs:
+        raw = raw.strip()
+        if not raw:
+            continue
+
+        if ":" in raw:
+            view_name, pattern = [part.strip() for part in raw.split(":", 1)]
+            pattern = pattern or "*"
+        else:
+            view_name, pattern = raw, "*"
+
+        if not view_name:
+            raise ValueError("feature-view names cannot be empty")
+        if view_name in seen_names:
+            raise ValueError(f"duplicate feature-view name: {view_name}")
+        matched = [col for col in columns if fnmatch(col, pattern)]
+        if not matched:
+            raise ValueError(f"no columns matched feature-view pattern '{raw}'")
+
+        seen: set[str] = set()
+        feature_names = []
+        for feature_name in [f"{source_name}.{col}" for col in matched]:
+            if feature_name in seen:
+                continue
+            seen.add(feature_name)
+            feature_names.append(feature_name)
+
+        parsed.append((view_name, feature_names))
+        seen_names.add(view_name)
+
+    return parsed
+
+
+@flow_app.command("upsert")
+def flow_upsert(
+    path: str = typer.Argument(help="Path to source data file (Parquet/CSV) or directory"),
+    source_name: str = typer.Option("", "--source-name", "-s", help="Source name (defaults to input filename stem)"),
+    entity: str = typer.Option(..., "--entity", "-e", help="Target entity name"),
+    entity_primary_key: list[str] = typer.Option(..., "--entity-key", "-k", help="Entity primary key(s), repeatable"),
+    entity_join_key: list[str] = typer.Option([], "--entity-join-key", "-j", help="Entity join key(s), repeatable"),
+    feature_view: list[str] = typer.Option(
+        [],
+        "--feature-view",
+        "-v",
+        help=(
+            "FeatureView spec in the form NAME[:COLUMN_GLOB]. Repeat to create multiple views."
+            " Defaults to one view over all columns when omitted."
+        ),
+    ),
+    feature_set: str = typer.Option("", "--feature-set", "-f", help="Feature set name (defaults to <source>_set)"),
+    feature_set_views: list[str] = typer.Option(
+        [],
+        "--with-feature-view",
+        "-x",
+        help="FeatureView names to include in the feature set. Defaults to all created views.",
+    ),
+    relationship: str = typer.Option(
+        "", "--relationship", help="Optional existing relationship name to attach to each view"
+    ),
+    fmt: str | None = typer.Option(None, "--format", help="Source format: parquet or csv"),
+    description: str = typer.Option("", "--description", help="Source description"),
+) -> None:
+    """One-command onboarding: source → entity → feature views → feature set."""
+    if is_s3_uri(path):
+        resolved_path = path
+        storage_type = "s3"
+    else:
+        local_path = Path(path).resolve()
+        if not local_path.exists():
+            console.print(f"[red]Source path not found:[/red] {path}")
+            raise typer.Exit(1)
+        resolved_path = str(local_path)
+        storage_type = "local"
+
+    effective_source_name = source_name.strip() or Path(path).stem
+    source_payload = {
+        "name": effective_source_name,
+        "path": resolved_path,
+        "storage_type": storage_type,
+        "format": fmt or detect_file_format(resolved_path),
+        "description": description,
+    }
+
+    db = _get_db()
+    try:
+        existing = db.get_source_by_name(effective_source_name)
+        if existing is None:
+            source = DataSource.model_validate(source_payload)
+            db.add_source(source)
+            source_record = source
+            console.print(f"[green]Source added:[/green] {source_record.name} -> {source_record.path}")
+        else:
+            if existing.path != resolved_path or existing.storage_type != storage_type:
+                console.print(
+                    f"[red]Source name already exists with different path or storage type:[/red] {effective_source_name}"
+                )
+                raise typer.Exit(1)
+            db.update_source(
+                effective_source_name,
+                description=description,
+                format=source_payload["format"],
+            )
+            source_record = existing
+            console.print(f"[yellow]Source already exists; updated metadata:[/yellow] {source_record.name}")
+
+        try:
+            columns = scan_source(source_record.path)
+        except Exception as e:
+            console.print(f"[red]Scan failed:[/red] {e}")
+            raise typer.Exit(1) from None
+
+        column_names = [col.column_name for col in columns]
+        if not column_names:
+            console.print("[yellow]No columns found to register.[/yellow]")
+            raise typer.Exit(1)
+
+        feature_count = 0
+        for col in columns:
+            feature = Feature(
+                name=f"{source_record.name}.{col.column_name}",
+                data_source_id=source_record.id,
+                column_name=col.column_name,
+                dtype=col.dtype,
+                stats=col.stats,
+            )
+            db.upsert_feature(feature)
+            feature_count += 1
+        console.print(f"[green]Features upserted:[/green] {feature_count}")
+
+        entity_obj = Entity(
+            name=entity,
+            primary_keys=entity_primary_key,
+            join_keys=entity_join_key,
+            lifecycle_status="draft",
+        )
+        db.upsert_entity(entity_obj)
+        console.print(f"[green]Entity upserted:[/green] {entity}")
+
+        if feature_set_views:
+            feature_set_view_names = feature_set_views
+        else:
+            feature_set_view_names = []
+
+        view_specs = _parse_feature_view_specs(feature_view, source_record.name, column_names)
+        feature_views_created: list[str] = []
+        feature_view_features: dict[str, list[str]] = {}
+
+        for view_name, view_feature_names in view_specs:
+            fv = FeatureView(
+                name=view_name,
+                entity=entity,
+                source_name=source_record.name,
+                source_entity=entity,
+                relationship=relationship or None,
+                feature_names=view_feature_names,
+            )
+            db.upsert_feature_view(fv)
+            feature_views_created.append(view_name)
+            feature_view_features[view_name] = view_feature_names
+            console.print(f"[green]FeatureView upserted:[/green] {view_name}")
+
+        if not feature_set_view_names:
+            feature_set_view_names = feature_views_created.copy()
+
+        selected_feature_names: list[str] = []
+        seen: set[str] = set()
+        missing_views = [name for name in feature_set_view_names if name not in feature_view_features]
+        if missing_views:
+            console.print(
+                f"[red]Unknown feature views for --with-feature-view:[/red] {', '.join(sorted(missing_views))}"
+            )
+            raise typer.Exit(1)
+
+        for view_name in feature_set_view_names:
+            for feature_name in feature_view_features[view_name]:
+                if feature_name not in seen:
+                    selected_feature_names.append(feature_name)
+                    seen.add(feature_name)
+
+        if not selected_feature_names:
+            console.print("[red]No features selected for feature set.[/red]")
+            raise typer.Exit(1)
+
+        feature_set_record = FeatureSet(
+            name=feature_set or f"{source_record.name}_set",
+            target_entity=entity,
+            feature_names=selected_feature_names,
+        )
+        db.upsert_feature_set(feature_set_record)
+        console.print(f"[green]FeatureSet upserted:[/green] {feature_set_record.name}")
+
+    finally:
+        db.close()
+
+    console.print(
+        "\n".join(
+            [
+                "[bold]Flow upsert complete[/bold]",
+                f"  Source: {source_record.name}",
+                f"  Entity: {entity} (key={','.join(entity_primary_key)})",
+                f"  Feature views: {', '.join(feature_set_view_names)}",
+                f"  Feature set: {feature_set_record.name}",
+            ]
+        )
+    )
+
+
+@flow_app.command("apply")
+def flow_apply(
+    config_path: Path = typer.Argument(..., help="YAML config file path (reuses `featcat apply`)"),
+) -> None:
+    """Apply a config file with the same behavior as `featcat apply`."""
+    apply_cmd(config_path)
 
 
 @app.command()

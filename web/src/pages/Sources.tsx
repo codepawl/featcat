@@ -18,6 +18,7 @@ import { MetricCard } from '../components/MetricCard'
 import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
 import { Skeleton } from '../components/Skeleton'
+import { canDelete, canWrite, useAuth } from '../auth'
 
 type TypeFilter = 'all' | 'local' | 's3'
 type SortKey = 'name' | 'feature_count'
@@ -56,6 +57,7 @@ interface DetailState {
 
 export function Sources() {
   const { t } = useTranslation('sources')
+  const { auth } = useAuth()
   const navigate = useNavigate()
   const { name: routeName } = useParams<{ name: string }>()
   const [sources, setSources] = useState<DataSourceDTO[]>([])
@@ -74,6 +76,8 @@ export function Sources() {
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const [selectedForScan, setSelectedForScan] = useState<Set<string>>(new Set())
   const [scanningRows, setScanningRows] = useState<Set<string>>(new Set())
+  const canMutate = canWrite(auth?.user)
+  const canRemove = canDelete(auth?.user)
 
   const load = () => {
     setLoading(true)
@@ -277,6 +281,7 @@ export function Sources() {
         actions={
           <button
             onClick={() => setCreateOpen(true)}
+            disabled={!canMutate}
             className="flex items-center gap-1.5 px-4 py-2 bg-brand text-white rounded-lg text-[13px] font-medium hover:bg-brand-emphasis transition-colors"
           >
             <Plus size={16} />
@@ -314,7 +319,7 @@ export function Sources() {
                 </button>
                 <button
                   onClick={() => setBulkDeleteOpen(true)}
-                  disabled={scanningRows.size > 0}
+                  disabled={scanningRows.size > 0 || !canRemove}
                   className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-[var(--danger)] border border-[var(--danger)] rounded hover:bg-[var(--danger-subtle-bg)] disabled:opacity-50"
                 >
                   <Trash2 size={12} />
@@ -322,7 +327,7 @@ export function Sources() {
                 </button>
                 <button
                   onClick={scanBulk}
-                  disabled={scanningRows.size > 0}
+                  disabled={scanningRows.size > 0 || !canMutate}
                   className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium bg-brand text-white rounded disabled:opacity-50"
                 >
                   <RefreshCw size={12} className={scanningRows.size > 0 ? 'animate-spin' : ''} />
@@ -381,6 +386,7 @@ export function Sources() {
                 <p className="text-sm text-[var(--text-secondary)] mb-3">{t('list.empty_title')}</p>
                 <button
                   onClick={() => setCreateOpen(true)}
+                  disabled={!canMutate}
                   className="text-xs text-brand hover:underline"
                 >
                   {t('list.empty_cta')}
@@ -420,13 +426,15 @@ export function Sources() {
               <Skeleton className="h-32" />
             </div>
           ) : detail ? (
-            <SourceDetail
-              key={detail.source.name}
-              detail={detail}
-              scanning={scanning}
-              onScan={scanSelected}
-              onDelete={() => setDeleteOpen(true)}
-            />
+              <SourceDetail
+                key={detail.source.name}
+                detail={detail}
+                scanning={scanning}
+                canScan={canMutate}
+                canDelete={canRemove}
+                onScan={scanSelected}
+                onDelete={() => setDeleteOpen(true)}
+              />
           ) : (
             <div className="h-full flex items-center justify-center p-10 text-sm text-[var(--text-tertiary)]">
               {t('detail.select_hint')}
@@ -735,11 +743,15 @@ function formatDuration(seconds: number | null): string {
 function SourceDetail({
   detail,
   scanning,
+  canScan,
+  canDelete,
   onScan,
   onDelete,
 }: {
   detail: DetailState
   scanning: boolean
+  canScan: boolean
+  canDelete: boolean
   onScan: () => void
   onDelete: () => void
 }) {
@@ -770,7 +782,7 @@ function SourceDetail({
         <div className="flex gap-2">
           <button
             onClick={onScan}
-            disabled={scanning}
+            disabled={scanning || !canScan}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] border border-[var(--border-default)] rounded-lg bg-[var(--bg-primary)] hover:bg-[var(--bg-secondary)] disabled:opacity-50"
           >
             <RefreshCw size={14} className={scanning ? 'animate-spin' : ''} />
@@ -778,7 +790,7 @@ function SourceDetail({
           </button>
           <button
             onClick={onDelete}
-            disabled={scanning}
+            disabled={scanning || !canDelete}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] border border-[var(--border-default)] rounded-lg text-[var(--danger)] hover:bg-[var(--danger-subtle-bg)] disabled:opacity-50"
           >
             <Trash2 size={14} />

@@ -8,6 +8,7 @@ import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
 import { RefreshButton } from '../components/RefreshButton'
 import { Skeleton } from '../components/Skeleton'
+import { canWrite, useAuth } from '../auth'
 
 const STATUS_KEYS = ['pending', 'applied', 'dismissed', 'snoozed', 'all'] as const
 
@@ -22,6 +23,7 @@ const SOURCE_ICONS: Record<ActionSource, typeof AlertTriangle> = {
 
 export function Actions() {
   const { t } = useTranslation('actions')
+  const { auth } = useAuth()
   const navigate = useNavigate()
   const [items, setItems] = useState<ActionItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -30,6 +32,7 @@ export function Actions() {
   const [confirm, setConfirm] = useState<{ item: ActionItem; mode: 'applied' | 'dismissed' } | null>(null)
   const [summary, setSummary] = useState('')
   const [busy, setBusy] = useState(false)
+  const canMutate = canWrite(auth?.user)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -157,12 +160,14 @@ export function Actions() {
                     <div className="flex gap-2 shrink-0">
                       <button
                         onClick={() => setConfirm({ item: it, mode: 'applied' })}
+                        disabled={!canMutate}
                         className="flex items-center gap-1 px-3 py-1.5 text-[12px] font-medium border border-green-500/40 text-green-700 dark:text-green-400 rounded-lg hover:bg-green-500/10"
                       >
                         <CheckCircle2 size={12} /> {t('actions_buttons.apply')}
                       </button>
                       <button
                         onClick={() => setConfirm({ item: it, mode: 'dismissed' })}
+                        disabled={!canMutate}
                         className="flex items-center gap-1 px-3 py-1.5 text-[12px] font-medium border border-[var(--border-default)] rounded-lg hover:bg-[var(--bg-secondary)]"
                       >
                         <XCircle size={12} /> {t('actions_buttons.dismiss')}
@@ -196,7 +201,7 @@ export function Actions() {
             </button>
             <button
               onClick={applyMutation}
-              disabled={busy}
+              disabled={busy || !canMutate}
               className="px-4 py-2 text-[13px] font-medium bg-brand text-[var(--bg-primary)] rounded-lg disabled:opacity-50"
             >
               {busy ? t('actions_buttons.saving') : t('actions_buttons.confirm')}

@@ -1,14 +1,48 @@
 import i18n from './i18n/config'
 
 const API = '/api'
+export const AUTH_TOKEN_STORAGE_KEY = 'featcat:auth:token'
 
 // Simple client-side cache for GET requests
 const cache = new Map<string, { data: any; timestamp: number }>()
 const CACHE_TTL = 10_000 // 10 seconds
 
+export function getAuthToken(): string | null {
+  if (typeof window === 'undefined') return null
+  try {
+    return window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)
+  } catch {
+    return null
+  }
+}
+
+export function setAuthToken(token: string): void {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token.trim())
+  } catch {
+    /* ignore quota / storage denial */
+  }
+}
+
+export function clearAuthToken(): void {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY)
+  } catch {
+    /* ignore quota / storage denial */
+  }
+}
+
 async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  const token = getAuthToken()
   const res = await fetch(`${API}${endpoint}`, {
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options?.headers,
+    },
     ...options,
   })
   if (!res.ok) {
@@ -41,6 +75,43 @@ export function invalidateCache(prefix?: string) {
   } else {
     cache.clear()
   }
+}
+
+export type AuthRole = 'viewer' | 'editor' | 'admin'
+
+export interface AuthPrincipal {
+  email: string
+  role: AuthRole
+  groups: string[]
+  auth_type: string
+}
+
+export interface AuthState {
+  authenticated: boolean
+  required: boolean
+  user: AuthPrincipal | null
+}
+
+export interface AuthConfig {
+  company_name: string
+  allowed_email_domains: string[]
+  request_access_enabled: boolean
+}
+
+export interface AccessRequestCreate {
+  email: string
+  display_name?: string
+  message?: string
+}
+
+export interface AccessRequestItem {
+  id: string
+  email: string
+  display_name: string | null
+  message: string | null
+  status: string
+  created_at: string
+  updated_at: string
 }
 
 // --- Sources ---
@@ -434,6 +505,16 @@ export const api = {
   stats: () => cachedRequest<Record<string, number>>('/stats'),
   docDebt: () => cachedRequest<{ owner: string; source: string; total: number; undocumented: number; pct_undocumented: number }[]>('/stats/doc-debt'),
   statsBySource: () => cachedRequest<{ source_name: string; path: string; feature_count: number; documented_count: number; drift_alerts: number; critical_alerts: number; last_scanned: string | null; top_drifting_feature: string | null }[]>('/stats/by-source'),
+  auth: {
+    me: () => request<AuthState>('/auth/me'),
+    config: () => cachedRequest<AuthConfig>('/auth/config'),
+    requestAccess: (body: AccessRequestCreate) =>
+      request<AccessRequestItem>('/auth/request-access', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    accessRequests: () => cachedRequest<AccessRequestItem[]>('/auth/access-requests'),
+  },
   sources: {
     list: () => cachedRequest<DataSourceDTO[]>('/sources'),
     get: (name: string) => cachedRequest<DataSourceDTO>(`/sources/${encodeURIComponent(name)}`),

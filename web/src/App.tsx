@@ -1,6 +1,8 @@
-import { lazy, Suspense } from 'react'
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Layout } from './components/Layout'
+import { api, clearAuthToken, setAuthToken, type AuthState } from './api'
+import { AuthProvider } from './auth'
 
 const Dashboard = lazy(() => import('./pages/Dashboard').then((m) => ({ default: m.Dashboard })))
 const Features = lazy(() => import('./pages/Features').then((m) => ({ default: m.Features })))
@@ -17,11 +19,9 @@ const Lineage = lazy(() => import('./pages/Lineage').then((m) => ({ default: m.L
 const Monitoring = lazy(() => import('./pages/Monitoring').then((m) => ({ default: m.Monitoring })))
 const Jobs = lazy(() => import('./pages/Jobs').then((m) => ({ default: m.Jobs })))
 const DatasetBuilds = lazy(() => import('./pages/DatasetBuilds').then((m) => ({ default: m.DatasetBuilds })))
-const MaterializationRuns = lazy(() => import('./pages/MaterializationRuns').then((m) => ({ default: m.MaterializationRuns })))
 const MaterializationSchedules = lazy(() => import('./pages/MaterializationSchedules').then((m) => ({ default: m.MaterializationSchedules })))
 const Audit = lazy(() => import('./pages/Audit').then((m) => ({ default: m.Audit })))
 const Chat = lazy(() => import('./pages/Chat').then((m) => ({ default: m.Chat })))
-const Settings = lazy(() => import('./pages/Settings').then((m) => ({ default: m.Settings })))
 const Actions = lazy(() => import('./pages/Actions').then((m) => ({ default: m.Actions })))
 const Help = lazy(() => import('./pages/Help').then((m) => ({ default: m.Help })))
 const SearchPage = lazy(() => import('./pages/Search').then((m) => ({ default: m.Search })))
@@ -41,45 +41,134 @@ function RouteFallback() {
 }
 
 export default function App() {
+  const [auth, setAuth] = useState<AuthState | null>(null)
+  const [authLoading, setAuthLoading] = useState(true)
+
+  const refreshAuth = useCallback(async () => {
+    try {
+      const state = await api.auth.me()
+      setAuth(state)
+    } catch {
+      setAuth({ authenticated: false, required: false, user: null })
+    } finally {
+      setAuthLoading(false)
+    }
+  }, [])
+
+  const signInWithToken = useCallback(async (token: string) => {
+    setAuthLoading(true)
+    setAuthToken(token)
+    try {
+      const state = await api.auth.me()
+      setAuth(state)
+    } catch (e) {
+      clearAuthToken()
+      setAuth({ authenticated: false, required: false, user: null })
+      throw e instanceof Error ? e : new Error('Sign in failed')
+    } finally {
+      setAuthLoading(false)
+    }
+  }, [])
+
+  const signOut = useCallback(async () => {
+    setAuthLoading(true)
+    clearAuthToken()
+    try {
+      const state = await api.auth.me()
+      setAuth(state)
+    } catch {
+      setAuth({ authenticated: false, required: false, user: null })
+    } finally {
+      setAuthLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    // Preload all lazy route code chunks when the browser is idle to speed up navigation
+    const preloadRoutes = [
+      () => import('./pages/Dashboard'),
+      () => import('./pages/Features'),
+      () => import('./pages/BusinessMetrics'),
+      () => import('./pages/Entities'),
+      () => import('./pages/EntityRelationships'),
+      () => import('./pages/FeatureViews'),
+      () => import('./pages/FeatureSets'),
+      () => import('./pages/Groups'),
+      () => import('./pages/GroupDetail'),
+      () => import('./pages/Sources'),
+      () => import('./pages/Similarity'),
+      () => import('./pages/Lineage'),
+      () => import('./pages/Monitoring'),
+      () => import('./pages/Jobs'),
+      () => import('./pages/DatasetBuilds'),
+      () => import('./pages/MaterializationSchedules'),
+      () => import('./pages/Audit'),
+      () => import('./pages/Chat'),
+      () => import('./pages/Help'),
+      () => import('./pages/Search'),
+    ]
+    const trigger = () => {
+      preloadRoutes.forEach((fn) => fn().catch(() => {}))
+    }
+    if ('requestIdleCallback' in window) {
+      window.requestIdleCallback(trigger)
+    } else {
+      setTimeout(trigger, 1000)
+    }
+  }, [])
+
+  useEffect(() => {
+    void refreshAuth()
+  }, [refreshAuth])
+
   return (
-    <BrowserRouter>
-      <Layout>
-        <Suspense fallback={<RouteFallback />}>
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/search" element={<SearchPage />} />
-            <Route path="/features" element={<Features />} />
-            <Route path="/features/:name" element={<Features />} />
-            <Route path="/business-metrics" element={<BusinessMetrics />} />
-            <Route path="/business-metrics/:name" element={<BusinessMetrics />} />
-            <Route path="/entities" element={<Entities />} />
-            <Route path="/entities/:name" element={<Entities />} />
-            <Route path="/entity-relationships" element={<EntityRelationships />} />
-            <Route path="/entity-relationships/:name" element={<EntityRelationships />} />
-            <Route path="/feature-views" element={<FeatureViews />} />
-            <Route path="/feature-views/:name" element={<FeatureViews />} />
-            <Route path="/feature-sets" element={<FeatureSets />} />
-            <Route path="/feature-sets/:name" element={<FeatureSets />} />
-            <Route path="/groups" element={<Groups />} />
-            <Route path="/groups/:name" element={<GroupDetail />} />
-            <Route path="/sources" element={<Sources />} />
-            <Route path="/sources/:name" element={<Sources />} />
-            <Route path="/similarity" element={<Similarity />} />
-            <Route path="/lineage" element={<Lineage />} />
-            <Route path="/audit" element={<Audit />} />
-            <Route path="/monitoring" element={<Monitoring />} />
-            <Route path="/actions" element={<Actions />} />
-            <Route path="/datasets/builds" element={<DatasetBuilds />} />
-            <Route path="/online/materializations" element={<MaterializationRuns />} />
-            <Route path="/online/materialization-schedules" element={<MaterializationSchedules />} />
-            <Route path="/jobs" element={<Jobs />} />
-            <Route path="/chat" element={<Chat />} />
-            <Route path="/settings" element={<Settings />} />
-            <Route path="/help" element={<Help />} />
-            {ComponentsDemo && <Route path="/dev/components" element={<ComponentsDemo />} />}
-          </Routes>
-        </Suspense>
-      </Layout>
-    </BrowserRouter>
+    <AuthProvider
+      value={{
+        auth,
+        loading: authLoading,
+        refreshAuth,
+        signInWithToken,
+        signOut,
+      }}
+    >
+      <BrowserRouter>
+        <Layout>
+          <Suspense fallback={<RouteFallback />}>
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/search" element={<SearchPage />} />
+              <Route path="/features" element={<Features />} />
+              <Route path="/features/:name" element={<Features />} />
+              <Route path="/business-metrics" element={<BusinessMetrics />} />
+              <Route path="/business-metrics/:name" element={<BusinessMetrics />} />
+              <Route path="/entities" element={<Entities />} />
+              <Route path="/entities/:name" element={<Entities />} />
+              <Route path="/entity-relationships" element={<EntityRelationships />} />
+              <Route path="/entity-relationships/:name" element={<EntityRelationships />} />
+              <Route path="/feature-views" element={<FeatureViews />} />
+              <Route path="/feature-views/:name" element={<FeatureViews />} />
+              <Route path="/feature-sets" element={<FeatureSets />} />
+              <Route path="/feature-sets/:name" element={<FeatureSets />} />
+              <Route path="/groups" element={<Groups />} />
+              <Route path="/groups/:name" element={<GroupDetail />} />
+              <Route path="/sources" element={<Sources />} />
+              <Route path="/sources/:name" element={<Sources />} />
+              <Route path="/similarity" element={<Similarity />} />
+              <Route path="/lineage" element={<Lineage />} />
+              <Route path="/audit" element={<Audit />} />
+              <Route path="/monitoring" element={<Monitoring />} />
+              <Route path="/actions" element={<Actions />} />
+              <Route path="/datasets/builds" element={<DatasetBuilds />} />
+              <Route path="/online/materializations" element={<Navigate to="/online/materialization-schedules?tab=runs" replace />} />
+              <Route path="/online/materialization-schedules" element={<MaterializationSchedules />} />
+              <Route path="/jobs" element={<Jobs />} />
+              <Route path="/chat" element={<Chat />} />
+              <Route path="/help" element={<Help />} />
+              {ComponentsDemo && <Route path="/dev/components" element={<ComponentsDemo />} />}
+            </Routes>
+          </Suspense>
+        </Layout>
+      </BrowserRouter>
+    </AuthProvider>
   )
 }

@@ -252,9 +252,15 @@ async def stream_ask(query: str, db=Depends(get_db), llm=Depends(get_llm)):
 # ---------------------------------------------------------------------------
 
 
+class Attachment(BaseModel):
+    filename: str
+    content: str
+
+
 class ChatRequest(BaseModel):
     query: str
     session_id: str | None = None
+    attachments: list[Attachment] | None = None
 
 
 @router.post("/chat")
@@ -272,6 +278,18 @@ async def agent_chat(body: ChatRequest, db=Depends(get_db), llm=Depends(get_llm)
         raise HTTPException(status_code=400, detail="Empty query")
 
     session_id = body.session_id or str(uuid.uuid4())
+
+    # Build full query with attachments for the current turn
+    full_query = query
+    history_query = query
+    if body.attachments:
+        attachment_blocks = []
+        attachment_names = []
+        for att in body.attachments:
+            attachment_names.append(att.filename)
+            attachment_blocks.append(f"=== FILE: {att.filename} ===\n{att.content}\n====================")
+        full_query = "\n\n".join(attachment_blocks) + f"\n\nUser Question: {query}"
+        history_query = f"[Attached: {', '.join(attachment_names)}] {query}"
 
     # Lazily initialize session manager on app state
     if not hasattr(agent_chat, "_session_mgr"):
@@ -291,7 +309,7 @@ async def agent_chat(body: ChatRequest, db=Depends(get_db), llm=Depends(get_llm)
                     "data": json.dumps({"type": "token", "content": _MULTIPART_DECLINE_VI[i : i + chunk_size]}),
                 }
             yield {"event": "message", "data": json.dumps({"type": "done"})}
-            session.add_message("user", query)
+            session.add_message("user", history_query)
             session.add_message("assistant", _MULTIPART_DECLINE_VI)
             return
 
@@ -306,7 +324,7 @@ async def agent_chat(body: ChatRequest, db=Depends(get_db), llm=Depends(get_llm)
             if llm_ok:
                 agent = CatalogAgent(llm, db)
                 gen = agent.chat(
-                    query,
+                    full_query,
                     history=session.get_history(),
                     context_summary=session.get_context_summary(),
                 )
@@ -353,7 +371,7 @@ async def agent_chat(body: ChatRequest, db=Depends(get_db), llm=Depends(get_llm)
                     full_response += event.get("content", "")
                 yield {"event": "message", "data": json.dumps(event)}
 
-        session.add_message("user", query)
+        session.add_message("user", history_query)
         # Don't persist a half-streamed assistant turn on timeout — it would
         # poison future context with a truncated answer.
         if full_response and not timed_out:

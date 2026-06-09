@@ -16,6 +16,7 @@ const TYPE_COLORS: Record<string, string> = {
   tags: 'success',
   definition: 'critical',
   metadata: 'default',
+  status: 'info',
 }
 
 export function Audit() {
@@ -92,6 +93,7 @@ export function Audit() {
             { value: 'definition', label: t('change_types.definition') },
             { value: 'tags', label: t('change_types.tags') },
             { value: 'metadata', label: t('change_types.metadata') },
+            { value: 'status', label: t('change_types.status') },
           ]}
         />
         <FilterCountChip count={filtered.length} />

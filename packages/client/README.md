@@ -39,6 +39,51 @@ df = detail.to_polars(entity_key="user_id")
 df_pd = detail.to_pandas(entity_key="user_id")  # requires pip install featcat-client[pandas]
 ```
 
+### Registry objects + flow
+
+```python
+client = FeatCatClient(base_url="http://localhost:8000")
+
+# Registry writes/read
+source = client.upsert_source({"name": "events", "path": "/mnt/data/events.parquet"})
+entity = client.upsert_entity({"name": "user", "primary_keys": ["user_id"]})
+feature_view = client.upsert_feature_view(
+    {
+        "name": "user_events_all",
+        "entity": "user",
+        "source_name": "events",
+        "feature_names": [
+            "events.user_id",
+            "events.event_ts",
+            "events.event_type",
+        ],
+    }
+)
+feature_set = client.upsert_feature_set(
+    {
+        "name": "user_event_set",
+        "target_entity": "user",
+        "feature_names": ["events.user_id", "events.event_type"],
+    }
+)
+
+# Scan and register features for a source
+scan = client.scan_source("events")
+
+# One-call onboarding helper
+flow = client.flow(
+    path="/mnt/data/events.parquet",
+    source_name="events",
+    entity="user",
+    entity_primary_key=["user_id"],
+    feature_view=["all:*.user_*", "core:*.event_type"],
+    feature_set="user_event_set",
+)
+
+flow.feature_set.name
+flow.scan_result.features_registered
+```
+
 ## Configuration
 
 ```python
@@ -58,6 +103,12 @@ All client-side failures inherit from `FeatCatError`:
 - `ConnectionError` — server unreachable after retries
 - `ServerError(status_code, body)` — non-2xx the SDK doesn't recognize
 - `FeatureNotFound(name)` — 404 on a feature lookup
+- `SourceNotFound(name)` — 404 on a source lookup
+- `EntityNotFound(name)` — 404 on an entity lookup
+- `EntityRelationshipNotFound(name)` — 404 on relationship lookup
+- `FeatureViewNotFound(name)` — 404 on feature-view lookup
+- `FeatureSetNotFound(name)` — 404 on feature-set lookup
+- `BusinessMetricNotFound(name)` — 404 on business-metric lookup
 - `GroupNotFound(name)` — 404 on a group lookup
 
 ## Notes

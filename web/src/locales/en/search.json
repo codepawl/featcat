@@ -27,5 +27,8 @@
   },
   "dropdown": {
     "see_all": "See all results for \"{{query}}\""
+  },
+  "button": {
+    "search": "Search"
   }
 }

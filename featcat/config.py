@@ -78,8 +78,31 @@ class Settings(BaseSettings):
     server_port: int = 8000
     server_auth_token: str | None = None
 
+    # Internal auth for the web UI / API. When enabled, requests must carry
+    # a trusted identity header from the internal SSO proxy or the shared
+    # service bearer token. Roles are derived from the configured email/group
+    # allowlists.
+    auth_required: bool = False
+    auth_identity_headers: list[str] = [
+        "X-Auth-Request-Email",
+        "X-Forwarded-Email",
+        "Cf-Access-Authenticated-User-Email",
+        "X-User-Email",
+    ]
+    auth_group_headers: list[str] = [
+        "X-Auth-Request-Groups",
+        "X-Forwarded-Groups",
+        "Cf-Access-Groups",
+    ]
+    auth_admin_users: list[str] = []
+    auth_editor_users: list[str] = []
+    auth_admin_groups: list[str] = []
+    auth_editor_groups: list[str] = []
+    auth_allowed_email_domains: list[str] = ["fpt.com"]
+
     # Monitoring
     monitor_interval_minutes: int = 10
+    scheduler_enabled: bool = True
 
     # Defaults for add command
     default_owner: str = ""

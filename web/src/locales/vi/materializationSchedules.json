@@ -1,7 +1,7 @@
 {
   "page": {
-    "title": "Lịch materialization",
-    "subtitle": "Lịch interval cho online feature materialization"
+    "title": "Materialization",
+    "subtitle": "Chạy định kỳ cho online feature materialization"
   },
   "table": {
     "title": "Schedules"
@@ -45,12 +45,12 @@
     "error": "Thao tác schedule thất bại"
   },
   "empty": {
-    "title": "Chưa có lịch materialization",
-    "description": "Lịch materialization sẽ xuất hiện sau khi được tạo qua CLI, API, hoặc SDK."
+    "title": "Chưa có cấu hình materialization",
+    "description": "Cấu hình materialization sẽ xuất hiện sau khi được tạo qua CLI, API, hoặc SDK."
   },
   "error": {
-    "title": "Không tải được lịch materialization",
-    "description": "API lịch materialization bị lỗi.",
+    "title": "Không tải được cấu hình materialization",
+    "description": "API materialization bị lỗi.",
     "retry": "Thử lại"
   }
 }

@@ -15,7 +15,7 @@
     "audit": "Audit",
     "datasetBuilds": "Dataset Builds",
     "materializationRuns": "Materialization Runs",
-    "materializationSchedules": "Materialization Schedules",
+    "materializationSchedules": "Materialization",
     "monitoring": "Monitoring",
     "actions": "Actions",
     "jobs": "Jobs",
@@ -23,10 +23,12 @@
     "settings": "Settings",
     "help": "Help",
     "sections": {
-      "catalog": "Catalog",
-      "quality": "Quality & Monitoring",
+      "registry": "Registry",
+      "modeling": "Modeling",
+      "business": "Business",
+      "quality": "Quality",
       "system": "System",
-      "app": "App"
+      "server": "Server, LLM..."
     }
   },
   "status": {

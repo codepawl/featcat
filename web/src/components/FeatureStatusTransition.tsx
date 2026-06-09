@@ -62,6 +62,7 @@ interface TransitionProps {
   featureName: string
   current: FeatureStatus | null | undefined
   onTransitioned: (newStatus: FeatureStatus) => void
+  disabled?: boolean
 }
 
 interface ReadinessState {
@@ -86,6 +87,7 @@ export function FeatureStatusTransition({
   featureName,
   current,
   onTransitioned,
+  disabled = false,
 }: TransitionProps) {
   const { t } = useTranslation('features')
   const [menuOpen, setMenuOpen] = useState(false)
@@ -113,6 +115,7 @@ export function FeatureStatusTransition({
   }, [menuOpen])
 
   const openTarget = async (s: FeatureStatus): Promise<void> => {
+    if (disabled) return
     setMenuOpen(false)
     setNotes('')
     setError(null)
@@ -174,7 +177,11 @@ export function FeatureStatusTransition({
       <div className="relative">
         <button
           type="button"
-          onClick={() => setMenuOpen((v) => !v)}
+          onClick={() => {
+            if (disabled) return
+            setMenuOpen((v) => !v)
+          }}
+          disabled={disabled}
           className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)]"
           data-testid="feature-status-change-button"
           aria-haspopup="menu"
@@ -183,7 +190,7 @@ export function FeatureStatusTransition({
           {t('status_actions.change', { defaultValue: 'Change status' })}
           <ChevronDown size={11} aria-hidden />
         </button>
-        {menuOpen && (
+        {menuOpen && !disabled && (
           <div
             role="menu"
             data-testid="feature-status-menu"

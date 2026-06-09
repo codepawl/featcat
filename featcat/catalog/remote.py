@@ -352,13 +352,46 @@ class RemoteBackend(CatalogBackend):
     # --- Feature Versions ---
 
     def list_feature_versions(self, feature_id: str) -> list[dict]:
-        return []
+        feature_name = self._resolve_feature_name(feature_id)
+        if feature_name is None:
+            return []
+        return self._request("GET", "/api/features/by-name/versions", params={"name": feature_name})
 
     def get_feature_version(self, feature_id: str, version: int) -> dict | None:
-        return None
+        feature_name = self._resolve_feature_name(feature_id)
+        if feature_name is None:
+            return None
+        try:
+            return self._request(
+                "GET",
+                f"/api/features/by-name/versions/{version}",
+                params={"name": feature_name},
+            )
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                return None
+            raise
 
     def rollback_feature(self, feature_id: str, version: int) -> dict:
-        return {}
+        feature_name = self._resolve_feature_name(feature_id)
+        if feature_name is None:
+            raise ValueError(f"Feature not found: {feature_id}")
+        return self._request(
+            "POST",
+            "/api/features/by-name/rollback",
+            params={"name": feature_name},
+            json={"version": version},
+        )
+
+    def _resolve_feature_name(self, feature_id: str) -> str | None:
+        # Accept either feature name (normal remote path) or local feature ID
+        # (where CLI currently passes `feature.id`).
+        candidate = self.get_feature_by_name(feature_id)
+        if candidate is not None:
+            return feature_id
+        features = self.list_features()
+        match = next((f for f in features if f.id == feature_id), None)
+        return match.name if match else None
 
     # --- Stats ---
 

@@ -15,7 +15,62 @@ That's the whole construction. There's no auth handshake, no async setup, no `aw
 
 ```python
 client.list_sources()                        # → list[DataSource]
-client.get_source("user_behavior")           # → DataSource | raise FeatureNotFound
+client.get_source("user_behavior")           # → DataSource | raise SourceNotFound
+```
+
+### Registry
+
+```python
+client.upsert_source({"name": "events", "path": "/mnt/data/events.parquet"})
+client.upsert_entity({"name": "user", "primary_keys": ["user_id"]})
+client.upsert_entity_relationship(
+    {
+        "name": "user-has-event",
+        "left_entity": "user",
+        "right_entity": "session",
+        "relation_type": "one_to_many",
+        "join_keys": [{"left_key": "user_id", "right_key": "user_id"}],
+    }
+)
+client.upsert_feature_view(
+    {
+        "name": "user_events",
+        "entity": "user",
+        "source_name": "events",
+        "feature_names": ["events.user_id", "events.event_ts"],
+    }
+)
+client.upsert_feature_set(
+    {
+        "name": "user_events_set",
+        "target_entity": "user",
+        "feature_names": ["events.user_id", "events.event_ts"],
+    }
+)
+client.upsert_business_metric(
+    {
+        "name": "user_event_metric",
+        "business_metric_name": "User event volume",
+        "metric_domain": "service_ops",
+        "lifecycle_stage": "consume",
+        "metric_level": "customer",
+        "entity_grain": "customer",
+        "mapped_features": ["events.event_ts"],
+    }
+)
+```
+
+### Flow helper
+
+```python
+client.flow(
+    path="/mnt/data/events.parquet",
+    source_name="events",
+    entity="user",
+    entity_primary_key=["user_id"],
+    feature_view=["all:*.event_*", "user:*.user_*"],
+    feature_set="user_events_set",
+)                                          # → FlowResult
 ```
 
 ### Features
@@ -96,6 +151,12 @@ All client-side failures inherit from `FeatCatError`:
 | `FeatCatError` | Base — catch this if you don't care which kind |
 | `ConnectionError` | Server unreachable after `max_retries` |
 | `ServerError(status_code, body)` | Non-2xx that isn't a recognized special case |
+| `SourceNotFound(name)` | 404 on a source lookup |
+| `EntityNotFound(name)` | 404 on an entity lookup |
+| `EntityRelationshipNotFound(name)` | 404 on an entity relationship lookup |
+| `FeatureViewNotFound(name)` | 404 on a feature-view lookup |
+| `FeatureSetNotFound(name)` | 404 on a feature-set lookup |
+| `BusinessMetricNotFound(name)` | 404 on business-metric lookup |
 | `FeatureNotFound(name)` | 404 on a feature lookup |
 | `GroupNotFound(name)` | 404 on a group lookup |
 

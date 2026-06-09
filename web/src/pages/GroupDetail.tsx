@@ -10,6 +10,7 @@ import { DataTable } from '../components/DataTable'
 import { ExportModal } from '../components/ExportModal'
 import { PageHeader } from '../components/PageHeader'
 import { Skeleton } from '../components/Skeleton'
+import { canDelete, canWrite, useAuth } from '../auth'
 import {
   AddFeaturesModal,
   GroupDocsTab,
@@ -45,6 +46,7 @@ interface GroupDetailPayload {
  */
 export function GroupDetail() {
   const { t } = useTranslation('groups')
+  const { auth } = useAuth()
   const navigate = useNavigate()
   const { name } = useParams<{ name: string }>()
 
@@ -54,6 +56,8 @@ export function GroupDetail() {
   const [addOpen, setAddOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const canMutate = canWrite(auth?.user)
+  const canRemove = canDelete(auth?.user)
 
   const load = (): void => {
     if (!name) return
@@ -158,7 +162,8 @@ export function GroupDetail() {
             e.stopPropagation()
             void removeMember(r.name)
           }}
-          className="text-[var(--text-tertiary)] hover:text-[var(--danger)] transition-colors p-1"
+          disabled={!canRemove}
+          className="text-[var(--text-tertiary)] hover:text-[var(--danger)] transition-colors p-1 disabled:opacity-50"
           aria-label={`Remove ${r.name}`}
         >
           <Trash2 size={13} />
@@ -182,7 +187,8 @@ export function GroupDetail() {
           <div className="flex gap-2">
             <button
               onClick={() => setAddOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium border border-[var(--border-default)] rounded-lg hover:bg-[var(--bg-secondary)]"
+              disabled={!canMutate}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium border border-[var(--border-default)] rounded-lg hover:bg-[var(--bg-secondary)] disabled:opacity-50"
             >
               <UserPlus size={14} /> {t('actions.add_features')}
             </button>
@@ -196,7 +202,8 @@ export function GroupDetail() {
             )}
             <button
               onClick={() => setConfirmDelete(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium border border-[var(--danger-subtle-bg)] text-[var(--danger)] rounded-lg hover:bg-[var(--danger-subtle-bg)]"
+              disabled={!canRemove}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium border border-[var(--danger-subtle-bg)] text-[var(--danger)] rounded-lg hover:bg-[var(--danger-subtle-bg)] disabled:opacity-50"
             >
               <Trash2 size={14} /> {t('actions.delete')}
             </button>
@@ -280,17 +287,18 @@ export function GroupDetail() {
         <GroupDocsTab groupName={detail.name} memberCount={memberCount} />
       </section>
 
-      <AddFeaturesModal
-        open={addOpen}
-        onClose={() => setAddOpen(false)}
-        groupName={detail.name}
-        description={detail.description ?? ''}
-        existingMemberIds={members.map((m) => m.id).filter(Boolean)}
-        onAdded={() => {
-          setAddOpen(false)
-          load()
-        }}
-      />
+        <AddFeaturesModal
+          open={addOpen}
+          onClose={() => setAddOpen(false)}
+          groupName={detail.name}
+          description={detail.description ?? ''}
+          existingMemberIds={members.map((m) => m.id).filter(Boolean)}
+          canAdd={canMutate}
+          onAdded={() => {
+            setAddOpen(false)
+            load()
+          }}
+        />
 
       <ExportModal
         open={exportOpen}

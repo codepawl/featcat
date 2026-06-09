@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { AuthProvider, type AuthContextValue } from '../../auth'
 
 /** Mock the entire api module so the GroupDetail page can mount without
  *  hitting fetch. Each api.groups.* method gets a stub that returns an
@@ -73,12 +74,31 @@ import { GroupDetail } from '../GroupDetail'
  *  so the useParams hook resolves the same way it would in production.
  */
 function renderAt(path: string) {
+  const authValue: AuthContextValue = {
+    auth: {
+      authenticated: true,
+      required: true,
+      user: {
+        email: 'admin@example.com',
+        role: 'admin',
+        groups: [],
+        auth_type: 'token',
+      },
+    },
+    loading: false,
+    refreshAuth: vi.fn(async () => {}),
+    signInWithToken: vi.fn(async () => {}),
+    signOut: vi.fn(async () => {}),
+  }
+
   return render(
-    <MemoryRouter initialEntries={[path]}>
-      <Routes>
-        <Route path="/groups/:name" element={<GroupDetail />} />
-      </Routes>
-    </MemoryRouter>,
+    <AuthProvider value={authValue}>
+      <MemoryRouter initialEntries={[path]}>
+        <Routes>
+          <Route path="/groups/:name" element={<GroupDetail />} />
+        </Routes>
+      </MemoryRouter>
+    </AuthProvider>,
   )
 }
 

@@ -16,15 +16,18 @@ import { ScoreTooltip } from '../components/ScoreTooltip'
 import { MultiMetricTimeline } from '../components/charts/MultiMetricTimeline'
 import type { MetricSeriesPoint } from '../api'
 import { DistributionShift } from '../components/charts/DistributionShift'
+import { canWrite, useAuth } from '../auth'
 
 export function Monitoring() {
   const { t } = useTranslation('monitoring')
+  const { auth } = useAuth()
   const navigate = useNavigate()
   const [data, setData] = useState<Record<string, unknown> | null>(null)
   const [loading, setLoading] = useState(true)
   const [baselineModal, setBaselineModal] = useState(false)
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const canMutate = canWrite(auth?.user)
 
   const load = async () => {
     setLoading(true)
@@ -116,6 +119,7 @@ export function Monitoring() {
       <div className="flex gap-3 mb-6">
         <button
           onClick={() => setBaselineModal(true)}
+          disabled={!canMutate}
           className="inline-flex items-center gap-1.5 px-4 py-2 text-[13px] border border-[var(--border-default)] rounded-lg bg-[var(--bg-primary)] hover:bg-[var(--bg-secondary)]"
         >
           <RefreshCw size={14} />

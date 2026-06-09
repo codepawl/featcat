@@ -22,6 +22,7 @@ export interface ChatMessage {
   /** Marks the message as an error (LLM failure, network drop, etc.). Renders
    *  the styled error bubble + retry affordance instead of plain text. */
   error?: boolean
+  attachments?: { filename: string; content: string }[]
   timestamp: number
 }
 

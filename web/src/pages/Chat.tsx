@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Send, Sparkles, Activity, Search, Lightbulb, Brain, Loader2, Trash2, ArrowUpRight, AlertCircle, RotateCw, ChevronDown } from 'lucide-react'
+import { Send, Sparkles, Activity, Search, Lightbulb, Brain, Loader2, Trash2, ArrowUpRight, AlertCircle, RotateCw, ChevronDown, ArrowUp, Paperclip, X, FileText, Database, Table, Code2, Braces } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { api, invalidateCache } from '../api'
 import { useChatStore } from '../hooks/useChatStore'
@@ -112,21 +112,52 @@ function SuggestionCard({ icon: Icon, title, example, onClick }: { icon: LucideI
   return (
     <button
       onClick={onClick}
-      className="group relative text-left p-5 bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-xl hover:border-brand/40 hover:bg-[var(--bg-secondary)] hover:shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_-12px_rgba(0,0,0,0.08)] transition-all duration-200"
+      className="group relative text-left p-5 bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-xl hover:border-[var(--brand-border)] hover:bg-[var(--bg-secondary)] hover:shadow-[0_4px_20px_-4px_rgba(0,0,0,0.04),0_12px_36px_-8px_rgba(0,0,0,0.02)] transition-all duration-200 hover:-translate-y-0.5"
     >
-      <div className="flex items-start justify-between mb-3">
-        <div className="w-9 h-9 rounded-lg bg-brand/10 text-brand flex items-center justify-center group-hover:bg-brand/15 transition-colors">
-          <Icon size={18} strokeWidth={1.75} />
+      <div className="flex items-start justify-between mb-3.5">
+        <div className="w-10 h-10 rounded-xl bg-[var(--brand-subtle-bg)] text-brand flex items-center justify-center group-hover:bg-brand-muted group-hover:border-[var(--brand-border)] transition-all duration-200 shadow-sm">
+          <Icon size={19} strokeWidth={1.8} />
         </div>
         <ArrowUpRight
           size={16}
           className="text-[var(--text-tertiary)] opacity-0 -translate-x-1 translate-y-1 group-hover:opacity-100 group-hover:translate-x-0 group-hover:translate-y-0 group-hover:text-brand transition-all duration-200"
         />
       </div>
-      <div className="text-[14px] font-medium text-[var(--text-primary)] mb-1 tracking-tight">{title}</div>
-      <div className="text-[12.5px] text-[var(--text-tertiary)] leading-relaxed italic">{example}</div>
+      <div className="text-[13.5px] font-semibold text-[var(--text-primary)] mb-1 tracking-tight">{title}</div>
+      <div className="text-[12px] text-[var(--text-tertiary)] leading-relaxed italic">{example}</div>
     </button>
   )
+}
+
+function getFileIcon(filename: string) {
+  const ext = filename.split('.').pop()?.toLowerCase()
+  switch (ext) {
+    case 'sql':
+      return Database
+    case 'csv':
+      return Table
+    case 'json':
+    case 'xml':
+    case 'yml':
+    case 'yaml':
+    case 'ini':
+    case 'conf':
+      return Braces
+    case 'py':
+    case 'js':
+    case 'ts':
+    case 'tsx':
+    case 'jsx':
+    case 'html':
+    case 'css':
+      return Code2
+    case 'md':
+    case 'txt':
+    case 'log':
+      return FileText
+    default:
+      return Paperclip
+  }
 }
 
 export function Chat() {
@@ -135,10 +166,46 @@ export function Chat() {
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const [llmAvailable, setLlmAvailable] = useState<boolean | null>(null)
+  const [attachments, setAttachments] = useState<{ filename: string; content: string }[]>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const sessionIdRef = useRef<string | null>(null)
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files) return
+    const files = Array.from(e.target.files)
+
+    const readPromises = files.map((file) => {
+      return new Promise<{ filename: string; content: string }>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = (event) => {
+          resolve({
+            filename: file.name,
+            content: event.target?.result as string || '',
+          })
+        }
+        reader.onerror = (err) => reject(err)
+        reader.readAsText(file)
+      })
+    })
+
+    try {
+      const results = await Promise.all(readPromises)
+      setAttachments((prev) => [...prev, ...results])
+    } catch (err) {
+      console.error('Error reading files:', err)
+    }
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
+  const removeAttachment = (index: number) => {
+    setAttachments((prev) => prev.filter((_, i) => i !== index))
+  }
 
   useEffect(() => {
     const check = () => {
@@ -151,7 +218,9 @@ export function Chat() {
   }, [])
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (typeof messagesEndRef.current?.scrollIntoView === 'function') {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' })
+    }
   }
 
   useEffect(scrollToBottom, [messages])
@@ -160,6 +229,11 @@ export function Chat() {
     const q = (overrideInput ?? input).trim()
     if (!q || busy) return
     setInput('')
+
+    // Capture current attachments and clear state
+    const activeAttachments = [...attachments]
+    setAttachments([])
+
     // Auto-resize keeps the textarea expanded after typing; clearing the
     // value alone doesn't shrink it. Reset height explicitly so the input
     // collapses back to a single row after send.
@@ -173,12 +247,12 @@ export function Chat() {
     if (q.startsWith('/monitor')) { handleMonitor(); return }
     if (q.startsWith('/stats')) { handleStats(); return }
 
-    addMessage({ role: 'user', content: q })
+    addMessage({ role: 'user', content: q, attachments: activeAttachments })
     addMessage({ role: 'ai', content: '', isStreaming: true })
-    streamQuery(q)
+    streamQuery(q, activeAttachments)
   }
 
-  const streamQuery = async (query: string) => {
+  const streamQuery = async (query: string, activeAttachments?: { filename: string; content: string }[]) => {
     abortRef.current?.abort()
     const controller = new AbortController()
     abortRef.current = controller
@@ -187,7 +261,11 @@ export function Chat() {
       const res = await fetch('/api/ai/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, session_id: sessionIdRef.current }),
+        body: JSON.stringify({
+          query,
+          session_id: sessionIdRef.current,
+          attachments: activeAttachments && activeAttachments.length > 0 ? activeAttachments : undefined,
+        }),
         signal: controller.signal,
       })
 
@@ -364,10 +442,11 @@ export function Chat() {
     const lastUser = current[current.length - 2]
     if (!lastAi.error || lastUser.role !== 'user') return
     const query = lastUser.content
+    const activeAttachments = lastUser.attachments
     popLastMessage()
     setBusy(true)
     addMessage({ role: 'ai', content: '', isStreaming: true })
-    streamQuery(query)
+    streamQuery(query, activeAttachments)
   }
 
   const renderAiMeta = (msg: ChatMsg): ReactNode => {
@@ -463,7 +542,7 @@ export function Chat() {
   const isEmpty = messages.length === 0
 
   return (
-    <div className="flex flex-col" style={{ height: 'calc(100vh - 48px)' }}>
+    <div className="flex flex-col h-[calc(100vh-88px)] md:h-[calc(100vh-104px)] lg:h-[calc(100vh-120px)]">
       {llmAvailable === false && (
         <div className="bg-[var(--warning-subtle-bg)] border-b border-[var(--warning-subtle-bg)] px-4 py-2 text-[var(--warning)] text-sm flex items-center gap-2">
           <span>{'⚠'}</span> {t('status.llm_unavailable')}
@@ -477,9 +556,9 @@ export function Chat() {
               <div className="relative mb-6">
                 <div
                   aria-hidden
-                  className="absolute inset-0 rounded-2xl bg-brand/20 blur-2xl scale-110 opacity-60"
+                  className="absolute inset-0 rounded-2xl bg-[var(--brand-subtle-bg)] blur-2xl scale-110 opacity-60"
                 />
-                <div className="relative w-16 h-16 rounded-2xl bg-gradient-to-br from-brand/15 to-brand/5 flex items-center justify-center">
+                <div className="relative w-16 h-16 rounded-2xl bg-[var(--brand-subtle-bg)] flex items-center justify-center">
                   <Brain size={28} strokeWidth={1.5} className="text-brand" />
                 </div>
               </div>
@@ -487,9 +566,6 @@ export function Chat() {
               <h1 className="text-[28px] leading-tight font-semibold text-[var(--text-primary)] tracking-tight mb-2">
                 {t('empty.greeting')}
               </h1>
-              <p className="text-[14px] text-[var(--text-tertiary)] max-w-md leading-relaxed">
-                {t('empty.subtitle')}
-              </p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left">
@@ -506,7 +582,7 @@ export function Chat() {
           </div>
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto px-4">
+        <div className="flex-1 overflow-y-auto px-4 py-6">
           {/* Reading width capped at 800px (matches ChatGPT/Claude). Both
               AI and user messages share this width; the centred container
               keeps line length comfortable on wide displays. */}
@@ -517,7 +593,29 @@ export function Chat() {
                 role={m.role}
                 above={m.role === 'ai' ? renderAiMeta(m) : undefined}
               >
-                {m.role === 'user' ? m.content : renderAiContent(m, idx === messages.length - 1)}
+                {m.role === 'user' ? (
+                  <div className="space-y-1.5 text-left">
+                    {m.attachments && m.attachments.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mb-1">
+                        {m.attachments.map((att, attIdx) => {
+                          const FileIcon = getFileIcon(att.filename)
+                          return (
+                            <div
+                              key={attIdx}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/15 text-white text-xs border border-white/20 shadow-sm"
+                            >
+                              <FileIcon size={11} className="shrink-0" />
+                              <span className="font-medium truncate max-w-[120px] leading-none">{att.filename}</span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                    <div>{m.content}</div>
+                  </div>
+                ) : (
+                  renderAiContent(m, idx === messages.length - 1)
+                )}
               </ChatMessage>
             ))}
             <div ref={messagesEndRef} />
@@ -531,40 +629,85 @@ export function Chat() {
           border above it (matches ChatGPT / Claude). */}
       <div className="bg-transparent">
         <div className="max-w-[1200px] mx-auto px-4 py-4">
-          {/* Unified pill-shaped input: textarea + embedded send button. The
+          {/* Unified pill-shaped input: textarea + attachment button + embedded send button. The
               container owns the focus ring so the whole pill highlights when
               the textarea is focused (ChatGPT-style). */}
-          <div className="relative flex items-end gap-2 border border-[var(--border-default)] rounded-2xl bg-[var(--bg-secondary)] focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/20 transition-colors">
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(e) => {
-                setInput(e.target.value)
-                // Auto-resize up to 200px, then scroll. Reset to 'auto' first
-                // so shrink-back works when the user deletes lines.
-                const el = e.target
-                el.style.height = 'auto'
-                el.style.height = `${Math.min(el.scrollHeight, 200)}px`
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault()
-                  send()
-                }
-              }}
-              placeholder={t('input.placeholder')}
-              disabled={busy}
-              rows={1}
-              className="flex-1 bg-transparent px-4 py-3 text-[14px] outline-none resize-none disabled:opacity-50 placeholder:text-[var(--text-tertiary)]"
-            />
-            <button
-              onClick={() => send()}
-              disabled={busy || !input.trim()}
-              aria-label={t('input.send')}
-              className="m-2 p-2 rounded-lg bg-brand text-white hover:bg-brand-emphasis disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
-            >
-              {busy ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-            </button>
+          <div className="relative flex flex-col border border-[var(--border-subtle)] rounded-2xl bg-[var(--bg-primary)] shadow-[0_2px_8px_rgba(0,0,0,0.01),0_8px_24px_rgba(0,0,0,0.01)] focus-within:border-[var(--brand-border)] focus-within:ring-4 focus-within:ring-brand-muted transition-all duration-200 text-left">
+            {/* Attachment preview bar inside the input pill */}
+            {attachments.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b border-[var(--border-subtle)]">
+                {attachments.map((file, fileIdx) => {
+                  const FileIcon = getFileIcon(file.filename)
+                  return (
+                    <div
+                      key={fileIdx}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] animate-fade-in"
+                    >
+                      <FileIcon size={11} className="text-[var(--text-secondary)] shrink-0" />
+                      <span className="font-medium truncate max-w-[150px] leading-none select-none">{file.filename}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeAttachment(fileIdx)}
+                        className="inline-flex items-center justify-center p-0.5 rounded-full hover:bg-[var(--bg-tertiary)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors shrink-0"
+                        title="Remove attachment"
+                      >
+                        <X size={10} />
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="ml-2 mr-0 my-2 p-2.5 rounded-xl text-[var(--text-tertiary)] hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)] active:scale-95 transition-all shrink-0"
+                aria-label="Add attachment"
+                title="Add attachment"
+              >
+                <Paperclip size={16} strokeWidth={2} />
+              </button>
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileChange}
+                multiple
+                className="hidden"
+                accept=".txt,.csv,.json,.xml,.sql,.md,.py,.js,.ts,.tsx,.jsx,.html,.css,.yml,.yaml,.ini,.conf,.log"
+              />
+              <textarea
+                ref={textareaRef}
+                value={input}
+                onChange={(e) => {
+                  setInput(e.target.value)
+                  // Auto-resize up to 200px, then scroll. Reset to 'auto' first
+                  // so shrink-back works when the user deletes lines.
+                  const el = e.target
+                  el.style.height = 'auto'
+                  el.style.height = `${Math.min(el.scrollHeight, 200)}px`
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    send()
+                  }
+                }}
+                placeholder={t('input.placeholder')}
+                disabled={busy}
+                rows={1}
+                className="flex-1 bg-transparent pl-1 pr-4 py-3 text-[14px] outline-none resize-none disabled:opacity-50 placeholder:text-[var(--text-tertiary)]"
+              />
+              <button
+                onClick={() => send()}
+                disabled={busy || !input.trim()}
+                aria-label={t('input.send')}
+                className="m-2 p-2.5 rounded-xl bg-brand text-white hover:bg-brand-emphasis active:scale-95 disabled:opacity-40 disabled:scale-100 disabled:cursor-not-allowed transition-all shrink-0 shadow-sm"
+              >
+                {busy ? <Loader2 size={16} className="animate-spin" /> : <ArrowUp size={16} />}
+              </button>
+            </div>
           </div>
 
           {/* Footer: keyboard hint left, clear-chat right. Both small + muted

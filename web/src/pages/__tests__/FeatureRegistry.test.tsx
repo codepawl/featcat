@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import type { ReactElement } from 'react'
+import { AuthProvider, type AuthContextValue } from '../../auth'
 
 vi.mock('../../api', () => {
   const featureViews = [
@@ -80,6 +81,23 @@ function renderViews(path: string, element: ReactElement) {
   )
 }
 
+const viewerAuth: AuthContextValue = {
+  auth: {
+    authenticated: true,
+    required: true,
+    user: {
+      email: 'viewer@example.com',
+      role: 'viewer',
+      groups: [],
+      auth_type: 'token',
+    },
+  },
+  loading: false,
+  refreshAuth: vi.fn(async () => {}),
+  signInWithToken: vi.fn(async () => {}),
+  signOut: vi.fn(async () => {}),
+}
+
 describe('Feature registry views', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -112,5 +130,28 @@ describe('Feature registry views', () => {
     })
     expect(screen.getByText('sum(device delays) by contract_id')).toBeInTheDocument()
     expect(screen.getByRole('alert')).toHaveTextContent(/high leakage risk/i)
+  })
+
+  it('hides write actions for a viewer', async () => {
+    const user = userEvent.setup()
+    render(
+      <AuthProvider value={viewerAuth}>
+        <MemoryRouter initialEntries={['/feature-views']}>
+          <Routes>
+            <Route path="/feature-views" element={<FeatureViews />} />
+            <Route path="/feature-views/:name" element={<FeatureViews />} />
+          </Routes>
+        </MemoryRouter>
+      </AuthProvider>,
+    )
+
+    expect(await screen.findByRole('heading', { name: /feature views/i, level: 1 })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^new$/i })).not.toBeInTheDocument()
+
+    await user.click(screen.getByText('billing.contract_health_view'))
+    await waitFor(() => {
+      expect(screen.getByText('Contract health view')).toBeInTheDocument()
+    })
+    expect(screen.queryByRole('button', { name: /^edit$/i })).not.toBeInTheDocument()
   })
 })

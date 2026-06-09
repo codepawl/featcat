@@ -82,7 +82,7 @@ client = FeatCatClient(
 )
 ```
 
-`actor` is opaque metadata — treat it like a User-Agent string, not a credential. featcat has no auth today, so it's purely for tracing who pulled what during incident reviews.
+`actor` is opaque metadata — treat it like a User-Agent string, not a credential. If your server is protected by `FEATCAT_SERVER_AUTH_TOKEN` or an SSO proxy, use the client only against an authenticated deployment; the actor field itself is still for tracing who pulled what during incident reviews.
 
 ## When things go wrong
 

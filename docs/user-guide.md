@@ -21,6 +21,22 @@ featcat source list
 featcat source scan device_perf
 ```
 
+### Fast onboarding flow
+
+```bash
+# One-shot setup: source -> entity -> feature views -> feature set
+featcat flow upsert data/payment_history.parquet -e customer -k customer_id -v raw -v billing -f customer_features
+
+# Create the feature set from multiple feature views
+featcat flow upsert data/payment_history.parquet \
+  -e customer -k customer_id \
+  -v customer_raw:payment_* \
+  -v customer_rollup:billing_* \
+  -x customer_raw \
+  -x customer_rollup \
+  -f customer_feature_bundle
+```
+
 ### Managing Features
 
 ```bash

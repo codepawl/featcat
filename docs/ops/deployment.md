@@ -147,11 +147,18 @@ Stress-test with `tests/perf/` before sizing. Real workloads vary.
 - Use Docker secrets or k8s Secrets for `POSTGRES_PASSWORD`, not env files.
 - Enable PostgreSQL `log_statement=ddl` to audit schema changes. `log_min_duration_statement=500` to catch slow queries.
 
-## Auth (forward-looking)
+## Auth (optional)
 
-featcat has no built-in auth today. The most common pattern is to put it behind an SSO proxy (oauth2-proxy / Pomerium / Cloudflare Access) that injects an `X-Auth-User` header. Then set `FEATCAT_TRUST_HEADER=X-Auth-User` and the API uses that as the actor.
+featcat is public by default. Anyone can browse the app without signing in.
 
-Cookbook PR for this is open; until merged, the proxy + actor-header approach works in production today.
+If you want optional company identity or admin scoping, featcat also supports:
+
+- **Bearer token**: set `FEATCAT_SERVER_AUTH_TOKEN` and the API requires `Authorization: Bearer <token>` on `/api/*`.
+- **Trusted proxy / SSO**: put featcat behind an SSO proxy (oauth2-proxy / Pomerium / Cloudflare Access) that injects an `X-Auth-User` header, then set `FEATCAT_TRUST_HEADER=X-Auth-User`.
+
+For company onboarding, the UI also exposes an `@fpt.com` request-access form. Control the accepted email domains with `FEATCAT_AUTH_ALLOWED_EMAIL_DOMAINS` (default: `["fpt.com"]`).
+
+The account panel is optional; if a user signs in, the current identity and role appear in the UI. Proxy mode still carries the upstream role mapping when configured.
 
 ## Related
 

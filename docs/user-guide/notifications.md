@@ -38,7 +38,7 @@ curl -X POST http://localhost:8000/api/notifications/{id}/read
 curl -X POST http://localhost:8000/api/notifications/read-all?actor=alice
 ```
 
-The `actor` is a free-form string — your username or pipeline identifier. featcat has no auth today; the actor field is for routing notifications to the right person, not for access control.
+The `actor` is a free-form string — your username or pipeline identifier. Use it for routing notifications to the right person, not as a credential. Access control is handled separately by bearer token or trusted-proxy auth on the server.
 
 ## Owners and routing
 

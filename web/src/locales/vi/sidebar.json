@@ -15,7 +15,7 @@
     "audit": "Nhật ký",
     "datasetBuilds": "Build dataset",
     "materializationRuns": "Materialization",
-    "materializationSchedules": "Lịch materialization",
+    "materializationSchedules": "Materialization",
     "monitoring": "Giám sát",
     "actions": "Hành động",
     "jobs": "Tác vụ",
@@ -23,10 +23,12 @@
     "settings": "Cài đặt",
     "help": "Trợ giúp",
     "sections": {
-      "catalog": "Danh mục",
-      "quality": "Chất lượng & Giám sát",
+      "registry": "Registry",
+      "modeling": "Mô hình",
+      "business": "Nghiệp vụ",
+      "quality": "Chất lượng",
       "system": "Hệ thống",
-      "app": "Ứng dụng"
+      "server": "Máy chủ, LLM..."
     }
   },
   "status": {

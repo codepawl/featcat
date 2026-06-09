@@ -9,7 +9,7 @@ featcat ships two relationship-graph features:
 - **Similarity** (`/similarity` page, 5 backend endpoints). TF-IDF + optional embedding-backed scoring that surfaces similar / duplicate features. Three views: a force-directed graph, a heatmap matrix, and a per-pair reason-code panel.
 - **Lineage** (`/lineage` page, 2 backend endpoints). A directed graph of feature derivations, populated by `featcat lineage detect` parsing `features.definition` SQL with `sqlglot`, by manual edits, or by the demo fixture.
 
-`docs/BACKLOG.md:132` carries the open item this document closes: *"Similarity / lineage graph: decide kill vs ship with use case."* Both features are feature-complete, lightly maintained, and **not instrumented in `usage_log`** — there is no view-count signal. Recommendations therefore lean on code volume, dependency surface, git velocity, and structural data-availability constraints, with the open questions at the end explicitly calling out where operator judgement is still required before any code is removed.
+`.agents/docs/internal/operations/BACKLOG.md:132` carries the open item this document closes: *"Similarity / lineage graph: decide kill vs ship with use case."* Both features are feature-complete, lightly maintained, and **not instrumented in `usage_log`** — there is no view-count signal. Recommendations therefore lean on code volume, dependency surface, git velocity, and structural data-availability constraints, with the open questions at the end explicitly calling out where operator judgement is still required before any code is removed.
 
 ## Method
 

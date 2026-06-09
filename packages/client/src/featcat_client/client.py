@@ -12,8 +12,27 @@ Server endpoints actually used (verified against ``featcat/server/routes/``):
 - ``GET  /api/features/similarity-graph`` — similar features (graph format)
 - ``GET  /api/sources``                   — list sources
 - ``GET  /api/sources/{name}``            — single source (has parquet path)
+- ``POST /api/sources``                   — add source
+- ``PATCH /api/sources/{name}``           — update source metadata
+- ``POST /api/sources/{name}/scan``       — scan source and register feature metadata
 - ``GET  /api/groups``                    — list groups
 - ``GET  /api/groups/{name}``             — group with members
+- ``GET  /api/entities``                  — list entities
+- ``GET  /api/entities/by-name?name=X``   — single entity
+- ``POST /api/entities``                  — upsert entity
+- ``GET  /api/entity-relationships``      — list relationships
+- ``GET  /api/entity-relationships/by-name`` — single relationship
+- ``POST /api/entity-relationships``      — upsert relationship
+- ``GET  /api/feature-views``             — list feature views
+- ``GET  /api/feature-views/by-name``     — single feature view
+- ``POST /api/feature-views``             — upsert feature view
+- ``GET  /api/feature-sets``              — list feature sets
+- ``GET  /api/feature-sets/by-name``      — single feature set
+- ``POST /api/feature-sets``              — upsert feature set
+- ``GET  /api/business-metrics``           — list business metrics
+- ``GET  /api/business-metrics/by-name``   — single business metric
+- ``POST /api/business-metrics``           — upsert business metric
+- ``POST /api/scan-bulk``                 — bulk source scan + register
 - ``POST /api/datasets/build``            — build local PIT training dataset
 - ``GET  /api/datasets/builds``           — list recent dataset build audits
 - ``POST /api/online/write``              — write online feature values
@@ -34,24 +53,47 @@ call, so the SDK doesn't need a separate ``log_usage`` round-trip — the
 from __future__ import annotations
 
 import time
+from fnmatch import fnmatch
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import httpx
 
 from . import __version__
 from .exceptions import (
+    BusinessMetricNotFound,
     ConnectionError,
+    EntityNotFound,
+    EntityRelationshipNotFound,
     FeatCatError,
     FeatureNotFound,
+    FeatureSetNotFound,
+    FeatureViewNotFound,
     GroupNotFound,
     ServerError,
+    SourceNotFound,
 )
 from .models import (
+    BulkScanRequest,
+    BulkScanResult,
+    BusinessMetric,
+    BusinessMetricCreateRequest,
     DataSource,
+    DataSourceCreateRequest,
+    DataSourceUpdateRequest,
+    Entity,
+    EntityCreateRequest,
+    EntityRelationship,
+    EntityRelationshipCreateRequest,
     Feature,
     FeatureGroup,
     FeatureGroupDetail,
+    FeatureSet,
+    FeatureSetCreateRequest,
     FeatureUsage,
+    FeatureView,
+    FeatureViewCreateRequest,
+    FlowResult,
     MaterializationAudit,
     MaterializationResult,
     MaterializationSchedule,
@@ -61,6 +103,7 @@ from .models import (
     OnlineFeatureReadResult,
     OnlineFeatureWrite,
     OnlineFeatureWriteResult,
+    SourceScanResult,
     TrainingDatasetBuildAudit,
     TrainingDatasetBuildResult,
 )
@@ -122,6 +165,67 @@ class FeatCatClient:
     def __exit__(self, *_exc: Any) -> None:
         self.close()
 
+    @staticmethod
+    def _coerce_payload(model: type[Any], payload: Any) -> dict[str, Any]:
+        """Convert a model-like payload into JSON-serializable dict form."""
+        if hasattr(payload, "model_dump"):
+            return payload.model_dump(mode="json")  # type: ignore[no-any-return]
+        return model.model_validate(payload).model_dump(mode="json")  # type: ignore[no-any-return]
+
+    @staticmethod
+    def _source_name_from_path(path: str, explicit_name: str | None = None) -> str:
+        return explicit_name.strip() if explicit_name and explicit_name.strip() else Path(path).stem
+
+    @staticmethod
+    def _parse_feature_view_specs(
+        specs: list[str],
+        source_name: str,
+        columns: list[str],
+    ) -> list[tuple[str, list[str]]]:
+        """Parse ``name[:glob]`` specs into ``(name, feature_names)`` tuples.
+
+        Mirrors ``featcat.cli._parse_feature_view_specs`` so SDK and CLI
+        behavior stay aligned. ``columns`` are raw column names without the
+        source prefix.
+        """
+        if not specs:
+            # Backward-compatible shorthand: one view over all scanned features.
+            return [(f"{source_name}_all", [f"{source_name}.{c}" for c in columns])]
+
+        parsed: list[tuple[str, list[str]]] = []
+        seen_names: set[str] = set()
+        for raw in specs:
+            raw = raw.strip()
+            if not raw:
+                continue
+
+            if ":" in raw:
+                view_name, pattern = [part.strip() for part in raw.split(":", 1)]
+                pattern = pattern or "*"
+            else:
+                view_name, pattern = raw, "*"
+
+            if not view_name:
+                raise ValueError("feature-view names cannot be empty")
+            if view_name in seen_names:
+                raise ValueError(f"duplicate feature-view name: {view_name}")
+            matched = [col for col in columns if fnmatch(col, pattern)]
+            if not matched:
+                raise ValueError(f"no columns matched feature-view pattern '{raw}'")
+
+            seen: set[str] = set()
+            feature_names = []
+            for feature_name in [f"{source_name}.{c}" for c in matched]:
+                if feature_name in seen:
+                    continue
+                seen.add(feature_name)
+                feature_names.append(feature_name)
+
+            parsed.append((view_name, feature_names))
+            seen_names.add(view_name)
+
+        return parsed
+
     # --- Internal: request + retry + error mapping ---
 
     def _request(
@@ -176,10 +280,392 @@ class FeatCatClient:
         row = self._request(
             "GET",
             f"/api/sources/{name}",
-            not_found_exc=FeatureNotFound,  # server returns 404 — surface generic
+            not_found_exc=SourceNotFound,  # server returns 404 — surface typed SDK error
             not_found_arg=name,
         )
         return DataSource.model_validate(row)
+
+    def upsert_source(self, source: DataSource | DataSourceCreateRequest | dict[str, Any]) -> DataSource:
+        body = self._coerce_payload(DataSourceCreateRequest, source)
+        row = self._request("POST", "/api/sources", json_body=body)
+        return DataSource.model_validate(row)
+
+    def update_source(
+        self,
+        name: str,
+        *,
+        description: str | None = None,
+        format: str | None = None,
+        entity_key: str | None = None,
+        event_timestamp_column: str | None = None,
+        created_timestamp_column: str | None = None,
+    ) -> DataSource:
+        body = DataSourceUpdateRequest(
+            description=description,
+            format=format,
+            entity_key=entity_key,
+            event_timestamp_column=event_timestamp_column,
+            created_timestamp_column=created_timestamp_column,
+        )
+        row = self._request(
+            "PATCH",
+            f"/api/sources/{name}",
+            json_body=body.model_dump(mode="json"),
+        )
+        return DataSource.model_validate(row)
+
+    def scan_source(self, name: str) -> SourceScanResult:
+        row = self._request("POST", f"/api/sources/{name}/scan")
+        return SourceScanResult.model_validate(row)
+
+    def scan_bulk(
+        self,
+        *,
+        path: str,
+        recursive: bool = False,
+        formats: list[str] | None = None,
+        owner: str = "",
+        tags: list[str] | None = None,
+        dry_run: bool = False,
+    ) -> BulkScanResult:
+        request = BulkScanRequest(
+            path=path,
+            recursive=recursive,
+            formats=formats or ["parquet", "csv"],
+            owner=owner,
+            tags=tags or [],
+            dry_run=dry_run,
+        )
+        row = self._request("POST", "/api/scan-bulk", json_body=request.model_dump(mode="json"))
+        return BulkScanResult.model_validate(row)
+
+    # --- Entities ---
+
+    def list_entities(self) -> list[Entity]:
+        rows = self._request("GET", "/api/entities")
+        return [Entity.model_validate(r) for r in rows]
+
+    def get_entity(self, name: str) -> Entity:
+        row = self._request(
+            "GET",
+            "/api/entities/by-name",
+            params={"name": name},
+            not_found_exc=EntityNotFound,
+            not_found_arg=name,
+        )
+        return Entity.model_validate(row)
+
+    def get_entity_by_name(self, name: str) -> Entity:
+        return self.get_entity(name)
+
+    def upsert_entity(self, entity: Entity | EntityCreateRequest | dict[str, Any]) -> Entity:
+        row = self._request("POST", "/api/entities", json_body=self._coerce_payload(EntityCreateRequest, entity))
+        return Entity.model_validate(row)
+
+    # --- Entity relationships ---
+
+    def list_entity_relationships(
+        self,
+        *,
+        left_entity: str | None = None,
+        right_entity: str | None = None,
+        relation_type: str | None = None,
+    ) -> list[EntityRelationship]:
+        params: dict[str, Any] = {}
+        if left_entity is not None:
+            params["left_entity"] = left_entity
+        if right_entity is not None:
+            params["right_entity"] = right_entity
+        if relation_type is not None:
+            params["relation_type"] = relation_type
+        rows = self._request("GET", "/api/entity-relationships", params=params)
+        return [EntityRelationship.model_validate(r) for r in rows]
+
+    def get_entity_relationship(self, name: str) -> EntityRelationship:
+        row = self._request(
+            "GET",
+            "/api/entity-relationships/by-name",
+            params={"name": name},
+            not_found_exc=EntityRelationshipNotFound,
+            not_found_arg=name,
+        )
+        return EntityRelationship.model_validate(row)
+
+    def get_entity_relationship_by_name(self, name: str) -> EntityRelationship:
+        return self.get_entity_relationship(name)
+
+    def upsert_entity_relationship(
+        self,
+        relationship: EntityRelationship | EntityRelationshipCreateRequest | dict[str, Any],
+    ) -> EntityRelationship:
+        row = self._request(
+            "POST",
+            "/api/entity-relationships",
+            json_body=self._coerce_payload(EntityRelationshipCreateRequest, relationship),
+        )
+        return EntityRelationship.model_validate(row)
+
+    # --- Feature views ---
+
+    def list_feature_views(self, *, entity: str | None = None, owner: str | None = None) -> list[FeatureView]:
+        params: dict[str, Any] = {}
+        if entity is not None:
+            params["entity"] = entity
+        if owner is not None:
+            params["owner"] = owner
+        rows = self._request("GET", "/api/feature-views", params=params)
+        return [FeatureView.model_validate(r) for r in rows]
+
+    def get_feature_view(self, name: str) -> FeatureView:
+        row = self._request(
+            "GET",
+            "/api/feature-views/by-name",
+            params={"name": name},
+            not_found_exc=FeatureViewNotFound,
+            not_found_arg=name,
+        )
+        return FeatureView.model_validate(row)
+
+    def get_feature_view_by_name(self, name: str) -> FeatureView:
+        return self.get_feature_view(name)
+
+    def upsert_feature_view(self, feature_view: FeatureView | FeatureViewCreateRequest | dict[str, Any]) -> FeatureView:
+        row = self._request(
+            "POST",
+            "/api/feature-views",
+            json_body=self._coerce_payload(FeatureViewCreateRequest, feature_view),
+        )
+        return FeatureView.model_validate(row)
+
+    # --- Feature sets ---
+
+    def list_feature_sets(
+        self,
+        *,
+        target_entity: str | None = None,
+        owner: str | None = None,
+    ) -> list[FeatureSet]:
+        params: dict[str, Any] = {}
+        if target_entity is not None:
+            params["target_entity"] = target_entity
+        if owner is not None:
+            params["owner"] = owner
+        rows = self._request("GET", "/api/feature-sets", params=params)
+        return [FeatureSet.model_validate(r) for r in rows]
+
+    def get_feature_set(self, name: str) -> FeatureSet:
+        row = self._request(
+            "GET",
+            "/api/feature-sets/by-name",
+            params={"name": name},
+            not_found_exc=FeatureSetNotFound,
+            not_found_arg=name,
+        )
+        return FeatureSet.model_validate(row)
+
+    def get_feature_set_by_name(self, name: str) -> FeatureSet:
+        return self.get_feature_set(name)
+
+    def upsert_feature_set(self, feature_set: FeatureSet | FeatureSetCreateRequest | dict[str, Any]) -> FeatureSet:
+        row = self._request(
+            "POST",
+            "/api/feature-sets",
+            json_body=self._coerce_payload(FeatureSetCreateRequest, feature_set),
+        )
+        return FeatureSet.model_validate(row)
+
+    # --- Business metrics ---
+
+    def list_business_metrics(
+        self,
+        *,
+        metric_domain: str | None = None,
+        lifecycle_stage: str | None = None,
+        metric_level: str | None = None,
+        business_objective: str | None = None,
+        owner: str | None = None,
+        search: str | None = None,
+    ) -> list[BusinessMetric]:
+        params: dict[str, Any] = {}
+        if metric_domain is not None:
+            params["metric_domain"] = metric_domain
+        if lifecycle_stage is not None:
+            params["lifecycle_stage"] = lifecycle_stage
+        if metric_level is not None:
+            params["metric_level"] = metric_level
+        if business_objective is not None:
+            params["business_objective"] = business_objective
+        if owner is not None:
+            params["owner"] = owner
+        if search is not None:
+            params["search"] = search
+        rows = self._request("GET", "/api/business-metrics", params=params)
+        return [BusinessMetric.model_validate(r) for r in rows]
+
+    def get_business_metric(self, name: str) -> BusinessMetric:
+        row = self._request(
+            "GET",
+            "/api/business-metrics/by-name",
+            params={"name": name},
+            not_found_exc=BusinessMetricNotFound,
+            not_found_arg=name,
+        )
+        return BusinessMetric.model_validate(row)
+
+    def get_business_metric_by_name(self, name: str) -> BusinessMetric:
+        return self.get_business_metric(name)
+
+    def upsert_business_metric(
+        self,
+        metric: BusinessMetric | BusinessMetricCreateRequest | dict[str, Any],
+    ) -> BusinessMetric:
+        row = self._request(
+            "POST",
+            "/api/business-metrics",
+            json_body=self._coerce_payload(BusinessMetricCreateRequest, metric),
+        )
+        return BusinessMetric.model_validate(row)
+
+    def flow(
+        self,
+        *,
+        path: str,
+        entity: str,
+        entity_primary_key: list[str],
+        source_name: str | None = None,
+        entity_join_key: list[str] | None = None,
+        feature_view: list[str] | None = None,
+        feature_set: str | None = None,
+        feature_set_views: list[str] | None = None,
+        relationship: str | None = None,
+        format: str | None = None,
+        description: str | None = None,
+        source_entity_key: str | None = None,
+        source_event_timestamp_column: str | None = None,
+        source_created_timestamp_column: str | None = None,
+    ) -> FlowResult:
+        """One-command onboarding flow: source → feature registration → feature views → feature set."""
+        if not entity:
+            raise ValueError("entity is required")
+        if not entity_primary_key:
+            raise ValueError("entity_primary_key is required and cannot be empty")
+        normalized_source_name = self._source_name_from_path(path, source_name)
+        storage_type = "s3" if path.startswith("s3://") else "local"
+        normalized_feature_views = feature_view or []
+        normalized_entity_join_key = entity_join_key or []
+        normalized_feature_set_views = feature_set_views or []
+        source_format = format or "parquet"
+
+        try:
+            source = self.get_source(normalized_source_name)
+        except SourceNotFound:
+            source = self.upsert_source(
+                DataSourceCreateRequest(
+                    name=normalized_source_name,
+                    path=path,
+                    storage_type=storage_type,
+                    format=source_format,
+                    description=description or "",
+                    entity_key=source_entity_key,
+                    event_timestamp_column=source_event_timestamp_column,
+                    created_timestamp_column=source_created_timestamp_column,
+                )
+            )
+        else:
+            if source.path != path or source.storage_type != storage_type:
+                raise ValueError(
+                    "Source exists with different path or storage type; "
+                    f"name={normalized_source_name!r}, existing={source.path!r}, new={path!r}"
+                )
+            source = self.update_source(
+                normalized_source_name,
+                description=description,
+                format=format,
+                entity_key=source_entity_key,
+                event_timestamp_column=source_event_timestamp_column,
+                created_timestamp_column=source_created_timestamp_column,
+            )
+
+        scan_result = self.scan_source(normalized_source_name)
+
+        source_features = self.list_features(source=normalized_source_name, sort="name", order="asc")
+        if not source_features:
+            raise ServerError(f"No features discovered for source {normalized_source_name}", status_code=422, body=None)
+        feature_columns = []
+        for item in source_features:
+            if item.name.startswith(f"{normalized_source_name}."):
+                feature_columns.append(item.name.split(".", 1)[1])
+
+        if not feature_columns:
+            raise ServerError(
+                f"Feature scan did not return usable columns for source {normalized_source_name}",
+                status_code=422,
+                body=None,
+            )
+
+        parsed_views = self._parse_feature_view_specs(
+            normalized_feature_views,
+            normalized_source_name,
+            feature_columns,
+        )
+        created_feature_views: list[FeatureView] = []
+        created_feature_view_names: list[str] = []
+        feature_view_features: dict[str, list[str]] = {}
+        for view_name, feature_names in parsed_views:
+            feature_view_obj = self.upsert_feature_view(
+                FeatureViewCreateRequest(
+                    name=view_name,
+                    entity=entity,
+                    source_name=normalized_source_name,
+                    source_entity=entity,
+                    relationship=relationship,
+                    feature_names=feature_names,
+                )
+            )
+            created_feature_views.append(feature_view_obj)
+            created_feature_view_names.append(feature_view_obj.name)
+            feature_view_features[feature_view_obj.name] = feature_names
+
+        selected_view_names = normalized_feature_set_views or created_feature_view_names
+        missing_views = [name for name in selected_view_names if name not in feature_view_features]
+        if missing_views:
+            raise ValueError(f"Unknown feature view names: {', '.join(sorted(missing_views))}")
+
+        selected_feature_names: list[str] = []
+        seen: set[str] = set()
+        for view_name in selected_view_names:
+            for feature_name in feature_view_features[view_name]:
+                if feature_name not in seen:
+                    selected_feature_names.append(feature_name)
+                    seen.add(feature_name)
+
+        if not selected_feature_names:
+            raise ValueError("No features selected for feature set")
+
+        feature_set_obj = self.upsert_feature_set(
+            FeatureSetCreateRequest(
+                name=feature_set or f"{normalized_source_name}_set",
+                target_entity=entity,
+                feature_names=selected_feature_names,
+            )
+        )
+
+        entity_obj = self.upsert_entity(
+            EntityCreateRequest(
+                name=entity,
+                primary_keys=entity_primary_key,
+                join_keys=normalized_entity_join_key,
+            )
+        )
+
+        return FlowResult(
+            source=source,
+            entity=entity_obj,
+            feature_views=created_feature_views,
+            feature_set=feature_set_obj,
+            source_feature_count=len(source_features),
+            scan_result=scan_result,
+        )
 
     # --- Features ---
 

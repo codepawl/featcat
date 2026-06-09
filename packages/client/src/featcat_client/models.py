@@ -17,7 +17,7 @@ from __future__ import annotations
 from datetime import datetime  # noqa: TC003
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class _Base(BaseModel):
@@ -53,6 +53,250 @@ class DataSource(_Base):
     created_timestamp_column: str | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class DataSourceCreateRequest(_Base):
+    """Payload for ``POST /api/sources``."""
+
+    name: str
+    path: str
+    storage_type: str | None = None
+    format: str = "parquet"
+    description: str = ""
+    entity_key: str | None = None
+    event_timestamp_column: str | None = None
+    created_timestamp_column: str | None = None
+
+
+class DataSourceUpdateRequest(_Base):
+    """Payload for ``PATCH /api/sources/{name}``."""
+
+    description: str | None = None
+    format: str | None = None
+    entity_key: str | None = None
+    event_timestamp_column: str | None = None
+    created_timestamp_column: str | None = None
+
+
+class SourceScanResult(_Base):
+    """Shape returned by ``POST /api/sources/{name}/scan``."""
+
+    source: str
+    features_registered: int
+    features_added: int
+    features_updated: int
+    scan_log_id: str
+
+
+class BulkScanRequest(_Base):
+    """Payload for ``POST /api/scan-bulk``."""
+
+    path: str
+    recursive: bool = False
+    formats: list[str] = Field(default_factory=lambda: ["parquet", "csv"])
+    owner: str = ""
+    tags: list[str] = Field(default_factory=list)
+    dry_run: bool = False
+
+
+class BulkScanFile(_Base):
+    """One file entry in ``BulkScanResponse``."""
+
+    file: str
+    status: str
+    feature_count: int = 0
+    error: str = ""
+
+
+class BulkScanResult(_Base):
+    """Shape returned by ``POST /api/scan-bulk``."""
+
+    found: int
+    registered_sources: int
+    registered_features: int
+    skipped: int
+    details: list[BulkScanFile]
+
+
+class EntityRelationshipJoinKey(_Base):
+    """One join-key pair in ``EntityRelationship.join_keys``."""
+
+    left_key: str
+    right_key: str
+
+
+class Entity(_Base):
+    """Business or technical entity used as a catalog grain."""
+
+    id: str
+    name: str
+    primary_keys: list[str] = Field(default_factory=list)
+    join_keys: list[str] = Field(default_factory=list)
+    description: str = ""
+    owner: str = ""
+    source_of_truth: str = ""
+    lifecycle_status: str = "draft"
+    created_at: datetime
+    updated_at: datetime
+
+
+class EntityCreateRequest(_Base):
+    """Payload for ``POST /api/entities``."""
+
+    name: str
+    primary_keys: list[str] = Field(default_factory=list)
+    join_keys: list[str] = Field(default_factory=list)
+    description: str = ""
+    owner: str = ""
+    source_of_truth: str = ""
+    lifecycle_status: str = "draft"
+
+
+class EntityRelationship(_Base):
+    """Relationship metadata between two entities."""
+
+    id: str
+    name: str
+    left_entity: str
+    right_entity: str
+    relation_type: str
+    join_keys: list[EntityRelationshipJoinKey] = Field(default_factory=list)
+    valid_from: str | None = None
+    valid_to: str | None = None
+    event_time: str | None = None
+    description: str = ""
+    owner: str = ""
+    lifecycle_status: str = "draft"
+    created_at: datetime
+    updated_at: datetime
+
+
+class EntityRelationshipCreateRequest(_Base):
+    """Payload for ``POST /api/entity-relationships``."""
+
+    name: str
+    left_entity: str
+    right_entity: str
+    relation_type: str
+    join_keys: list[EntityRelationshipJoinKey] = Field(default_factory=list)
+    valid_from: str | None = None
+    valid_to: str | None = None
+    event_time: str | None = None
+    description: str = ""
+    owner: str = ""
+    lifecycle_status: str = "draft"
+
+
+class FeatureView(_Base):
+    """A grouped feature view over a target entity."""
+
+    id: str
+    name: str
+    entity: str
+    source_name: str = ""
+    source_entity: str | None = None
+    relationship: str | None = None
+    aggregation: str = ""
+    feature_names: list[str] = Field(default_factory=list)
+    description: str = ""
+    owner: str = ""
+    lifecycle_status: str = "draft"
+    created_at: datetime
+    updated_at: datetime
+
+
+class FeatureViewCreateRequest(_Base):
+    """Payload for ``POST /api/feature-views``."""
+
+    name: str
+    entity: str
+    source_name: str = ""
+    source_entity: str | None = None
+    relationship: str | None = None
+    aggregation: str = ""
+    feature_names: list[str] = Field(default_factory=list)
+    description: str = ""
+    owner: str = ""
+    lifecycle_status: str = "draft"
+
+
+class FeatureSet(_Base):
+    """A model/use-case specific selection of features."""
+
+    id: str
+    name: str
+    target_entity: str
+    feature_names: list[str] = Field(default_factory=list)
+    rollup_rules: dict[str, str] = Field(default_factory=dict)
+    use_case: str = ""
+    description: str = ""
+    owner: str = ""
+    lifecycle_status: str = "draft"
+    created_at: datetime
+    updated_at: datetime
+
+
+class FeatureSetCreateRequest(_Base):
+    """Payload for ``POST /api/feature-sets``."""
+
+    name: str
+    target_entity: str
+    feature_names: list[str] = Field(default_factory=list)
+    rollup_rules: dict[str, str] = Field(default_factory=dict)
+    use_case: str = ""
+    description: str = ""
+    owner: str = ""
+    lifecycle_status: str = "draft"
+
+
+class BusinessMetric(_Base):
+    """Business-facing metric mapped to one or more technical features."""
+
+    id: str
+    name: str
+    business_metric_name: str
+    business_definition: str
+    metric_domain: str
+    lifecycle_stage: str
+    metric_group: str = ""
+    metric_level: str
+    entity_grain: str
+    aggregation_rule: str = ""
+    mapped_features: list[str] = Field(default_factory=list)
+    owner: str = ""
+    lifecycle_status: str = "draft"
+    allowed_use_cases: list[str] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+
+
+class BusinessMetricCreateRequest(_Base):
+    """Payload for ``POST /api/business-metrics``."""
+
+    name: str
+    business_metric_name: str
+    business_definition: str = ""
+    metric_domain: str
+    lifecycle_stage: str
+    metric_group: str = ""
+    metric_level: str
+    entity_grain: str
+    aggregation_rule: str = ""
+    mapped_features: list[str] = Field(default_factory=list)
+    owner: str = ""
+    lifecycle_status: str = "draft"
+    allowed_use_cases: list[str] = Field(default_factory=list)
+
+
+class FlowResult(_Base):
+    """Typed return value from ``flow(...)``."""
+
+    source: DataSource
+    entity: Entity
+    feature_views: list[FeatureView]
+    feature_set: FeatureSet
+    source_feature_count: int
+    scan_result: SourceScanResult
 
 
 class FeatureGroup(_Base):

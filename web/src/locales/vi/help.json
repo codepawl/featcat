@@ -1,12 +1,80 @@
 {
   "page": {
     "title": "Trợ giúp & Bảng thuật ngữ",
-    "subtitle": "Định nghĩa cho mọi điểm số, mức độ và chỉ số bạn sẽ gặp trong featcat. Di chuột lên biểu tượng ⓘ trong UI để xem nhanh nội dung tương đương ngay tại chỗ."
+    "subtitle": "Định nghĩa cho mọi điểm số, mức độ và chỉ số bạn sẽ thấy trong featcat. Di chuột vào biểu tượng ⓘ trong giao diện để xem tóm tắt nhanh, rồi mở trang này để đọc chi tiết."
   },
   "toc": {
     "title": "Trong trang này"
   },
   "common": {
     "formula_label": "Công thức"
+  },
+  "sections": {
+    "quick_links": "Đi nhanh tới đúng chỗ",
+    "quick_links_subtitle": "Phần lớn vấn đề hỗ trợ thường bắt đầu từ một trong các trang này. Mở những trang dưới đây khi một khái niệm quá ngắn hoặc khó hiểu.",
+    "how_to_read": "Cách đọc bảng thuật ngữ",
+    "how_to_read_body": "Mỗi mục giải thích ý nghĩa của một chỉ số, nguồn gốc của nó và cách xử lý khi cần hành động.",
+    "how_to_read_item_1": "Điểm càng cao thường càng tốt, nhưng nên nhìn xu hướng chứ không chỉ thay đổi tức thời.",
+    "how_to_read_item_2": "Khi trạng thái chuyển từ warning sang critical, kiểm tra lịch sử tính năng trước khi đổi baseline.",
+    "how_to_read_item_3": "Dùng liên kết trong trang để nhảy nhanh từ một định nghĩa đến Dashboard, Monitoring và Actions."
+  },
+  "quick_links": {
+    "dashboard": {
+      "label": "Dashboard",
+      "description": "Xem tổng thể sức khỏe catalog và tín hiệu gần đây."
+    },
+    "monitoring": {
+      "label": "Monitoring",
+      "description": "Kiểm tra drift và chất lượng theo từng metric."
+    },
+    "features": {
+      "label": "Feature Browser",
+      "description": "Mở chi tiết feature: tài liệu, thống kê và lịch sử sử dụng."
+    },
+    "actions": {
+      "label": "Action Items",
+      "description": "Theo dõi các đề xuất đang chờ xử lý và cập nhật kết quả."
+    },
+    "audit": {
+      "label": "Audit Log",
+      "description": "Kiểm tra thay đổi trạng thái, nhật ký cập nhật và hoạt động khuyến nghị."
+    }
+  },
+  "term_context": {
+    "label": "Nơi gặp trong giao diện: ",
+    "next_action_label": "Gợi ý xử lý: ",
+    "back_to_top": "Lên đầu trang",
+    "health_score": {
+      "where_seen": "Thẻ feature trên Dashboard và nhãn trên bảng feature.",
+      "next_action": "Mở chi tiết feature để kiểm tra độ phủ tài liệu, kết quả drift và hoạt động sử dụng."
+    },
+    "health_grade": {
+      "where_seen": "Bảng feature, chip tổng hợp của group, và thẻ monitoring.",
+      "next_action": "Dùng như mức ưu tiên xử lý, đặc biệt khi điểm giảm từ A/B về C/D."
+    },
+    "quality_score": {
+      "where_seen": "Kết quả tìm kiếm, gợi ý discovery, và danh sách đề xuất.",
+      "next_action": "Cải thiện metadata (tên, tags, độ rõ mô tả) để điểm chất lượng tốt hơn."
+    },
+    "completeness": {
+      "where_seen": "Báo cáo monitoring, biểu đồ trend chất lượng, và panel chi tiết feature.",
+      "next_action": "So sánh cửa sổ mới nhất với baseline trước khi kết luận rằng thiếu dữ liệu là bất thường."
+    },
+    "psi": {
+      "where_seen": "Các trang Monitoring, banner cảnh báo, và card xu hướng chất lượng.",
+      "next_action": "Nếu PSI cao kéo dài sau khi xác minh baseline, kiểm tra định nghĩa feature và nguồn dữ liệu đầu vào."
+    },
+    "drift_severity": {
+      "where_seen": "Chip trên dashboard monitoring và nguồn action item.",
+      "next_action": "warning để chuẩn bị kiểm tra, critical nên coi là tín hiệu chặn trước khi tái sử dụng feature."
+    },
+    "monitoring_status": {
+      "where_seen": "Thẻ chi tiết feature, thẻ group, và bảng monitoring.",
+      "next_action": "Mở báo cáo gần nhất để tách biệt thiếu baseline và lỗi thật sự."
+    },
+    "action_item": {
+      "where_seen": "Trang Actions và luồng hoạt động chi tiết feature.",
+      "next_action": "Chuyển sang applied khi đã kiểm chứng việc sửa đã hoàn tất trong mã hoặc tài liệu."
+    }
   }
 }

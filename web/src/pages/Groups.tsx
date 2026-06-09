@@ -16,6 +16,7 @@ import { PageHeader } from '../components/PageHeader'
 import { SegmentedBar } from '../components/SegmentedBar'
 import { Skeleton } from '../components/Skeleton'
 import { Tabs, type TabDefinition } from '../components/Tabs'
+import { canDelete, canWrite, useAuth } from '../auth'
 
 type GroupTab = 'members' | 'health' | 'monitoring' | 'docs' | 'versions'
 
@@ -44,6 +45,7 @@ const SEVERITY_HEX: Record<string, string> = {
 
 export function Groups() {
   const { t } = useTranslation('groups')
+  const { auth } = useAuth()
   const [groups, setGroups] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<any>(null)
@@ -54,6 +56,8 @@ export function Groups() {
   const [exportOpen, setExportOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
   const [tab, setTab] = useState<GroupTab>('members')
+  const canMutate = canWrite(auth?.user)
+  const canRemove = canDelete(auth?.user)
 
   const load = () => {
     setLoading(true)
@@ -97,7 +101,7 @@ export function Groups() {
     { key: 'dtype', label: t('member_table.dtype'), render: (r: any) => <span className="font-mono text-xs">{r.dtype}</span> },
     { key: 'has_doc', label: t('member_table.docs'), sortable: false, render: (r: any) => r.has_doc ? <Badge variant="success">{t('member_table.has_docs_yes')}</Badge> : <span className="text-[var(--text-tertiary)]">-</span> },
     { key: '_remove', label: '', sortable: false, render: (r: any) => (
-      <button onClick={(e) => { e.stopPropagation(); removeMember(r.name) }} className="text-[var(--text-tertiary)] hover:text-[var(--danger)] transition-colors p-1">
+      <button onClick={(e) => { e.stopPropagation(); removeMember(r.name) }} disabled={!canRemove} className="text-[var(--text-tertiary)] hover:text-[var(--danger)] transition-colors p-1 disabled:opacity-50">
         <Trash2 size={13} />
       </button>
     )},
@@ -108,7 +112,7 @@ export function Groups() {
       <PageHeader
         title={t('page.title')}
         actions={
-          <button onClick={() => setCreateOpen(true)} className="flex items-center gap-1.5 px-4 py-2 bg-brand text-white rounded-lg text-[13px] font-medium hover:bg-brand-emphasis transition-colors">
+          <button onClick={() => setCreateOpen(true)} disabled={!canMutate} className="flex items-center gap-1.5 px-4 py-2 bg-brand text-white rounded-lg text-[13px] font-medium hover:bg-brand-emphasis transition-colors disabled:opacity-50">
             <Plus size={16} /> {t('actions.new_group')}
           </button>
         }
@@ -177,8 +181,8 @@ export function Groups() {
                   </div>
                   {detail.description && <p className="text-sm text-[var(--text-secondary)] mt-2">{detail.description}</p>}
                 </div>
-                <div className="flex gap-2">
-                  <button onClick={() => setAddOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium border border-[var(--border-default)] rounded-lg hover:bg-[var(--bg-secondary)]">
+        <div className="flex gap-2">
+                  <button onClick={() => setAddOpen(true)} disabled={!canMutate} className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium border border-[var(--border-default)] rounded-lg hover:bg-[var(--bg-secondary)] disabled:opacity-50">
                     <UserPlus size={14} /> {t('actions.add_features')}
                   </button>
                   {detail.members?.length > 0 && (
@@ -186,7 +190,7 @@ export function Groups() {
                       <Download size={14} /> {t('actions.export')}
                     </button>
                   )}
-                  <button onClick={() => setDeleteTarget(detail.name)} className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium border border-[var(--danger-subtle-bg)] text-[var(--danger)] rounded-lg hover:bg-[var(--danger-subtle-bg)]">
+                  <button onClick={() => setDeleteTarget(detail.name)} disabled={!canRemove} className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium border border-[var(--danger-subtle-bg)] text-[var(--danger)] rounded-lg hover:bg-[var(--danger-subtle-bg)] disabled:opacity-50">
                     <Trash2 size={14} /> {t('actions.delete')}
                   </button>
                 </div>
@@ -232,6 +236,7 @@ export function Groups() {
           groupName={selected.name}
           description={detail?.description ?? selected.description ?? ''}
           existingMemberIds={(detail?.members ?? []).map((m: { id: string }) => m.id).filter(Boolean)}
+          canAdd={canMutate}
           onAdded={() => { setAddOpen(false); load(); selectGroup(selected) }}
         />
       )}
@@ -258,8 +263,10 @@ export function Groups() {
 
 function CreateGroupModal({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: () => void }) {
   const { t } = useTranslation('groups')
+  const { auth } = useAuth()
   const [form, setForm] = useState({ name: '', description: '', project: '', owner: '' })
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }))
+  const canMutate = canWrite(auth?.user)
 
   const submit = async () => {
     await api.groups.create(form)
@@ -272,7 +279,7 @@ function CreateGroupModal({ open, onClose, onCreated }: { open: boolean; onClose
     <Modal open={open} onClose={onClose} title={t('create_modal.title')} actions={
       <>
         <button onClick={onClose} className="px-4 py-2 text-sm border border-[var(--border-default)] rounded-lg">{t('actions.cancel', { ns: 'common' })}</button>
-        <button onClick={submit} disabled={!form.name} className="px-4 py-2 text-sm bg-brand text-white rounded-lg disabled:opacity-50">{t('actions.create')}</button>
+        <button onClick={submit} disabled={!form.name || !canMutate} className="px-4 py-2 text-sm bg-brand text-white rounded-lg disabled:opacity-50">{t('actions.create')}</button>
       </>
     }>
       <div className="space-y-3">
@@ -304,6 +311,7 @@ export function AddFeaturesModal({
   groupName,
   description,
   existingMemberIds,
+  canAdd,
   onAdded,
 }: {
   open: boolean
@@ -311,6 +319,7 @@ export function AddFeaturesModal({
   groupName: string
   description: string
   existingMemberIds: string[]
+  canAdd: boolean
   onAdded: () => void
 }) {
   const { t } = useTranslation('groups')
@@ -341,7 +350,7 @@ export function AddFeaturesModal({
     <Modal open={open} onClose={onClose} title={t('add_modal.title', { group: groupName })} maxWidth="max-w-xl" actions={
       <>
         <button onClick={onClose} className="px-4 py-2 text-sm border border-[var(--border-default)] rounded-lg">{t('actions.cancel', { ns: 'common' })}</button>
-        <button onClick={submit} disabled={selectedSpecs.size === 0 || adding} className="px-4 py-2 text-sm bg-brand text-white rounded-lg disabled:opacity-50">
+        <button onClick={submit} disabled={selectedSpecs.size === 0 || adding || !canAdd} className="px-4 py-2 text-sm bg-brand text-white rounded-lg disabled:opacity-50">
           {t('actions.add')} {selectedSpecs.size > 0 ? `(${selectedSpecs.size})` : ''}
         </button>
       </>

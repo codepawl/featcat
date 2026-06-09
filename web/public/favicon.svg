@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <!-- Brand Accent Gradient -->
+    <linearGradient id="brand-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2F81F7" />
+      <stop offset="100%" stop-color="#0969DA" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background Base Circle -->
+  <circle cx="64" cy="64" r="60" fill="url(#brand-grad)" />
+
+  <!-- Geometric/Origami Cat Head using White Planes with varying opacity -->
+  <g fill="#FFFFFF" stroke="url(#brand-grad)" stroke-width="0.75" stroke-linejoin="round">
+    <!-- Left Ear / Cheek Plane -->
+    <polygon points="24,32 32,72 64,56" opacity="0.6" />
+
+    <!-- Right Ear / Cheek Plane -->
+    <polygon points="104,32 96,72 64,56" opacity="0.7" />
+
+    <!-- Forehead / Face Upper Plane -->
+    <polygon points="32,72 64,56 96,72" opacity="0.95" />
+
+    <!-- Muzzle / Chin Lower Plane -->
+    <polygon points="32,72 96,72 64,96" opacity="0.8" />
+  </g>
+</svg>

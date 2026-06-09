@@ -3,7 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { Sun, Moon, Trash2, RefreshCw } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { SUPPORTED_LANGS, type SupportedLang } from '../i18n/config'
-import { api, invalidateCache } from '../api'
+import { api, invalidateCache, type AccessRequestItem } from '../api'
+import { isAdmin, useAuth } from '../auth'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { PageHeader } from '../components/PageHeader'
 
@@ -14,12 +15,92 @@ const OPTION_BASE = 'flex items-center justify-between gap-3 px-4 py-3 rounded-l
 const OPTION_SELECTED = 'border-[var(--brand)] bg-[var(--brand-subtle-bg)]'
 const OPTION_UNSELECTED = 'border-[var(--border-default)] hover:border-[var(--border-muted)]'
 
+function SystemStatus() {
+  const { t } = useTranslation('settings')
+  const [llm, setLlm] = useState<{ ok: boolean; model: string | null; checked: boolean }>({
+    ok: false,
+    model: null,
+    checked: false,
+  })
+  const [serverOk, setServerOk] = useState(false)
+
+  useEffect(() => {
+    api
+      .health()
+      .then((d) => {
+        setServerOk(true)
+        setLlm({ ok: !!d.llm, model: (d.model as string) || null, checked: true })
+      })
+      .catch(() => {
+        setServerOk(false)
+        setLlm((s) => ({ ...s, checked: true }))
+      })
+  }, [])
+
+  const llmDisplay = !llm.checked
+    ? t('status.checking', { defaultValue: 'checking...' })
+    : (llm.model ?? (llm.ok ? t('status.connected', { defaultValue: 'Connected' }) : t('status.disconnected', { defaultValue: 'Disconnected' })))
+
+  return (
+    <div className="py-2 space-y-3">
+      <h2 className="text-sm font-semibold text-[var(--text-primary)]">
+        {t('status.title', { defaultValue: 'System Status' })}
+      </h2>
+      <div className="flex flex-wrap gap-x-6 gap-y-3 text-xs">
+        {/* Server Status */}
+        <div className="flex items-center gap-2">
+          <span className="relative flex h-2 w-2">
+            {serverOk && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--success)] opacity-75" />}
+            <span className={`relative inline-flex rounded-full h-2 w-2 ${serverOk ? 'bg-[var(--success)]' : 'bg-[var(--danger)]'}`} />
+          </span>
+          <span className="text-[var(--text-secondary)] font-medium">
+            {t('status.server', { defaultValue: 'Server' })}:
+          </span>
+          <span className={serverOk ? 'text-[var(--success)] font-medium' : 'text-[var(--danger)] font-medium'}>
+            {serverOk ? t('status.connected', { defaultValue: 'Connected' }) : t('status.disconnected', { defaultValue: 'Disconnected' })}
+          </span>
+        </div>
+
+        {/* LLM Status */}
+        <div className="flex items-center gap-2">
+          <span className="relative flex h-2 w-2">
+            {llm.ok && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--success)] opacity-75" />}
+            <span className={`relative inline-flex rounded-full h-2 w-2 ${llm.ok ? 'bg-[var(--success)]' : 'bg-[var(--danger)]'}`} />
+          </span>
+          <span className="text-[var(--text-secondary)] font-medium">
+            {t('status.llm_label', { defaultValue: 'AI / LLM' })}:
+          </span>
+          {llm.ok ? (
+            <span className="font-mono text-[11px] px-1.5 py-0.5 rounded bg-brand-subtle-bg text-brand font-medium">
+              {llmDisplay}
+            </span>
+          ) : (
+            <span className="text-[var(--danger)] font-medium">
+              {llmDisplay}
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function Settings() {
   const { t, i18n } = useTranslation('settings')
+  const { auth, signOut } = useAuth()
   const current = (i18n.resolvedLanguage ?? i18n.language) as SupportedLang
   const [theme, setTheme] = useState<Theme>(() =>
     document.documentElement.classList.contains('dark') ? 'dark' : 'light'
   )
+  const [accessRequests, setAccessRequests] = useState<AccessRequestItem[]>([])
+
+  useEffect(() => {
+    if (!isAdmin(auth?.user)) {
+      setAccessRequests([])
+      return
+    }
+    api.auth.accessRequests().then(setAccessRequests).catch(() => setAccessRequests([]))
+  }, [auth?.user])
 
   const selectTheme = (next: Theme) => {
     if (next === 'dark') document.documentElement.classList.add('dark')
@@ -29,8 +110,69 @@ export function Settings() {
   }
 
   return (
-    <div className="max-w space-y-4">
+    <div className="max-w space-y-6">
       <PageHeader title={t('page.title')} subtitle={t('page.subtitle')} />
+
+      <div className={CARD}>
+        <h2 className="text-sm font-semibold mb-1">{t('auth.title', { defaultValue: 'Access' })}</h2>
+        <p className="text-xs text-[var(--text-tertiary)] mb-4">
+          {auth?.user
+            ? t('auth.signed_in', {
+                defaultValue: 'Signed in as {{email}} ({{role}})',
+                email: auth.user.email,
+                role: auth.user.role,
+              })
+            : t('auth.not_signed_in', { defaultValue: 'Not signed in.' })}
+        </p>
+        {auth?.user ? (
+          <button
+            type="button"
+            onClick={() => void signOut()}
+            className="px-4 py-2 text-sm border border-[var(--border-default)] rounded-lg hover:bg-[var(--bg-secondary)]"
+          >
+            {t('auth.sign_out', { defaultValue: 'Sign out' })}
+          </button>
+        ) : (
+          <p className="text-xs text-[var(--text-secondary)]">
+            {t('auth.hint', {
+              defaultValue: 'Use the Account button in the top bar if you want to sign in, switch accounts, or refresh an optional company session.',
+            })}
+          </p>
+        )}
+      </div>
+
+      {isAdmin(auth?.user) && (
+        <div className={CARD}>
+          <h2 className="text-sm font-semibold mb-1">{t('auth.requests_title', { defaultValue: 'Pending access requests' })}</h2>
+          <p className="text-xs text-[var(--text-tertiary)] mb-4">
+            {t('auth.requests_hint', {
+              defaultValue: 'Employees can request access with their @fpt.com address from the optional account panel.',
+            })}
+          </p>
+          {accessRequests.length === 0 ? (
+            <p className="text-xs text-[var(--text-secondary)]">
+              {t('auth.requests_empty', { defaultValue: 'No pending requests.' })}
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {accessRequests.map((req) => (
+                <div key={req.id} className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-secondary)] p-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium text-sm text-[var(--text-primary)]">{req.email}</span>
+                    <span className="px-2 py-0.5 rounded-full bg-[var(--brand-subtle-bg)] text-brand text-[11px] uppercase tracking-wide">
+                      {req.status}
+                    </span>
+                  </div>
+                  {req.display_name && <p className="mt-1 text-xs text-[var(--text-secondary)]">{req.display_name}</p>}
+                  {req.message && <p className="mt-1 text-xs text-[var(--text-secondary)] whitespace-pre-wrap">{req.message}</p>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      <SystemStatus />
 
       <div className={CARD}>
         <h2 className="text-sm font-semibold mb-1">{t('language.title')}</h2>
@@ -69,7 +211,7 @@ export function Settings() {
         </div>
       </div>
 
-      <LLMCacheCard />
+      {isAdmin(auth?.user) ? <LLMCacheCard /> : <AdminOnlyNotice />}
 
       <div className={CARD}>
         <h2 className="text-sm font-semibold mb-1">{t('theme.title')}</h2>
@@ -108,6 +250,21 @@ export function Settings() {
           })}
         </div>
       </div>
+    </div>
+  )
+}
+
+
+function AdminOnlyNotice() {
+  const { t } = useTranslation('settings')
+  return (
+    <div className={CARD}>
+      <h2 className="text-sm font-semibold mb-1">{t('admin.title', { defaultValue: 'Admin tools' })}</h2>
+      <p className="text-xs text-[var(--text-tertiary)]">
+        {t('admin.hint', {
+          defaultValue: 'Cache management is available to admin users only.',
+        })}
+      </p>
     </div>
   )
 }

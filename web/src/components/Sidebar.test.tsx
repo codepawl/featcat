@@ -28,14 +28,14 @@ describe('Sidebar', () => {
     mocks.count.mockResolvedValue({ count: 0 })
   })
 
-  it('includes the materialization schedules navigation entry', async () => {
+  it('includes the materialization navigation entry', async () => {
     render(
       <MemoryRouter initialEntries={['/online/materialization-schedules']}>
         <Sidebar />
       </MemoryRouter>,
     )
 
-    const link = await screen.findByRole('link', { name: /materialization schedules/i })
+    const link = await screen.findByRole('link', { name: /^materialization$/i })
     expect(link).toHaveAttribute('href', '/online/materialization-schedules')
   })
 })

@@ -12,6 +12,7 @@ from starlette.responses import FileResponse
 
 from ..catalog.local import LocalBackend
 from ..config import load_settings
+from .auth import can_access, resolve_principal
 
 logger = logging.getLogger(__name__)
 
@@ -57,15 +58,18 @@ async def lifespan(app: FastAPI):
         app.state.llm = None
         app.state.llm_cache = None
 
-    # Start scheduler
-    try:
-        from .scheduler import FeatcatScheduler
+    # Start scheduler unless explicitly disabled for test/headless use.
+    if settings.scheduler_enabled:
+        try:
+            from .scheduler import FeatcatScheduler
 
-        scheduler = FeatcatScheduler(backend=backend, llm=app.state.llm, settings=settings)
-        scheduler.setup_default_jobs()
-        scheduler.start()
-        app.state.scheduler = scheduler
-    except Exception:
+            scheduler = FeatcatScheduler(backend=backend, llm=app.state.llm, settings=settings)
+            scheduler.setup_default_jobs()
+            scheduler.start()
+            app.state.scheduler = scheduler
+        except Exception:
+            app.state.scheduler = None
+    else:
         app.state.scheduler = None
 
     yield
@@ -76,13 +80,13 @@ async def lifespan(app: FastAPI):
     backend.close()
 
 
-def build_app() -> FastAPI:
+def build_app(*, use_lifespan: bool = True) -> FastAPI:
     """Create the FastAPI application with all routes."""
     app = FastAPI(
         title="featcat",
         description="AI-Powered Feature Catalog API",
         version="0.1.0",
-        lifespan=lifespan,
+        lifespan=lifespan if use_lifespan else None,
     )
 
     # CORS
@@ -96,22 +100,31 @@ def build_app() -> FastAPI:
 
     # Optional auth middleware
     settings = load_settings()
-    auth_token = getattr(settings, "server_auth_token", None)
-    if auth_token:
+    if settings.auth_required or settings.server_auth_token:
 
         @app.middleware("http")
         async def auth_middleware(request: Request, call_next):
-            if request.url.path == "/api/health":
+            path = request.url.path
+            if path == "/api/health" or path.startswith("/api/auth"):
                 return await call_next(request)
-            token = request.headers.get("Authorization", "").replace("Bearer ", "")
-            if token != auth_token:
+            if not path.startswith("/api/"):
+                return await call_next(request)
+
+            principal = resolve_principal(request, settings)
+            request.state.principal = principal
+            request.state.authenticated = principal is not None
+
+            if (settings.auth_required or settings.server_auth_token) and principal is None:
                 return Response(content='{"detail":"Unauthorized"}', status_code=401, media_type="application/json")
+            if principal is not None and not can_access(principal, request.method, path):
+                return Response(content='{"detail":"Forbidden"}', status_code=403, media_type="application/json")
             return await call_next(request)
 
     # Register API routes
     from .routes.actions import router as actions_router
     from .routes.admin import router as admin_router
     from .routes.ai import router as ai_router
+    from .routes.auth import router as auth_router
     from .routes.bulk import router as bulk_router
     from .routes.business_metrics import router as business_metrics_router
     from .routes.datasets import router as datasets_router
@@ -137,6 +150,7 @@ def build_app() -> FastAPI:
     from .routes.versions import router as versions_router
 
     app.include_router(health_router, prefix="/api", tags=["health"])
+    app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
     app.include_router(sources_router, prefix="/api/sources", tags=["sources"])
     app.include_router(features_router, prefix="/api/features", tags=["features"])
     app.include_router(entities_router, prefix="/api/entities", tags=["entities"])
