@@ -49,7 +49,7 @@ jobs:
       - run: uv pip install --system -e ".[dev,tui,s3,server]"
       - run: pytest --cov=featcat --cov-report=xml --cov-report=term-missing
       - if: matrix.python-version == '3.12'
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         with:
           files: coverage.xml
           fail_ci_if_error: false
