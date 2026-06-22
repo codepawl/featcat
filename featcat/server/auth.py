@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import re
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
-from fastapi import Request
 from pydantic import BaseModel
 
-from ..config import Settings
+if TYPE_CHECKING:
+    from fastapi import Request
+
+    from ..config import Settings
 
 AuthRole = Literal["viewer", "editor", "admin"]
 

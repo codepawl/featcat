@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -10,10 +11,12 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from ...catalog.local import LocalBackend
-from ...config import Settings
 from ...db.models import AccessRequest
 from ..auth import AuthPrincipal, resolve_principal
 from ..deps import get_settings
+
+if TYPE_CHECKING:
+    from ...config import Settings
 
 router = APIRouter()
 

@@ -2,18 +2,21 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from types import SimpleNamespace
+from typing import TYPE_CHECKING
 
 import pytest
 from fastapi import HTTPException
-
-pytest.importorskip("fastapi")
 
 from featcat.catalog.local import LocalBackend
 from featcat.config import load_settings
 from featcat.server.auth import can_access, resolve_principal
 from featcat.server.routes.auth import AccessRequestCreate, list_access_requests, me, request_access
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+pytest.importorskip("fastapi")
 
 
 def _settings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, token: str | None = None):

@@ -158,6 +158,12 @@ disable_error_code = ["arg-type", "union-attr", "assignment", "return-value"]
 module = "featcat.catalog.scanner"
 disable_error_code = ["attr-defined"]
 
+# NumPy stubs can use syntax newer than this repo's mypy target
+# (python_version = 3.10). The app does not depend on NumPy static typing here.
+[[tool.mypy.overrides]]
+module = ["numpy", "numpy.*"]
+follow_imports = "skip"
+
 # pyyaml ships PEP 561 inline types in some wheel builds and not others, so
 # whether `import yaml` is considered typed depends on which wheel uv resolves.
 # Suppress import-untyped uniformly so both flavours work without an inline

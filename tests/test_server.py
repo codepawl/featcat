@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 from types import SimpleNamespace
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -19,6 +19,9 @@ from featcat.server.routes.features import get_feature_by_name, health_summary, 
 from featcat.server.routes.health import health
 from featcat.server.routes.monitor import compute_baseline, monitoring_report, run_check
 from featcat.server.routes.sources import SourceCreate, add_source, get_source, list_sources
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 class FakeCatalog:

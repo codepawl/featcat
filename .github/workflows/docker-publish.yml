@@ -35,20 +35,38 @@ jobs:
             suffix: ""
           - variant: gpu
             suffix: "-gpu"
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v6
 
+      - name: Check Docker Hub credentials
+        id: dockerhub
+        shell: bash
+        run: |
+          if [[ -n "${DOCKERHUB_USERNAME}" && -n "${DOCKERHUB_TOKEN}" ]]; then
+            echo "configured=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "::warning::Skipping Docker publish because DOCKERHUB_USERNAME or DOCKERHUB_TOKEN is not configured."
+            echo "configured=false" >> "${GITHUB_OUTPUT}"
+          fi
+
       - uses: docker/setup-qemu-action@v3
+        if: steps.dockerhub.outputs.configured == 'true'
       - uses: docker/setup-buildx-action@v3
+        if: steps.dockerhub.outputs.configured == 'true'
 
       - uses: docker/login-action@v3
+        if: steps.dockerhub.outputs.configured == 'true'
         with:
           registry: docker.io
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ env.DOCKERHUB_TOKEN }}
 
       - id: meta
         uses: docker/metadata-action@v5
+        if: steps.dockerhub.outputs.configured == 'true'
         with:
           images: docker.io/nxank4/featcat
           flavor: |
@@ -62,6 +80,7 @@ jobs:
       # Single-platform; --load requires it. Cache is keyed per variant so CPU
       # and GPU don't fight over the same layer cache.
       - name: Build (smoke-test image)
+        if: steps.dockerhub.outputs.configured == 'true'
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -75,6 +94,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ matrix.variant }}
 
       - name: Smoke test (import torch)
+        if: steps.dockerhub.outputs.configured == 'true'
         run: |
           docker run --rm featcat-smoke:${{ matrix.variant }} \
             python -c "import torch; print(torch.__version__)"
@@ -82,6 +102,7 @@ jobs:
       # Step B: real push. Reuses the buildx cache populated above, so this
       # does not actually re-execute the build steps.
       - name: Build and push
+        if: steps.dockerhub.outputs.configured == 'true'
         uses: docker/build-push-action@v5
         with:
           context: .
