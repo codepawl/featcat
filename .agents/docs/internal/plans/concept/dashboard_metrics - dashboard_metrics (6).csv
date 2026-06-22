@@ -1,0 +1,213 @@
+Stage,Domain,Metric Number,Metric Name,Definition,Data Sources,Status,View
+Manage,Service,ME-M-CT-01,HTKTRequests,Tổng số lượng checkllist phát sinh của mỗi HĐ (trong 30 ngày gần nhất full tình trạng),Ticket System,Done ,Per-Contract
+Manage,Service,ME-M-CT-02,RepeatContacts,Tổng số checkllist lặp của mỗi HĐ (trong 30 ngày gần nhất),Ticket System,Done ,Per-Contract
+Manage,Service,ME-M-CT-03,HTKTRequestsAfterMaint,Tổng số checkllist / YC HTKT phát sinh sau Bảo trì 7 ngày của mỗi KHG (trong 30 ngày gần nhất),Ticket System,Done ,Per-Contract
+Manage,Service,ME-M-CT-04,HTKTRequestsAfterDeploy,Tổng số checkllist / YC HTKT phát sinh sau Triển khai 7 ngày của mỗi KHG (trong 30 ngày gần nhất),Ticket System,Done ,Per-Contract
+Manage,Service,ME-M-CT-05,HTKTRequestsOverdue,Số lượng checkllist bảo trì quá hẹn của mỗi HĐ (trong 30 ngày gần nhất),Ticket System,Done ,Per-Contract
+Manage,Service,ME-M-CT-06,HTKTDeployOverdueD30,Số lượng checkllist triển khai quá hẹn của mỗi HĐ (trong 30 ngày gần nhất),Ticket System,Done ,Per-Contract
+Manage,Service,ME-M-CT-07,HTKTRequestsOver24H,Số lượng checkllist  bảo trì quá 24h của mỗi HĐ (trong 30 ngày gần nhất),Ticket System,Done ,Per-Contract
+Manage,Service,ME-M-CT-08,HTKTRepeatContactsOverDue,Số lần KHG giục tiến độ do trễ hẹn bảo trì triển khai (trong 30 ngày gần nhất),Ticket System,Done ,Per-Contract
+Recommend,Customer,ME-M-CT-09,LowCSAT,Số lượng CSAT 1;2 trong 6 tháng gần nhất,Survey System,Done ,Per-Contract
+Recommend,Customer,ME-M-CT-10,LowCSATbyCause,Số lượng CSAT 1;2 theo từng hành trình,Survey System,Done ,Per-Contract
+Consume,Service,ME-M-CT-11,EmplComplaintCalls,Số lượng khiếu nại về nhân viên (theo ghi nhận trên Omni) trong 90 ngày gần nhất,Omni + Callcenter,Done ,Per-Contract
+Consume,Service,ME-M-CT12,OmniPriceComplaints,Số lượng khiếu nại về giá cước (theo ghi nhận trên Omni) trong 90 ngày gần nhất,Omni + Callcenter,Done ,Per-Contract
+Consume,Product,ME-C-D-01,product-net-device-clients,Số lượng clients kết nối trong ngày của cpe (trung bình; trung vị; min; max; Q3; unique),ACS Server & TR-069,Done ,Per-Contract; Device
+Consume,Customer,ME-C-C-01,contact-frequency-contact-number,Số lần khách hàng liên hệ trong 12 tháng gần nhất ,Omni + Callcenter,Done ,Per-Contract
+Consume,Customer,ME-C-C-01,ces-service-total-overdue-checklists,Số lượng checkllist bảo trì và triển khai quá hẹn của mỗi HĐ (trong 30 ngày gần nhất),Omni + Callcenter,Done ,Per-Contract
+Consume,Customer,ME-C-C-02,ces-contact-total-call,Số lần liên hệ của KHG;với mỗi OBJID được tính là 1 khách hàng; được tính mỗi ngày trong 12 tháng gần nhất,Omni + Callcenter,Done ,Per-Contract
+Consume,Customer,ME-C-C-03,ces-contact-avg-time-between-missed,Thời gian trung bình giữa các cuộc gọi nhỡ;được tính mỗi ngày trong 12 tháng gần nhất,Omni + Callcenter,Done ,Per-Contract
+Consume,Customer,ME-C-C-05,ces-contact-total-missed-call,Số lần liên hệ thất bại (gọi nhỡ ) của khách hàng được tính mỗi ngày trong 12 tháng gần nhất,Omni + Callcenter,Done ,Per-Contract
+Consume,Customer,ME-C-C-06,ces-contact-ratio-missed-call,Tỉ lệ giữa số lần gọi nhỡ và số lần liên hệ ,Omni + Callcenter,Done ,Per-Contract
+Consume,Customer,ME-C-C-07,ces-contact,Điểm đánh giá nỗ lực của khách hàng khi liên hệ với nhà cung cấp dịch vụ được tính mỗi ngày trong 12 tháng gần nhất; lấy điểm cao nhất ( thấp nhất là 1 - cao nhất là 7),Omni + Callcenter,Done ,Per-Contract
+Consume,Customer,ME-C-C-08,ces-contact-num-high-ces,Số lần khách hàng nằm trong điểm ces-contact cao ( từ 5 đến 7) trong 12 tháng,Omni + Callcenter,Done ,Per-Contract
+Consume,Customer,ME-C-C-09,ces-service,Điểm đánh giá nỗ lực của khách hàng khi yêu cầu hỗ trợ dịch vụ trong 30 ngày,Omni + Callcenter,Done ,Per-Contract
+Consume,Customer,ME-C-C-10,ces-service-num-high-ces,Số lần khách hàng nằm trong điểm ces-service cao ( từ 5 đến 7) trong 30 ngày,Omni + Callcenter,Done ,Per-Contract
+Consume,Customer,ME-C-C-11,contact-times-most-contacts,Số lần liên hệ của sđt liên hệ nhiều nhất trong 12 tháng gần nhất,Omni + Callcenter,Done ,Per-Contract
+Consume,Customer,ME-C-C-12,contact-times-last-contacts,Số lần liên hệ của SĐT liên hệ gần nhất trong 12 tháng gần nhất,Omni + Callcenter,Done ,Per-Contract
+Consume,Customer,ME-C-C-13,contact-times-num-unique-phones,Số lượng số điện thoại duy nhất mà khách hàng liên hệ trong 12 tháng gần nhất,Omni + Callcenter,Done ,Per-Contract
+Consume,Customer,ME-C-C-14,contact-times-last-contacts,Số lần liên hệ của SĐT liên hệ gần nhất trong 12 tháng gần nhất,Omni + Callcenter,Done ,Per-Contract
+Consume,Product,ME-C-D-07,product-net-device-num-neighbor,Số lượng clients ở gần thiết bị (cpe),ACS Server & TR-069,Done ,Device
+Consume,Product,ME-C-D-08,product-net-device-num-cointerference,Số lượng clients nhiễu đồng kênh nhẹ / nặng,ACS Server & TR-069,Done ,Device
+Consume,Product,ME-C-D-10,product-net-device-num-overlapping-interference-good,Số lượng clients nhiễu xuyên kênh nhẹ/ nặng,ACS Server & TR-069,Done ,Device
+Consume,Product,ME-C-D-13,product-net-device-connection-total-out-session,Số lần out session của thiết bị trong ngày,ACS Server & TR-069,Done ,Device
+Consume,Product,ME-C-D-14,product-net-device-connection-consecutive-out-session,Số lần / giờ out session liên tục trong ngày,ACS Server & TR-069,Done ,Device
+Consume,Product,ME-C-D-16,product-net-device-days-out-session,Số ngày rời phiên liên tục của thiết bị trong 30 ngày gần nhất,ACS Server & TR-069,Done ,Device
+Consume,Product,ME-C-D-17,product-net-device-mem,Số giờ bộ nhớ chạm ngưỡng cao trong ngày / tăng / giảm trong ngày,ACS Server & TR-069,Done ,Device
+Consume,Product,ME-C-D-24,product-net-device--cpu,Số lần / số giờ cpu có xu hướng tăng / giảm / không ổn định trong ngày,ACS Server & TR-069,Done ,Device
+Consume,Product,ME-C-D-30,product-net-device-downtime,Thời gian downtime / offline của thiết bị trong ngày,Network Monitoring System,Done ,Device
+Consume,Product,ME-C-CT-21,internet-age-by-day / month / year,Tuổi (ngày / tháng / năm) sử dụng dịch vụ internet (tính từ ngày create hợp đồng đến hiện tại) ,CRM ,Done ,Per-Contract
+Consume,Product,ME-C-CT-24,camera-age-by-day / month / year,Tuổi (ngày / tháng / năm) sử dụng dịch vụ Camera (tính từ ngày create hợp đồng đến hiện tại) ,CRM ,Done ,Per-Contract
+Consume,Product,ME-C-CT-27,fpl-age-by-day / month / year,Tuổi (ngày / tháng / năm) sử dụng dịch vụ FPL (tính từ ngày create hợp đồng đến hiện tại) ,CRM ,Done ,Per-Contract
+Consume,Service,ME-C-CT-30,total-duplicated-checklist-7d / 30d / 90d,Checklist lặp trong 7; 30; 90 ngày gần nhất,BTTK,Done ,Per-Contract
+Consume,Service,ME-C-CT-31,total-internet-checklist-7d /30d / 90d,Số lượng checklist liên quan đến nhóm lỗi thuộc dịch vụ Internet trong 7 ngày gần nhất,BTTK,Done ,Per-Contract
+Consume,Service,ME-C-CT-32,total-combo-camera-checklist-7d / 30d / 90d,Số lượng checklist liên quan đến nhóm lỗi đầu vào và đầu ra là Camera Combo trong 7 ngày gần nhất,BTTK,Done ,Per-Contract
+Consume,Service,ME-C-CT-33,total-camera-checklist-7d /30d / 90d,Số lượng checklist liên quan đến nhóm lỗi đầu vào và đầu ra là Camera Only trong 7 ngày gần nhất,BTTK,Done ,Per-Contract
+Consume,Service,ME-C-CT-34,tptal-fpl-checklist-7d /30d / 90d,Số lượng checklist liên quan đến nhóm lỗi đầu vào và đầu ra là FPL (thuê bao) trong 7 ngày gần nhất,BTTK,Done ,Per-Contract
+Consume,Service,ME-C-CT-32,total-fpl-alone-checklist-7d /30d / 90d,Số lượng checklist liên quan đến nhóm lỗi đầu vào và đầu ra là FPL (độc lập) trong 7 ngày gần nhất,BTTK,Done ,Per-Contract
+Consume,Service,ME-C-CT-34,total-httt-checklist-7d/30d / 90d,Số lượng checklist liên quan đến yêu cầu hỗ trợ thông tin trong 7 ngày gần nhất,BTTK,Done ,Per-Contract
+Consume,Service,ME-C-CT-35,total-htkt-checklist-7d/30d / 90d,Số lượng checklist liên quan đến yêu cầu lỗi Kỹ thuật trong 7 ngày gần nhất,BTTK,Done ,Per-Contract
+Consume,Customer,ME-C-CT-52,monthly_service_fee_m01,Tiền các gói dịch vụ khách hàng trả hàng tháng ,Billing & Payment System,Done ,Per-Contract
+Consume,Customer,ME-C-CT-53,monthly_service_fee_m06,Trung bình tiền các gói dịch vụ khách hàng trả trong 6 tháng gần nhất ,Billing & Payment System,Done ,Per-Contract
+Consume,Customer,ME-C-CT-54,monthly_spending_m01,Tiền khách hàng chi tiêu hàng tháng ,C360 - Data Analytics,Done ,Per-Contract
+Consume,Customer,ME-C-CT-55,device_purchase_y01	,Tiền khách hàng mua thêm thiết bị,Billing & Payment System,Done ,Per-Contract
+Consume,Product,,prepaid_fee_avg,TB số tiền trả trước (Net/Pay/Cam) phân bổ hàng tháng,CRM ,Done ,Per-Contract
+Consume,Customer,ME-C-CT-56,total_late_paid_m12,Số lần thanh toán trễ cước trong 12 tháng gần nhất,Billing & Payment System,Done ,Per-Contract
+Consume,Product,ME-C-CT-57,total_locked_pay_y01,Số lần bị khóa cước Pay TV trong 1 năm gần nhất,Billing & Payment System,Done ,Per-Contract
+Consume,Product,ME-C-CT-58,total_unlocked_pay_y01,Số lần mở lại dịch vụ Pay TV (sau khóa) trong 1 năm gần nhất,Billing & Payment System,Done ,Per-Contract
+Consume,Product,ME-C-CT-59,total_locked_net_y01,Số lần bị khóa cước Net trong 1 năm gần nhất,Billing & Payment System,Done ,Per-Contract
+Consume,Product,ME-C-CT-60,total_unlocked_net_y01,Số lần mở lại dịch vụ Net (sau khóa) trong 1 năm gần nhất,CRM ,Done ,Per-Contract
+Consume,Product,ME-C-CT-61,payment_extension_m06 / y01,Số lần thực hiện gia hạn TT trong 6 tháng / 1 năm gần nhất,CRM ,Done ,Per-Contract
+Consume,Customer,ME-C-CT-63,online_payments_y01,Số lần thanh toán online trong 1 năm gần nhất,Billing & Payment System,Done ,Per-Contract
+Consume,Customer,ME-C-CT-64,home_payments_y01,Số lần thanh toán tại nhà trong 1 năm gần nhất,Billing & Payment System,Done ,Per-Contract
+Consume,Customer,ME-C-CT-65,total_paid_ontime_m12,Số lần KH thanh toán đúng hạn trong 12 tháng gần nhất,CRM ,Done ,Per-Contract
+Consume,Customer,,total_payment_m12,Tổng số lần thanh toán trong vòng 12 tháng,Billing & Payment System,Done ,Per-Contract
+Consume,Product,ME-C-CT-66,internet-remain-months,Số tháng còn lại trả trước Net,CRM ,Done ,Per-Contract
+Consume,Product,ME-C-CT-67,fpl-remain-months,Số tháng còn lại trả trước FPL,CRM ,Done ,Per-Contract
+Consume,Product,ME-C-CT-68,package_change_y01 ,Số lần khách hàng nâng gói/hạ gói; đổi gói dịch vụ trong 1 năm / 6 tháng gần nhất,CRM ,Done ,Per-Contract
+Consume,Product,ME-C-CT-70,avg_months_between_changes,Khoảng thời gian giữa mỗi lần khách hàng nâng gói/ hạ gói.,CRM ,Done ,Per-Contract
+Consume,Product,ME-C-CT-71,upgrade_y01/ m06,Số lần nâng gói dịch vụ trong vòng 1 năm / 6 tháng gần nhất,CRM ,Done ,Per-Contract
+Consume,Product,ME-C-CT-73,downgrade_y01/ m06,Số lần hạ gói dịch vụ trong vòng 1 năm / 6 tháng gần nhất,CRM ,Done ,Per-Contract
+Consume,Product,ME-C-CT-76,total-monthly-upload-xdsl,Tổng dung lượng upload,Network Monitoring System,Done ,Per-Contract
+Consume,Product,ME-C-CT-77,total-monthly-download-xdsl,Tổng dung lượng download,Network Monitoring System,Done ,Per-Contract
+Consume,Service,ME-C-C-36,chatbot-metric-total-session-id, Tổng số phiên liên hệ với chatbot của khách hàng trong ngày,C360 - Data Analytics,Done ,Per-Contract; Per-Customer
+Consume,Service,ME-C-C-40,chatbot-metric-top-intent, Ý định nhiều nhất của khách hàng khi liên hệ chatbot trong ngày,C360 - Data Analytics,Done ,Per-Contract; Per-Customer
+Consume,Service,ME-C-C-41,chatbot-metric-top-intent-count,Số lượng agent khác nhau phục vụ khách hàng trong ngày,C360 - Data Analytics,Done ,Per-Contract; Per-Customer
+Consume,Service,ME-C-C-44,chatbot-metric-total-service-contact,"Tổng số lần KH hỏi chatbot về thông tin dịch vụ (intent mua thêm dịch vụ). Đếm trên mỗi kênh theo các intent code sau:
+ cuoc_cuocdangkymoi
+cuoc_cuocdangkymoi_upsalecamera
+ cuoc_prepaidwifi
+cuoc_uudaitratruoc
+cuoc_giahancloud
+cuoc_prepaidwifi
+cuoc_nangcapgoi
+cuoc_nangcapwifi6
+
+=> HiFPT và Zalo",C360 - Data Analytics,Done ,Per-Contract; Per-Customer
+Consume,Product,ME-C-CT-78,total-monthly-data-usage,Lưu lượng sử dụng mạng theo tháng (total download + upload),Network Monitoring System,Done ,Per-Contract
+Consume,Product,ME-C-CT-79,active_net / pay / cam,Tình trạng sử dụng Net / pay/ cam hiện tại của hợp đồng (có đang sử dụng 0: Không 1: Có),CRM ,Done ,Per-Contract
+Consume,Product,ME-C-CT-83,pass_pay / net / cam,Tình trạng sử dụng Net / pay / cam lịch sử của hợp đồng (có từng sử dụng 0: Không 1: Có),CRM ,Done ,Per-Contract
+Consume,Service,ME-C-CC 85,total_sr_arised_m03,Số lượng SR phát sinh trong 90 ngày (SR recare; SR cscd; SR kpdv),Omni + Callcenter,Done ,Per-Customer; Per-Contract
+Consume,Customer,ME-C-CC 86,total_unpaid_bill,Số lượng hóa đơn tồn chưa thanh toán/ còn nợ cước,Omni + Callcenter,Done ,Per-Customer; Per-Contract
+Consume,Customer,ME-C-CC 87,total_amount_indebt,Số tiền còn nợ cước/ chưa thanh toán,Omni + Callcenter,Done ,Per-Customer; Per-Contract
+Consume,Product,ME-C-CC 88,total-relocate,Tổng số lần hợp đồng chuyển địa điểm,Omni + Callcenter,Done ,Per-Contract
+Consume,Product,ME-C-CC 89,internet-curr-package,Gói dịch vụ Internet đang sử dụng ,Omni + Callcenter,Done ,Per-Contract
+Consume,Customer,ME-C-CC 90,total_active_contract,SL hợp đồng đang active của khách hàng (unified customer),Omni + Callcenter,Done ,Per-Customer
+Consume,Customer,ME-C-CC 91,total_deactivated_contract,SL hợp đồng deactivated của khách hàng (unified customer),Omni + Callcenter,Done ,Per-Customer
+CustomeProfile,Customer,ME-C-CC 92,AGE,Tuổi khách hàng (tuổi thật),Omni + Callcenter,Done ,Per-Customer
+Consume,Product,ME-C-CC 93,product-net-device-connection,Số ngày KHG online internet trong 30 ngày gần nhất Login frequency (last 7/30 days),Omni + Callcenter,Processing,Device
+Consume,Product,ME-C-CC 94,PrepaidMonthAvg,TB số tháng trả trước trong 1 năm,Omni + Callcenter,Processing,Per-Contract
+Consume,Customer,ME-C-CC 95,MostPayMethod,PTTT sử dụng nhiều nhất ,Omni + Callcenter,Processing,Per-Contract
+Consume,Product,ME-C-CC 96,LatestTimeLatePay,PTTT gần nhất,Omni + Callcenter,Processing,Per-Contract
+Consume,Product,ME-C-CC 97,num-frequent-clients,Số lượng thiết bị kết nối thường xuyên (trong 1 tuần gần nhất),Omni + Callcenter,Processing,Device
+Consume,Product,ME-C-CC 98,prefer_pay_channel_m12,Kênh thanh toán online KH thường sử dụng,Omni + Callcenter,Done ,Per-Customer
+Consume,Product,ME-C-CC 99,addon_days_usage,Số ngày sử dụng các dịch vụ addon (tính riêng từng gói),Omni + Callcenter,Not started yet,Per-Contract
+Consume,Product,ME-C-CC 100,addon_months_usage,Số tháng sử dụng các dịch vụ addon (tính riêng từng gói),Omni + Callcenter,Not started yet,Per-Contract
+Consume,Service,ME-C-CC 101,OmniNetIssues,Số lần tạo lỗi trên luồng Omniagents liên quan đến Internet,Omni + Callcenter,Not started yet,Per-Contract
+Consume,Service,ME-C-CC 102,OmniPayIssues,Số lần tạo lỗi trên luồng Omniagents liên quan đến FPL,Omni + Callcenter,Not started yet,Per-Contract
+Consume,Service,ME-C-CC 103,OmniCamIssues,Số lần tạo lỗi trên luồng Omniagents liên quan đến Camera,Omni + Callcenter,Not started yet,Per-Contract
+Manage,Product,ME-C-CC 104,TotalDiscount,Tổng khuyến mãi KH đã sử dụng (đã sử dụng voucher; đổi gold; điểm thưởng;..),CRM ,Not started yet,Per-Contract
+Consume,Product,ME-C-CC 105,TotalRefund,Tổng tiền bồi hoàn KH đã nhận,Billing & Payment System,Not started yet,Per-Contract
+Consume,Product,ME-C-CC 106,AddonSpending,Số tiền KH trả hàng tháng cho các gói dịch vụ add-on,Billing & Payment System,Not started yet,Per-Contract
+Consume,Product,ME-C-CC 107,PayAfterLockedDays,Khoảng tgian thanh toán sau khi bị khóa ,Billing & Payment System,Not started yet,Per-Contract
+Manage,Product,ME-C-CC 108,DebitDays,Số ngày nợ cước tháng,Billing & Payment System,Not started yet,Per-Contract
+Consume,Product,ME-C-CC 109,isOneTimePayment,Có thanh toán từng phần/ thanh toán toàn bộ (KH doanh nghiệp; hoặc cá nhân có trừ đặt cọc),Billing & Payment System,Not started yet,Per-Contract
+Consume,Product,ME-C-CC 110,PayAfterNotiDays,Số ngày từ lúc KH nhận TBC (trên các kênh) và thực hiện thanh toán,Billing & Payment System,Not started yet,Per-Contract
+Consume,Customer,ME-C-CC 111,peaktime-net-usage,Thời gian cao điểm sử  dụng internet trong ngày,CRM ,Not started yet,Per-Contract
+Consume,Customer,ME-C-CC 112,GoldScoreExchange,Tổng điểm loyalty đã đổi,CRM ,Not started yet,Per-Contract
+Consume,Customer,ME-C-CC 113,loyalty_interact,Mức độ tương tác với ưu đãi dành riêng cho hạng thành viên,CRM ,Not started yet,Per-Contract
+Consume,Product,ME-C-CC 114,TotalCameraLog,Số lần xem app camera trong ngày,CRM ,Not started yet,Per-Contract
+Manage,Customer,ME-C-CC 115,contact-times-d30,Số lần liên hệ của KHG trong 30 ngày gần nhất,CRM ,Not started yet,Per-Customer
+Manage,Product,ME-C-CC 116,packet_loss_rate,Tỷ lệ rớt gói (packetloss); tính theo từng thiết bị (?) - số lượng thiết bị có tỷ lệ rớt gói cao / thấp / trung bình,CRM ,Not started yet,Device
+Manage,Product,ME-C-CC 117,mean_downtime_30d,Thời gian rời phiên trung bình trong 7 ngày ,Network Monitoring System,Done ,Per-Contract
+Manage,Product,ME-C-CC 118,max_downtime_30d,Thời gian rời phiên dài nhất trong 30 ngày,Network Monitoring System,Done ,Per-Contract
+Manage,Product,ME-C-CC 119,unstable_days_30d,Số ngày kết nối không ổn định trong 30 ngày,Network Monitoring System,Done ,Per-Contract
+Pay,Product,ME-C-CC 120,af_freq_30d,Tần suất autofix trong vòng 30 ngày,Network Monitoring System,Done ,Per-Contract
+Pay,Product,ME-C-CC 121,af_freq_7d,Tần suất autofix trong vòng 7 ngày,Network Monitoring System,Done ,Per-Contract
+Pay,Product,ME-C-CC 122,af_count_7d,Số lần thực hiện autofix trong vòng 7 ngày,Network Monitoring System,Done ,Per-Contract
+Pay,Product,ME-C-CC 123,days_high_ram_7d,Số ngày thiết bị có mức sử dụng RAM cao,ACS Server & TR-069,Done ,Per-Contract
+Pay,Product,ME-C-CC 124,days_high_cpu_7d,Số ngày thiết bị có mức sử dụng CPU cao,ACS Server & TR-069,Done ,Per-Contract
+CustomeProfile,Product,ME-C-CC 125,avg_conn_30d,Số thiết bị kết nối trung bình trong 30 ngày,ACS Server & TR-069,Done ,Per-Contract
+Consume,Product,ME-C-CC 126,avg_conn_7d,Số thiết bị kết nối trung bình trong 7 ngày,ACS Server & TR-069,Done ,Per-Contract
+Consume,Product,ME-C-CC 127,consecutive_out_days_30d,Số ngày rời phiên liên tục trong 30 ngày,Network Monitoring System,Done ,Per-Contract
+Consume,Product,ME-C-CC 128,bad_suyhao_days_7d,Số ngày suy hao kém trong 7 ngày,Network Monitoring System,Done ,Per-Contract
+CustomeProfile,Product,ME-C-CC 129,avg_suyhao_3d,Trung bình suy hao trong 3 ngày,Network Monitoring System,Done ,Per-Contract
+CustomeProfile,Product,ME-C-CC 130,out-session-frequency-d30,"Tần suất rời phiên của thiết bị; được tính trong 30 ngày gần nhất
+
+Status: 0: Không ghi nhận thông tin rời phiên phát sinh; 1: Rời phiên thấp; 2: Rời phiên thường xuyên; 3: Rời phiên cao",Network Monitoring System,,Device
+Consume,Product,ME-C-CC 131,suy_hao_d01,"Phân loại tình trạng suy hao của clients trong ngày T- 1('Good'; 'Bad'; 'Invalid'; 'Unknown')
+Trong đó các thiết bị có:
+- Công suất thu từ -60dBm đến -27dBm được đánh giá là 'Bad'
+- Công suất thu từ -23.5dBm đến -13dBm được đánh giá là 'Good'
+- Công suất thu nằm ngoài khoảng -60dBm đến 0dBm sẽ là 'Invalid'
+- Công suất thu không nằm trên các khoảng nhắc trên được gán nhãn 'Unknown')",Network Monitoring System,,Device
+Consume,Product,ME-C-CC 132,rssi_client_level,"Tình trạng tín hiệu kết nối của client đến thiết bị (ONU/ONT)
+(> -60dBm: Good
+-61dBm -> -70dBm: Normal;
+-71dBm -> -80dBm Bad;
+< -80dBm Very bad)
+Output: số lượng thiết bị có RSSI Good / Normal/ Bad/ Very bad ",Network Monitoring System,,Device
+Consume,Product,ME-C-CC 133,channel-interference-2,"Tình trạng nhiễu xuyên kênh; nhiễu đồng kênh của thiết bị ONT/ONU với các thiết bị lân cận
+
+(1) Khoảng cách AP lân cận xa / gần - tương ứng cường độ tín hiệu mạnh yếu
+Độ rộng kênh 22 MHz)
+
+",Network Monitoring System,,Device
+CustomeProfile,Product,ME-C-CC 134,contact-frequency,"Tần suất liên hệ của KH trong 12 tháng gần nhất  (Với mỗi OBJID được tính là 1 KH)
+
+Status: 0: Không ghi nhận thông tin liên hệ;
+1: Tần suất LH thấp ;
+2:  Tần suất LH trung bình;
+3: Tần suất LH Cao;
+ 4: Tần suất LH Rất cao",Network Monitoring System,Done ,Per-Contract
+Manage,Product,ME-C-CC 135,session-stability-d01,Độ ổn định phiên kết nối của thiết bị trong ngày,Network Monitoring System,Done ,Per-Contract
+Consume,Product,ME-C-CC 136,top3-dpt-categories,Top 3 loại websites truy cập nhiều nhất của khách hàng từ DPI,Network Monitoring System,Done ,Per-Contract
+Pay,Customer,ME-C-CC 137,top3-dpi-acess-count,Top 3 loại websites truy cập nhiều nhất của khách hàng từ DPI,Network Monitoring System,Done ,Per-Contract
+CustomeProfile,Customer,ME-C-CC 138,ces-contact-m12,Điểm đánh giá nỗ lực liên hệ của khách hàng đối với nhà cung cấp dịch vụ trong 12 tháng gần nhất,Network Monitoring System,Done ,Per-Contract; Per-Customer
+CustomeProfile,Customer,ME-C-CC 139,internet-data-usage,Mức độ sử dụng internet của KH,Network Monitoring System,Done ,Per-Contract
+CustomeProfile,Customer,ME-C-CC 140,contract-age-range,Range tuổi sử dụng dịch vụ internet của KH (<12T; >12T;...),CRM ,Done ,Per-Contract
+CustomeProfile,Customer,ME-C-CC 141,contract-age-group,Nhóm khách hàng dựa trên tuổi sử dụng dịch vụ Internet của KH (New; High;..),CRM ,Done ,Per-Contract
+Leave,Product,ME-C-CC 142,autofix-demand,Đánh giá tình trạng thiết bị có vấn đề về cấu hình cần thực hiện reboot / re-config,C360 - Data Analytics,Done ,Device
+Renew,Customer,ME-C-CC 143,ces-service,Điểm đánh giá nỗ lực liên hệ của khách hàng đối với hỗ trợ dịch vụ,Omni + Callcenter,Done ,Per-Contract; Per-Customer
+Consume,Product,ME-C-CC 144,device_health_status,"Tình trạng sức khỏe thiết bị ngày T - 1
+(1): Tốt; (2): Cảnh báo; (3): Không tốt",Omni + Callcenter,Done ,Device
+Manage,Customer,ME-C-CC 145,most-contact-phone-m12        ,SĐT có lần liên hệ nhiều nhất của các sđt có cùng obj,Omni + Callcenter,Done ,Per-Contract; Per-Customer
+Manage,Customer,ME-C-CC 146,last-contact-phone-m12,SDT liên hệ gần nhất của KH,Omni + Callcenter,Done ,Per-Contract; Per-Customer
+Renew,Customer,ME-C-CC 147,last-contact-date-m12,Ngày liên hệ của SDT liên hệ gần nhất của KH,Omni + Callcenter,Done ,Per-Contract; Per-Customer
+Manage,Customer,ME-C-CC 148,last-contact-channel-m12,Kênh liên hệ gần nhất của sđt liên hệ gần nhất của KH,Omni + Callcenter,Done ,Per-Contract; Per-Customer
+Manage,Customer,ME-C-CC 149,most-contact-channel-m12,Kênh liên hệ nhiều nhất của KHG (OBJ),Omni + Callcenter,Done ,Per-Contract; Per-Customer
+Manage,Customer,ME-C-CC 150,arpu-segment-per-services-m01,Scoring mức độ chi trả cước dịch vụ của khg trong tháng T-1 theo nhóm dịch vụ,Billing & Payment System,Done ,Per-Contract
+Manage,Customer,ME-C-CC 151,arpu-segment-branch-m01,Scoring mức độ chi trả cước dịch vụ của khg trong tháng T-1 theo chi nhánh,Billing & Payment System,Done ,Per-Contract
+Manage,Customer,ME-C-CC 152,arpu-segment-per-services-subcomp-m01,Scoring mức độ chi trả cước dịch vụ của khg trong tháng T-1 theo chi nhánh và nhóm dịch vụ,Billing & Payment System,Done ,Per-Contract
+Manage,Customer,ME-C-CC 153,arpu-segment-per-services-m01,Scoring mức độ chi trả cước dịch vụ theo hợp đồng trong tháng T-1 theo nhóm dịch vụ,Billing & Payment System,Done ,Per-Contract
+Manage,Customer,ME-C-CC 154,arpu-segment-per-services-subcomp-m01,Scoring mức độ chi trả cước dịch vụ theo hợp đồng trong tháng T-1 theo nhóm dịch vụ và khu vực,Billing & Payment System,Done ,Per-Contract
+Manage,Customer,ME-C-CC 155,customer-type,Loại khách hàng (cá nhân; doanh nghiệp;...),CRM ,Done ,Per-Contract
+Manage,Product,ME-C-CC 156,fpl-segment-usage,Segment mức độ sử dụng dịch vụ FPL,ACS Server & TR-069,Done ,Per-Contract
+Manage,Customer,ME-C-CC 157,fpl-most-view-channel,Sự kiện xem nhiều,ACS Server & TR-069,Done ,Per-Contract
+CustomeProfile,Customer,ME-C-CC 158,age-range,Range tuổi khách hàng ,CRM ,Done ,Per-Contract
+CustomeProfile,Customer,ME-C-CC 159,age-group,Nhóm tuổi khách hàng (trẻ; trung niên; về hưu;..),CRM ,Done ,Per-Contract
+Consume,Product,ME-C-CC 160,out-session-frequency-d07,"Tần suất rời phiên của thiết bị; được tính trong 7 ngày gần nhất
+
+1: Rời phiên thấp; 2: Rời phiên thường xuyên; 3: Rời phiên cao",Network Monitoring System,Done ,Per-Contract
+Consume,Product,ME-C-CC 161,suy_hao_d03,Tình trạng suy hao của clients trong 03 ngày gần nhất ('Tốt'; 'Trung bình'; 'Kém'; 'Quá cao'),Network Monitoring System,Done ,Device
+Consume,Product,ME-C-CC 162,suy_hao_d07,Tình trạng suy hao của clients trong 7 ngày gần nhất ('Tốt'; 'Trung bình'; 'Kém'; 'Quá cao'),Network Monitoring System,Done ,Device
+Consume,Product,ME-C-CC 163,suy_hao_d30,Tình trạng suy hao của clients trong 30 ngày gần nhất ('Tốt'; 'Trung bình'; 'Kém'; 'Quá cao'),Network Monitoring System,Done ,Device
+Consume,Product,ME-C-CC 164,channel-interference-5,"Số lượng AP nhiễu xuyên kênh; nhiễu đồng kênh
+
+(Khoảng cách AP lân cận xa / gần - tương ứng cường độ tín hiệu mạnh yếu;
+Kênh của AP lân cận)",ACS Server & TR-069,Done ,Device
+Consume,Product,ME-C-CC 165,fpt-contractage-group,Segment độ tuổi sử dụng dịch vụ FPL,CRM ,Done ,Per-Contract
+Consume,Product,ME-C-CC 166,serviceIssues_Frequency,Scoring tần suất KH gặp vấn đề theo loại dịch vụ NET/PAY/CAM,BTTK,Done ,Per-Contract
+Manage,Market/Sales,ME-C-CC 167,customer-potential,Scoring khả năng bán thêm gói/nâng gói (upsell/cross-selling) của KH,Digital Tracking System,Done ,Per-Contract
+Consume,Customer,ME-C-CC 168,trusted_pay_score,Scoring mức độ tin cậy hành vi thanh toán cước của khg,Billing & Payment System,Processing,Per-Contract
+Consume,Service,ME-C-CC 169,top_1_hour,Khung giờ top 1 để tiếp cận KH,Omni + Callcenter,Done ,Per-Contract
+Consume,Service,ME-C-CC 170,top_2_hour,Khung giờ top 2 để tiếp cận KH,Omni + Callcenter,Done ,Per-Contract
+Consume,Service,ME-C-CC 171,most_contact_time,Khung giờ phát sinh liên hệ nhiều nhất của KH (Outbound + Inbound),Omni + Callcenter,Done ,Per-Contract
+Consume,Service,ME-C-CC 172,last_contact_time,Khung giờ phát sinh liên hệ gần nhất của KH (Outbound + Inbound),Omni + Callcenter,Done ,Per-Contract
+Leave,Customer,ME-C-CC 173,leave_reasons,Lý do thanh lý của KH,C360 - Data Analytics,Done ,Per-Contract
+Pay,Customer,ME-C-CC 174,price_sensitivity, Độ nhạy cảm với giá cước,C360 - Data Analytics,Not started yet,Per-Customer
+Awareness,Market/Sales,ME-C-CC 175, wtp,Willingness-to-pay cho các tính năng premium / add_on / thêm spdv,C360 - Data Analytics,Not started yet,Per-Customer
+Manage,Service,ME-C-CC 176,support_behavior,Cách thức tương tác với bộ phận CSKH,C360 - Data Analytics,Not started yet,Per-Customer; Per-Contract
+Manage,Customer,ME-C-CC 177,tech_literacy,Khả năng tự xử lý sự cố kỹ thuật,C360 - Data Analytics,Not started yet,Per-Customer; Per-Contract
+Awareness,Market/Sales,ME-C-CC 178,upsell_receptivity ,Khả năng tiếp nhận upsell,ACS Server & TR-069,Not started yet,Per-Customer; Per-Contract
+CustomeProfile,Customer,ME-C-CC 179,Social Network Followers,Số lượng người theo dõi trên mạng xã hội,Digital Tracking System,Not started yet,Per-Customer
+Awareness,Market/Sales,ME-C-CC 180,Targeted Advertising Effectiveness Score,Điểm hiệu quả quảng cáo mục tiêu,Digital Tracking System,Not started yet,Per-Customer; Per-Contract

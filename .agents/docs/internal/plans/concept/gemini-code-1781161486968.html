@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hệ thống Chỉ số Trải nghiệm Khách hàng & Cus360 - v8</title>
+    <style>
+        :root {
+            --primary-color: #2563eb;
+            --bg-color: #f8fafc;
+            --card-bg: #ffffff;
+            --text-main: #1e293b;
+            --border-color: #e2e8f0;
+
+            /* Màu sắc phân cấp chỉ số (Theo View/Cấp độ dữ liệu) */
+            --color-device-bg: #e8f5e9;
+            --color-device-text: #2e7d32;
+
+            --color-contract-bg: #e8eaf6;
+            --color-contract-text: #3f51b5;
+
+            --color-customer-bg: #fff3e0;
+            --color-customer-text: #e65100;
+
+            --color-multi-bg: #eceff1;
+            --color-multi-text: #455a64;
+
+            /* Màu trạng thái Data Source */
+            --status-active-bg: #e8f5e9;
+            --status-active-text: #2e7d32;
+            --status-inactive-bg: #fde8e8;
+            --status-inactive-text: #9b1c1c;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 24px;
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        header {
+            margin-bottom: 24px;
+            border-bottom: 2px solid var(--border-color);
+            padding-bottom: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        h1 { margin: 0; color: #1e3a8a; font-size: 24px; }
+
+        .file-upload-box {
+            background: #eff6ff;
+            border: 2px dashed var(--primary-color);
+            padding: 10px 20px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .alert-success {
+            padding: 12px; background: #dcfce7; color: #15803d; border-radius: 6px; margin-bottom: 20px; font-size: 14px; display: none; border: 1px solid #bbf7d0;
+        }
+
+        /* --- THANH KPI TỔNG HỢP --- */
+        .kpi-container {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            margin-bottom: 24px;
+        }
+
+        .kpi-card {
+            background: #fdfbf7;
+            border: 1px solid #f1f0ea;
+            border-radius: 12px;
+            padding: 16px;
+            text-align: center;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* Thêm màu nền nổi bật hơn cho ô Tổng Chỉ số để hướng sự chú ý */
+        .kpi-card.kpi-main-total {
+            background: #f0fdf4;
+            border-color: #bbf7d0;
+        }
+
+        .kpi-card .kpi-num {
+            font-size: 32px;
+            font-weight: bold;
+            color: #1e293b;
+            line-height: 1.2;
+        }
+
+        .kpi-card .kpi-label {
+            font-size: 14px;
+            color: #64748b;
+            margin-top: 4px;
+            font-weight: 500;
+        }
+
+        /* Nhãn hiển thị % và số lượng tiến độ hoàn thành */
+        .kpi-card .kpi-completion-sub {
+            font-size: 13px;
+            color: #16a34a;
+            font-weight: 700;
+            margin-top: 6px;
+            background: #dcfce7;
+            padding: 2px 10px;
+            border-radius: 12px;
+            border: 1px solid #bbf7d0;
+        }
+
+        /* --- THANH CHÚ GIẢI --- */
+        .legend-bar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 24px;
+            font-size: 15px;
+            font-weight: 600;
+        }
+
+        .legend-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 16px;
+            border-radius: 20px;
+            font-size: 13.5px;
+            font-weight: 500;
+        }
+
+        /* --- MA TRẬN BẢNG CHUẨN HOÁ --- */
+        .matrix-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: var(--card-bg);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.03);
+            border-radius: 12px;
+            overflow: hidden;
+            table-layout: fixed;
+            margin-bottom: 35px;
+        }
+
+        .matrix-table th, .matrix-table td {
+            border: 1px solid #e2e8f0;
+            padding: 16px;
+            vertical-align: top;
+        }
+
+        .matrix-table th.stage-header {
+            color: white;
+            padding: 14px;
+            text-align: center;
+        }
+
+        .stage-title {
+            font-size: 16px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+
+        .stage-sub {
+            font-size: 11.5px;
+            opacity: 0.85;
+            margin-top: 3px;
+            letter-spacing: 1px;
+        }
+
+        .header-awareness { background-color: #0284c7; }
+        .header-consume { background-color: #1d60b3; }
+        .header-leave { background-color: #990000; }
+
+        /* Cột Tiêu đề Domain */
+        .row-header-domain {
+            text-align: center;
+            vertical-align: middle !important;
+            width: 180px;
+            padding: 14px !important;
+        }
+
+        .domain-title {
+            font-size: 16px;
+            font-weight: bold;
+            display: block;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .domain-desc {
+            font-size: 12px;
+            font-weight: normal;
+            line-height: 1.4;
+            display: block;
+            opacity: 0.85;
+        }
+
+        .bg-product { background-color: #e6f0fa; color: #1d60b3; }
+        .bg-service { background-color: #edf5e1; color: #2e7d32; }
+        .bg-customer { background-color: #fdf0e6; color: #e65100; }
+        .bg-market-sales { background-color: #fae8ff; color: #a21caf; }
+        .bg-resource { background-color: #f1f5f9; color: #475569; }
+        .bg-enterprise { background-color: #fef2f2; color: #dc2626; }
+
+        .cell-box { min-height: 90px; }
+        .pills-flex { display: flex; flex-wrap: wrap; gap: 8px; }
+
+        /* Nhãn viên thuốc (Pills) Chỉ số */
+        .metric-pill {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 16px;
+            font-size: 12.5px;
+            font-weight: 500;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+            cursor: help;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+
+        .metric-pill:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.08);
+        }
+
+        .pill-device { background-color: var(--color-device-bg); color: var(--color-device-text); }
+        .pill-contract { background-color: var(--color-contract-bg); color: var(--color-contract-text); }
+        .pill-customer { background-color: var(--color-customer-bg); color: var(--color-customer-text); }
+        .pill-multilevel { background-color: var(--color-multi-bg); color: var(--color-multi-text); }
+
+        /* --- SECTION 2: QUẢN LÝ TÀI NGUYÊN DỮ LIỆU --- */
+        .section-title-ds {
+            font-size: 18px;
+            font-weight: bold;
+            color: #1e3a8a;
+            border-left: 4px solid var(--primary-color);
+            padding-left: 10px;
+            margin: 40px 0 20px 0;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .ds-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+        }
+
+        .ds-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.02);
+            position: relative;
+        }
+
+        .ds-card-body { margin-bottom: 12px; }
+        .ds-name { font-size: 15px; font-weight: bold; color: #1e293b; margin: 0 0 8px 0; }
+        .ds-context { font-size: 13px; color: #64748b; line-height: 1.4; }
+        .ds-context strong { color: #475569; }
+        .ds-footer { display: flex; justify-content: flex-end; }
+        .ds-status-badge { font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: 12px; display: inline-block; }
+
+        .ds-active { background-color: var(--status-active-bg); color: var(--status-active-text); }
+        .ds-inactive { background-color: var(--status-inactive-bg); color: var(--status-inactive-text); }
+
+        @media (max-width: 1300px) { .ds-grid { grid-template-columns: repeat(3, 1fr); } }
+        @media (max-width: 900px) { .ds-grid { grid-template-columns: repeat(2, 1fr); } }
+
+        /* --- FLOATING TOOLTIP --- */
+        #hoverTooltip {
+            display: none;
+            position: absolute;
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            padding: 16px;
+            border-radius: 8px;
+            z-index: 9999;
+            max-width: 380px;
+            pointer-events: none;
+            font-size: 13px;
+            color: #1e293b;
+        }
+
+        .tooltip-title { font-weight: bold; color: #1e3a8a; font-size: 14px; margin-bottom: 8px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; }
+        .tooltip-row { margin-bottom: 5px; }
+        .tooltip-label { font-weight: 600; color: #475569; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <div>
+            <h1>Hệ thống Chỉ số Trải nghiệm Khách hàng & Cus360</h1>
+            <p style="margin: 4px 0 0 0; color: #64748b; font-size: 13.5px;">Giao diện v8 bổ sung cơ chế thống kê % tiến độ hoàn thiện chỉ số tự động</p>
+        </div>
+        <div class="file-upload-box">
+            <label style="font-weight: 600; color: var(--primary-color); cursor: pointer;">Nạp file Metrics CSV: </label>
+            <input type="file" id="csvFileInput" accept=".csv">
+        </div>
+    </header>
+
+    <div id="uploadStatus" class="alert-success"></div>
+
+    <div class="kpi-container">
+        <div class="kpi-card kpi-main-total">
+            <div class="kpi-num" id="kpiTotal">0</div>
+            <div class="kpi-label">Tổng chỉ số</div>
+            <div class="kpi-completion-sub" id="kpiCompletion">Đang tính toán: 0% (0)</div>
+        </div>
+        <div class="kpi-card"><div class="kpi-num" id="kpiDevice">0</div><div class="kpi-label">Device-level</div></div>
+        <div class="kpi-card"><div class="kpi-num" id="kpiContract">0</div><div class="kpi-label">Contract-level</div></div>
+        <div class="kpi-card"><div class="kpi-num" id="kpiCustomer">0</div><div class="kpi-label">Customer-level</div></div>
+    </div>
+
+    <div class="legend-bar">
+        <span>Cấp độ dữ liệu (View):</span>
+        <div class="legend-pill" style="background: var(--color-device-bg); color: var(--color-device-text);">● Device</div>
+        <div class="legend-pill" style="background: var(--color-contract-bg); color: var(--color-contract-text);">● Contract</div>
+        <div class="legend-pill" style="background: var(--color-customer-bg); color: var(--color-customer-text);">● Customer</div>
+        <div class="legend-pill" style="background: var(--color-multi-bg); color: var(--color-multi-text);">● Đa cấp</div>
+    </div>
+
+    <table class="matrix-table">
+        <thead>
+            <tr>
+                <th style="width: 180px; background-color: #1e293b; color: #ffffff; text-align: center; vertical-align: middle; font-weight: bold; font-size: 15px;">
+                    Domain / Stage
+                </th>
+                <th class="stage-header header-awareness">
+                    <div class="stage-title">● AWARENESS</div>
+                    <div class="stage-sub">AWARENESS</div>
+                </th>
+                <th class="stage-header header-consume">
+                    <div class="stage-title">● CONSUME</div>
+                    <div class="stage-sub">CONSUME · MANAGE · PAY</div>
+                </th>
+                <th class="stage-header header-leave">
+                    <div class="stage-title">● LEAVE</div>
+                    <div class="stage-sub">RENEW · RECOMMEND · LEAVE</div>
+                </th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td class="row-header-domain bg-product">
+                    <span class="domain-title">Product</span>
+                    <span class="domain-desc">Sản phẩm, gói cước, chu kỳ dịch vụ cam, pay</span>
+                </td>
+                <td><div class="cell-box"><div class="pills-flex" id="cell-product-awareness"></div></div></td>
+                <td><div class="cell-box"><div class="pills-flex" id="cell-product-consume"></div></div></td>
+                <td><div class="cell-box"><div class="pills-flex" id="cell-product-leave"></div></div></td>
+            </tr>
+            <tr>
+                <td class="row-header-domain bg-service">
+                    <span class="domain-title">Service</span>
+                    <span class="domain-desc">Dịch vụ hỗ trợ, kỹ thuật, CSKH & xử lý sự cố</span>
+                </td>
+                <td><div class="cell-box"><div class="pills-flex" id="cell-service-awareness"></div></div></td>
+                <td><div class="cell-box"><div class="pills-flex" id="cell-service-consume"></div></div></td>
+                <td><div class="cell-box"><div class="pills-flex" id="cell-service-leave"></div></div></td>
+            </tr>
+            <tr>
+                <td class="row-header-domain bg-customer">
+                    <span class="domain-title">Customer</span>
+                    <span class="domain-desc">Hành vi, tương tác & mức độ hài lòng khách hàng</span>
+                </td>
+                <td><div class="cell-box"><div class="pills-flex" id="cell-customer-awareness"></div></div></td>
+                <td><div class="cell-box"><div class="pills-flex" id="cell-customer-consume"></div></div></td>
+                <td><div class="cell-box"><div class="pills-flex" id="cell-customer-leave"></div></div></td>
+            </tr>
+            <tr>
+                <td class="row-header-domain bg-market-sales">
+                    <span class="domain-title">Market/Sales</span>
+                    <span class="domain-desc">Chiến dịch tiếp thị, kênh bán hàng & phát triển thị trường</span>
+                </td>
+                <td><div class="cell-box"><div class="pills-flex" id="cell-market-sales-awareness"></div></div></td>
+                <td><div class="cell-box"><div class="pills-flex" id="cell-market-sales-consume"></div></div></td>
+                <td><div class="cell-box"><div class="pills-flex" id="cell-market-sales-leave"></div></div></td>
+            </tr>
+            <tr>
+                <td class="row-header-domain bg-resource">
+                    <span class="domain-title">Resource</span>
+                    <span class="domain-desc">Hạ tầng mạng lưới, thiết bị & tài nguyên kỹ thuật hệ thống</span>
+                </td>
+                <td><div class="cell-box"><div class="pills-flex" id="cell-resource-awareness"></div></div></td>
+                <td><div class="cell-box"><div class="pills-flex" id="cell-resource-consume"></div></div></td>
+                <td><div class="cell-box"><div class="pills-flex" id="cell-resource-leave"></div></div></td>
+            </tr>
+            <tr>
+                <td class="row-header-domain bg-enterprise">
+                    <span class="domain-title">Enterprise</span>
+                    <span class="domain-desc">Vận hành nội bộ, nhân sự & hiệu quả quản trị doanh nghiệp</span>
+                </td>
+                <td><div class="cell-box"><div class="pills-flex" id="cell-enterprise-awareness"></div></div></td>
+                <td><div class="cell-box"><div class="pills-flex" id="cell-enterprise-consume"></div></div></td>
+                <td><div class="cell-box"><div class="pills-flex" id="cell-enterprise-leave"></div></div></td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="section-title-ds">2. Quản lý Tài nguyên Dữ liệu (Data Sources cho Customer Experience / Cus360)</div>
+    <div class="ds-grid">
+        <div class="ds-card">
+            <div class="ds-card-body">
+                <h4 class="ds-name">CRM & Marketing Automation</h4>
+                <div class="ds-context">Context áp dụng: <strong>Market/Sales & Customer Info Profile</strong></div>
+            </div>
+            <div class="ds-footer"><span class="ds-status-badge ds-active">Đã khai thác 30%</span></div>
+        </div>
+        <div class="ds-card">
+            <div class="ds-card-body">
+                <h4 class="ds-name">Order Management System</h4>
+                <div class="ds-context">Context áp dụng: <strong>Product Lifecycle</strong></div>
+            </div>
+            <div class="ds-footer"><span class="ds-status-badge ds-active">Đã khai thác 20%</span></div>
+        </div>
+        <div class="ds-card">
+            <div class="ds-card-body">
+                <h4 class="ds-name">Network Monitoring System (NMS)</h4>
+                <div class="ds-context">Context áp dụng: <strong>Network Quality / Connection Quality</strong></div>
+            </div>
+            <div class="ds-footer"><span class="ds-status-badge ds-active">Đã khai thác 70%</span></div>
+        </div>
+        <div class="ds-card">
+            <div class="ds-card-body">
+                <h4 class="ds-name">ACS Server & TR-069</h4>
+                <div class="ds-context">Context áp dụng: <strong>Device Analytics (CPE Performance & Usage)</strong></div>
+            </div>
+            <div class="ds-footer"><span class="ds-status-badge ds-active">Đã khai thác 50%</span></div>
+        </div>
+        <div class="ds-card">
+            <div class="ds-card-body">
+                <h4 class="ds-name">Billing System</h4>
+                <div class="ds-context">Context áp dụng: <strong>Billing (Payment Behavior & Debt)</strong></div>
+            </div>
+            <div class="ds-footer"><span class="ds-status-badge ds-active">Đã khai thác 30%</span></div>
+        </div>
+        <div class="ds-card">
+            <div class="ds-card-body">
+                <h4 class="ds-name">Survey System</h4>
+                <div class="ds-context">Context áp dụng: <strong>Customer Exp (Engagement & Satisfaction, CSAT, CES)</strong></div>
+            </div>
+            <div class="ds-footer"><span class="ds-status-badge ds-active">Đã khai thác 30%</span></div>
+        </div>
+        <div class="ds-card">
+            <div class="ds-card-body">
+                <h4 class="ds-name">Bảo trì & Triển Khai</h4>
+                <div class="ds-context">Context áp dụng: <strong>Customer Care & Complaints</strong></div>
+            </div>
+            <div class="ds-footer"><span class="ds-status-badge ds-active">Đã khai thác 80%</span></div>
+        </div>
+        <div class="ds-card">
+            <div class="ds-card-body">
+                <h4 class="ds-name">360 Data Analytics</h4>
+                <div class="ds-context">Context áp dụng: <strong>Behavioral Scoring & Churn Signals</strong></div>
+            </div>
+            <div class="ds-footer"><span class="ds-status-badge ds-active">Đã khai thác 50%</span></div>
+        </div>
+        <div class="ds-card">
+            <div class="ds-card-body">
+                <h4 class="ds-name">FPT Camera</h4>
+                <div class="ds-context">Context áp dụng: <strong>Camera event, log, ..</strong></div>
+            </div>
+            <div class="ds-footer"><span class="ds-status-badge ds-active">Đã khai thác 5%</span></div>
+        </div>
+
+        <div class="ds-card">
+        <div class="ds-card-body">
+                <h4 class="ds-name">FPT Play</h4>
+                <div class="ds-context">Context áp dụng: <strong>Nội dung xem truyền hình, thời lượng xem,..</strong></div>
+            </div>
+            <div class="ds-footer"><span class="ds-status-badge ds-active">Đã khai thác 35%</span></div>
+        </div>
+    </div>
+</div>
+
+<div id="hoverTooltip"></div>
+
+<script>
+    const tooltip = document.getElementById('hoverTooltip');
+
+    document.getElementById('csvFileInput').addEventListener('change', handleFileSelect, false);
+
+    function handleFileSelect(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            let text = e.target.result;
+            if (text.startsWith('\ufeff')) {
+                text = text.substring(1);
+            }
+
+            const metrics = parseCSV(text);
+            if(metrics.length === 0) {
+                alert("Không có dữ liệu hợp lệ được tìm thấy trong file CSV.");
+                return;
+            }
+
+            clearMatrixCells();
+            processAndRenderMetrics(metrics);
+
+            const statusBox = document.getElementById('uploadStatus');
+            statusBox.style.display = 'block';
+            statusBox.innerText = `Thành công! Đã xử lý ${metrics.length} chỉ số và cập nhật tiến độ hoàn thành tự động dựa theo Status.`;
+        };
+        reader.readAsText(file, 'UTF-8');
+    }
+
+    function parseCSV(text) {
+        const lines = text.split(/\r?\n/).map(line => line.trim()).filter(line => line.length > 0);
+        const result = [];
+        if (lines.length === 0) return result;
+
+        const firstLine = lines[0];
+        const delimiter = firstLine.includes(';') ? ';' : ',';
+        const headers = firstLine.split(delimiter).map(h => h.trim().replace(/^"|"$/g, ''));
+
+        for (let i = 1; i < lines.length; i++) {
+            const currentline = lines[i].split(delimiter).map(val => val.trim().replace(/^"|"$/g, ''));
+            const obj = {};
+            for (let j = 0; j < headers.length; j++) {
+                if (headers[j]) {
+                    obj[headers[j]] = currentline[j] || '';
+                }
+            }
+            if(obj['Metric Name']) {
+                result.push(obj);
+            }
+        }
+        return result;
+    }
+
+    function clearMatrixCells() {
+        const domains = ['product', 'service', 'customer', 'market-sales', 'resource', 'enterprise'];
+        const stages = ['awareness', 'consume', 'leave'];
+        domains.forEach(d => {
+            stages.forEach(s => {
+                const id = `cell-${d}-${s}`;
+                const el = document.getElementById(id);
+                if (el) el.innerHTML = '';
+            });
+        });
+    }
+
+    function processAndRenderMetrics(metrics) {
+        let totalCount = metrics.length;
+        let deviceCount = 0;
+        let contractCount = 0;
+        let customerCount = 0;
+        let completedCount = 0; // Biến đếm số lượng chỉ số hoàn thành
+
+        metrics.forEach(metric => {
+            let levelClass = 'pill-multilevel';
+            const viewVal = metric['View'] ? metric['View'].toLowerCase() : '';
+            const statusVal = metric['Status'] ? metric['Status'].toLowerCase() : '';
+
+            // Tính toán tiến độ dựa trên trường Status dữ liệu đầu vào
+            if (statusVal.includes('hoàn thành') || statusVal.includes('done') || statusVal.includes('đã triển khai') || statusVal.includes('da trien khai')) {
+                completedCount++;
+            }
+
+            if (viewVal.includes('device')) {
+                levelClass = 'pill-device';
+                deviceCount++;
+            } else if (viewVal.includes('contract')) {
+                levelClass = 'pill-contract';
+                contractCount++;
+            } else if (viewVal.includes('customer')) {
+                levelClass = 'pill-customer';
+                customerCount++;
+            }
+
+            const pill = document.createElement('div');
+            pill.className = `metric-pill ${levelClass}`;
+            pill.innerText = metric['Metric Name'];
+
+            pill.addEventListener('mouseenter', (e) => showTooltip(e, metric));
+            pill.addEventListener('mousemove', moveTooltip);
+            pill.addEventListener('mouseleave', hideTooltip);
+
+            const targetCellId = getTargetCellId(metric['Domain'], metric['Stage']);
+            if (targetCellId) {
+                document.getElementById(targetCellId).appendChild(pill);
+            }
+        });
+
+        // Tính tỷ lệ % hoàn thành làm tròn số nguyên
+        let completionPercentage = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+
+        // Đẩy dữ liệu ra giao diện KPI
+        document.getElementById('kpiTotal').innerText = totalCount;
+        document.getElementById('kpiCompletion').innerText = `Hoàn thành: ${completionPercentage}% (${completedCount} chỉ số)`;
+
+        document.getElementById('kpiDevice').innerText = deviceCount;
+        document.getElementById('kpiContract').innerText = contractCount;
+        document.getElementById('kpiCustomer').innerText = customerCount;
+    }
+
+    function getTargetCellId(domain, stage) {
+        if (!domain || !stage) return null;
+        let d = domain.toLowerCase();
+        let s = stage.toLowerCase();
+
+        let rowStr = '';
+        if (d.includes('market') || d.includes('sales')) rowStr = 'market-sales';
+        else if (d.includes('product')) rowStr = 'product';
+        else if (d.includes('service')) rowStr = 'service';
+        else if (d.includes('customer')) rowStr = 'customer';
+        else if (d.includes('resource')) rowStr = 'resource';
+        else if (d.includes('enterprise')) rowStr = 'enterprise';
+        else return null;
+
+        let colStr = '';
+        if (s.includes('awareness')) {
+            colStr = 'awareness';
+        } else if (s.includes('consume') || s.includes('manage') || s.includes('pay')) {
+            colStr = 'consume';
+        } else if (s.includes('renew') || s.includes('recommend') || s.includes('leave')) {
+            colStr = 'leave';
+        } else {
+            return null;
+        }
+
+        return `cell-${rowStr}-${colStr}`;
+    }
+
+    function showTooltip(e, metric) {
+        tooltip.innerHTML = `
+            <div class="tooltip-title">${metric['Metric Name'] || 'Thông tin chỉ số'}</div>
+            <div class="tooltip-row"><span class="tooltip-label">Mã chỉ số (ID):</span> ${metric['Metric Number'] || '-'}</div>
+            <div class="tooltip-row"><span class="tooltip-label">Chặng gốc (Stage):</span> <strong style="color:#2563eb;">${metric['Stage'] || '-'}</strong></div>
+            <div class="tooltip-row"><span class="tooltip-label">Định nghĩa:</span> ${metric['Definition'] || '-'}</div>
+            <div class="tooltip-row"><span class="tooltip-label">Nguồn dữ liệu:</span> ${metric['Data Sources'] || '-'}</div>
+            <div class="tooltip-row"><span class="tooltip-label">Chiều phân rã (View):</span> ${metric['View'] || '-'}</div>
+            <div class="tooltip-row"><span class="tooltip-label">Trạng thái (Status):</span> <strong style="color:#16a34a;">${metric['Status'] || '-'}</strong></div>
+        `;
+        tooltip.style.display = 'block';
+        moveTooltip(e);
+    }
+
+    function moveTooltip(e) {
+        const tooltipWidth = tooltip.offsetWidth;
+        let left = e.pageX + 15;
+        let top = e.pageY + 15;
+
+        if (left + tooltipWidth > window.innerWidth + window.pageXOffset) {
+            left = e.pageX - tooltipWidth - 15;
+        }
+        tooltip.style.left = left + 'px';
+        tooltip.style.top = top + 'px';
+    }
+
+    function hideTooltip() {
+        tooltip.style.display = 'none';
+    }
+</script>
+</body>
+</html>
