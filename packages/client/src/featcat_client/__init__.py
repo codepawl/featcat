@@ -36,6 +36,8 @@ from .models import (
     BulkScanResult,
     BusinessMetric,
     BusinessMetricCreateRequest,
+    BusinessMetricCsvImportError,
+    BusinessMetricCsvImportResult,
     DataSource,
     DataSourceCreateRequest,
     DataSourceUpdateRequest,
@@ -74,6 +76,8 @@ from .models import (
 __all__ = [
     "ConnectionError",
     "BusinessMetric",
+    "BusinessMetricCsvImportError",
+    "BusinessMetricCsvImportResult",
     "BusinessMetricCreateRequest",
     "BusinessMetricNotFound",
     "DataSource",

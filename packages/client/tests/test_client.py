@@ -147,6 +147,32 @@ def test_find_similar_filters_graph_to_target(feature_payload: dict[str, Any]) -
 
 
 # --------------------------------------------------------------------------- #
+# Business metrics                                                            #
+# --------------------------------------------------------------------------- #
+
+
+def test_import_business_metrics_csv_posts_payload() -> None:
+    seen: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/business-metrics/import-csv"
+        seen.update(json.loads(request.content.decode()))
+        return httpx.Response(200, json={"total": 2, "created": 2, "updated": 0, "skipped": 0, "errors": []})
+
+    with _client_with_handler(handler) as client:
+        result = client.import_business_metrics_csv("Stage,Domain\n", namespace="cx360", owner="cx-team", dry_run=True)
+
+    assert seen == {
+        "csv_text": "Stage,Domain\n",
+        "namespace": "cx360",
+        "owner": "cx-team",
+        "dry_run": True,
+    }
+    assert result.total == 2
+    assert result.created == 2
+
+
+# --------------------------------------------------------------------------- #
 # Groups                                                                      #
 # --------------------------------------------------------------------------- #
 

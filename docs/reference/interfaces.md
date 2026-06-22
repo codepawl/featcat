@@ -276,6 +276,8 @@ The Web UI is a React 19 + TypeScript + Vite + Tailwind SPA. Source:
 | `/search`            | `pages/Search.tsx` (`Search`)              | Ranked full-text search with faceted filtering. |
 | `/features`          | `pages/Features.tsx` (`Features`)          | Browseable feature table. |
 | `/features/:name`    | `pages/Features.tsx` (`Features`)          | Feature detail (docs, monitoring, lineage, usage, definitions). |
+| `/business-metrics`  | `pages/BusinessMetrics.tsx` (`BusinessMetrics`) | Business metric registry, CX matrix, and CSV import. |
+| `/business-metrics/:name` | `pages/BusinessMetrics.tsx` (`BusinessMetrics`) | Business metric detail and mapped feature links. |
 | `/groups`            | `pages/Groups.tsx` (`Groups`)              | Feature groups: membership, health, versioning. |
 | `/sources`           | `pages/Sources.tsx` (`Sources`)            | Data sources: local/S3, scan logs, impact. |
 | `/sources/:name`     | `pages/Sources.tsx` (`Sources`)            | Single-source detail. |
@@ -309,6 +311,7 @@ UI consumes appears in [`api.md`](./api.md). Notable consumption patterns:
 
 - **Dashboard** — `/api/health`, `/api/stats`, `/api/stats/by-source`, `/api/stats/doc-debt`, `/api/features/health-summary`, `/api/features/stats/status-counts`, `/api/monitor/check`, `/api/jobs`, `/api/jobs/logs`, `/api/usage/top`, `/api/usage/orphaned`.
 - **Features** — `/api/sources`, `/api/features`, `/api/features/by-name`, `/api/features/by-name/definition`, `/api/features/by-name/hints`, `/api/features/bulk/{tags,groups,delete}`, `/api/docs/by-name`, `/api/docs/generate-batch[/...]`, `/api/monitor/check`, `/api/usage/feature`.
+- **Business Metrics** — `/api/business-metrics`, `/api/business-metrics/by-name`, `/api/business-metrics/import-csv`.
 - **Groups** — full `/api/groups/*` surface including `/health`, `/monitoring`, `/drift-matrix`, `/versions`, `/versions/{n}/export`, and `/regenerate-docs`.
 - **Sources** — `/api/sources` CRUD, `/api/sources/{name}/scan`, `/api/sources/{name}/scan-logs`, `/api/sources/{name}/impact`, `/api/stats/by-source`.
 - **Similarity** — `/api/features/similarity-graph`, `/api/features/similarity-matrix`, `/api/features/similarity-pair`.

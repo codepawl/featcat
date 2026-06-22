@@ -243,6 +243,12 @@ def _row_to_business_metric(row: Any) -> BusinessMetric:
         if isinstance(d.get("allowed_use_cases"), str)
         else (d.get("allowed_use_cases") or [])
     )
+    d["source_systems"] = (
+        json.loads(d["source_systems"]) if isinstance(d.get("source_systems"), str) else (d.get("source_systems") or [])
+    )
+    d.setdefault("external_id", "")
+    d.setdefault("implementation_status", "unknown")
+    d.setdefault("source_view", "")
     valid_fields = BusinessMetric.model_fields
     return BusinessMetric(**{k: v for k, v in d.items() if k in valid_fields})
 
@@ -424,6 +430,10 @@ class LocalBackend(CatalogBackend):
             "CREATE INDEX IF NOT EXISTS idx_feature_sets_target ON feature_sets(target_entity)",
             "CREATE INDEX IF NOT EXISTS idx_feature_sets_owner ON feature_sets(owner)",
             "ALTER TABLE feature_groups ADD COLUMN lifecycle_status TEXT NOT NULL DEFAULT 'draft'",
+            "ALTER TABLE business_metrics ADD COLUMN external_id TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE business_metrics ADD COLUMN source_systems TEXT NOT NULL DEFAULT '[]'",
+            "ALTER TABLE business_metrics ADD COLUMN implementation_status TEXT NOT NULL DEFAULT 'unknown'",
+            "ALTER TABLE business_metrics ADD COLUMN source_view TEXT NOT NULL DEFAULT ''",
             "CREATE TABLE IF NOT EXISTS business_metrics ("
             "id TEXT PRIMARY KEY,"
             "name TEXT UNIQUE NOT NULL,"
@@ -439,6 +449,10 @@ class LocalBackend(CatalogBackend):
             "owner TEXT DEFAULT '',"
             "lifecycle_status TEXT NOT NULL DEFAULT 'draft',"
             "allowed_use_cases TEXT NOT NULL DEFAULT '[]',"
+            "external_id TEXT NOT NULL DEFAULT '',"
+            "source_systems TEXT NOT NULL DEFAULT '[]',"
+            "implementation_status TEXT NOT NULL DEFAULT 'unknown',"
+            "source_view TEXT NOT NULL DEFAULT '',"
             "created_at TIMESTAMP NOT NULL,"
             "updated_at TIMESTAMP NOT NULL"
             ")",
@@ -1962,12 +1976,14 @@ class LocalBackend(CatalogBackend):
                     "id, name, business_metric_name, business_definition, metric_domain, lifecycle_stage, "
                     "metric_group, metric_level, entity_grain, aggregation_rule, mapped_features, owner, "
                     "lifecycle_status, "
-                    "allowed_use_cases, created_at, updated_at"
+                    "allowed_use_cases, external_id, source_systems, implementation_status, source_view, "
+                    "created_at, updated_at"
                     ") VALUES ("
                     ":id, :name, :business_metric_name, :business_definition, :metric_domain, :lifecycle_stage, "
                     ":metric_group, :metric_level, :entity_grain, :aggregation_rule, :mapped_features, "
                     ":owner, :lifecycle_status, "
-                    ":allowed_use_cases, :created_at, :updated_at"
+                    ":allowed_use_cases, :external_id, :source_systems, :implementation_status, :source_view, "
+                    ":created_at, :updated_at"
                     ") ON CONFLICT(name) DO UPDATE SET "
                     "business_metric_name = excluded.business_metric_name, "
                     "business_definition = excluded.business_definition, "
@@ -1981,6 +1997,10 @@ class LocalBackend(CatalogBackend):
                     "owner = excluded.owner, "
                     "lifecycle_status = excluded.lifecycle_status, "
                     "allowed_use_cases = excluded.allowed_use_cases, "
+                    "external_id = excluded.external_id, "
+                    "source_systems = excluded.source_systems, "
+                    "implementation_status = excluded.implementation_status, "
+                    "source_view = excluded.source_view, "
                     "updated_at = excluded.updated_at"
                 ),
                 {
@@ -1998,6 +2018,10 @@ class LocalBackend(CatalogBackend):
                     "owner": metric.owner,
                     "lifecycle_status": metric.lifecycle_status,
                     "allowed_use_cases": json.dumps(metric.allowed_use_cases),
+                    "external_id": metric.external_id,
+                    "source_systems": json.dumps(metric.source_systems),
+                    "implementation_status": metric.implementation_status,
+                    "source_view": metric.source_view,
                     "created_at": metric.created_at,
                     "updated_at": metric.updated_at,
                 },

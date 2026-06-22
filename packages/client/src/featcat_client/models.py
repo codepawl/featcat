@@ -266,6 +266,10 @@ class BusinessMetric(_Base):
     owner: str = ""
     lifecycle_status: str = "draft"
     allowed_use_cases: list[str] = Field(default_factory=list)
+    external_id: str = ""
+    source_systems: list[str] = Field(default_factory=list)
+    implementation_status: str = "unknown"
+    source_view: str = ""
     created_at: datetime
     updated_at: datetime
 
@@ -286,6 +290,28 @@ class BusinessMetricCreateRequest(_Base):
     owner: str = ""
     lifecycle_status: str = "draft"
     allowed_use_cases: list[str] = Field(default_factory=list)
+    external_id: str = ""
+    source_systems: list[str] = Field(default_factory=list)
+    implementation_status: str = "unknown"
+    source_view: str = ""
+
+
+class BusinessMetricCsvImportError(_Base):
+    """One row-level error from ``POST /api/business-metrics/import-csv``."""
+
+    row: int
+    metric_name: str = ""
+    error: str
+
+
+class BusinessMetricCsvImportResult(_Base):
+    """Import summary from ``POST /api/business-metrics/import-csv``."""
+
+    total: int
+    created: int
+    updated: int
+    skipped: int
+    errors: list[BusinessMetricCsvImportError] = Field(default_factory=list)
 
 
 class FlowResult(_Base):

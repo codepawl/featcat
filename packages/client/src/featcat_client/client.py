@@ -78,6 +78,7 @@ from .models import (
     BulkScanResult,
     BusinessMetric,
     BusinessMetricCreateRequest,
+    BusinessMetricCsvImportResult,
     DataSource,
     DataSourceCreateRequest,
     DataSourceUpdateRequest,
@@ -525,6 +526,26 @@ class FeatCatClient:
             json_body=self._coerce_payload(BusinessMetricCreateRequest, metric),
         )
         return BusinessMetric.model_validate(row)
+
+    def import_business_metrics_csv(
+        self,
+        csv_text: str,
+        *,
+        namespace: str = "cx360",
+        owner: str = "cx360-import",
+        dry_run: bool = False,
+    ) -> BusinessMetricCsvImportResult:
+        row = self._request(
+            "POST",
+            "/api/business-metrics/import-csv",
+            json_body={
+                "csv_text": csv_text,
+                "namespace": namespace,
+                "owner": owner,
+                "dry_run": dry_run,
+            },
+        )
+        return BusinessMetricCsvImportResult.model_validate(row)
 
     def flow(
         self,

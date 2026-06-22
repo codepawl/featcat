@@ -16,12 +16,17 @@
     "owner_placeholder": "Owner",
     "search_placeholder": "Search metrics..."
   },
+  "views": {
+    "registry": "Registry",
+    "matrix": "CX Matrix"
+  },
   "columns": {
     "name": "Metric",
     "domain": "Domain",
     "stage": "Stage",
     "level": "Level",
     "owner": "Owner",
+    "implementation": "Progress",
     "features": "Mapped features",
     "status": "Status"
   },
@@ -34,9 +39,34 @@
     "mapped_features": "Mapped features",
     "use_cases": "Allowed use cases",
     "group": "Metric group",
+    "source_view": "Source view",
+    "source_systems": "Source systems",
     "mapped_count": "{{count}} features mapped",
     "no_features": "No mapped features",
     "feature_link": "Open feature"
+  },
+  "matrix": {
+    "total": "Total metrics",
+    "completion": "Done: {{percent}}% ({{count}} metrics)",
+    "device": "Device-level",
+    "contract": "Contract-level",
+    "customer": "Customer-level",
+    "legend": "Data level",
+    "domain_stage": "Domain / Stage"
+  },
+  "import": {
+    "title": "Import CX/Cus360 metrics CSV",
+    "namespace": "Namespace",
+    "owner": "Owner",
+    "choose_file": "Choose a CSV file",
+    "missing_file": "Choose a CSV file before importing.",
+    "read_error": "Could not read the selected file.",
+    "validate": "Validate",
+    "import": "Import",
+    "working": "Working...",
+    "preview": "Import preview",
+    "result": "Processed {{total}} rows: {{created}} new, {{updated}} updated, {{skipped}} skipped.",
+    "error_row": "Row {{row}}: {{error}}"
   },
   "status": {
     "draft": "Draft",
@@ -44,11 +74,18 @@
     "production": "Production",
     "deprecated": "Deprecated"
   },
+  "implementation_status": {
+    "done": "Done",
+    "processing": "Processing",
+    "not_started": "Not started",
+    "unknown": "Unknown"
+  },
   "empty": {
     "title": "No business metrics found",
     "hint": "Adjust filters or create a new registry entry."
   },
   "actions": {
-    "refresh": "Refresh"
+    "refresh": "Refresh",
+    "import_csv": "Import CSV"
   }
 }

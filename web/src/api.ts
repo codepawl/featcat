@@ -212,6 +212,10 @@ export interface BusinessMetricDTO {
   owner: string
   lifecycle_status: string
   allowed_use_cases: string[]
+  external_id: string
+  source_systems: string[]
+  implementation_status: string
+  source_view: string
   created_at: string
   updated_at: string
 }
@@ -284,6 +288,18 @@ export interface BusinessMetricUpsert {
   owner?: string
   lifecycle_status?: string
   allowed_use_cases?: string[]
+  external_id?: string
+  source_systems?: string[]
+  implementation_status?: string
+  source_view?: string
+}
+
+export interface BusinessMetricCsvImportResult {
+  total: number
+  created: number
+  updated: number
+  skipped: number
+  errors: { row: number; metric_name: string; error: string }[]
 }
 
 export interface SourceCreate {
@@ -689,6 +705,11 @@ export const api = {
       cachedRequest<BusinessMetricDTO>(`/business-metrics/by-name?name=${encodeURIComponent(name)}`),
     upsert: (data: BusinessMetricUpsert) =>
       request<BusinessMetricDTO>('/business-metrics', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    importCsv: (data: { csv_text: string; namespace?: string; owner?: string; dry_run?: boolean }) =>
+      request<BusinessMetricCsvImportResult>('/business-metrics/import-csv', {
         method: 'POST',
         body: JSON.stringify(data),
       }),

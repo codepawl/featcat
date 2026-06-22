@@ -226,6 +226,12 @@ class BusinessMetric(Base):
     owner: Mapped[str] = mapped_column(Text, default="", server_default="")
     lifecycle_status: Mapped[str] = mapped_column(Text, nullable=False, default="draft", server_default="draft")
     allowed_use_cases: Mapped[str] = mapped_column(Text, nullable=False, default="[]", server_default="[]")
+    external_id: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    source_systems: Mapped[str] = mapped_column(Text, nullable=False, default="[]", server_default="[]")
+    implementation_status: Mapped[str] = mapped_column(
+        Text, nullable=False, default="unknown", server_default="unknown"
+    )
+    source_view: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
 

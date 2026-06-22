@@ -16,12 +16,17 @@
     "owner_placeholder": "Chủ sở hữu",
     "search_placeholder": "Tìm metric..."
   },
+  "views": {
+    "registry": "Registry",
+    "matrix": "CX Matrix"
+  },
   "columns": {
     "name": "Metric",
     "domain": "Domain",
     "stage": "Stage",
     "level": "Level",
     "owner": "Chủ sở hữu",
+    "implementation": "Tiến độ",
     "features": "Feature liên kết",
     "status": "Trạng thái"
   },
@@ -34,9 +39,34 @@
     "mapped_features": "Feature được map",
     "use_cases": "Use case được phép",
     "group": "Metric group",
+    "source_view": "Source view",
+    "source_systems": "Hệ thống nguồn",
     "mapped_count": "Đã map {{count}} feature",
     "no_features": "Chưa có feature được map",
     "feature_link": "Mở feature"
+  },
+  "matrix": {
+    "total": "Tổng chỉ số",
+    "completion": "Hoàn thành: {{percent}}% ({{count}} chỉ số)",
+    "device": "Device-level",
+    "contract": "Contract-level",
+    "customer": "Customer-level",
+    "legend": "Cấp độ dữ liệu",
+    "domain_stage": "Domain / Stage"
+  },
+  "import": {
+    "title": "Import CX/Cus360 metrics CSV",
+    "namespace": "Namespace",
+    "owner": "Chủ sở hữu",
+    "choose_file": "Chọn file CSV",
+    "missing_file": "Chọn file CSV trước khi import.",
+    "read_error": "Không đọc được file đã chọn.",
+    "validate": "Kiểm tra",
+    "import": "Import",
+    "working": "Đang xử lý...",
+    "preview": "Preview import",
+    "result": "Đã xử lý {{total}} dòng: {{created}} mới, {{updated}} cập nhật, {{skipped}} bỏ qua.",
+    "error_row": "Dòng {{row}}: {{error}}"
   },
   "status": {
     "draft": "Nháp",
@@ -44,11 +74,18 @@
     "production": "Sản xuất",
     "deprecated": "Đã ngừng dùng"
   },
+  "implementation_status": {
+    "done": "Done",
+    "processing": "Processing",
+    "not_started": "Not started",
+    "unknown": "Unknown"
+  },
   "empty": {
     "title": "Chưa có business metric",
     "hint": "Điều chỉnh bộ lọc hoặc tạo mới registry."
   },
   "actions": {
-    "refresh": "Làm mới"
+    "refresh": "Làm mới",
+    "import_csv": "Import CSV"
   }
 }

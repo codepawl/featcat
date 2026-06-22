@@ -82,15 +82,15 @@ class TestModels:
                 mapped_features=["network_quality_customer_7d.bad_signal_days_7d"],
             )
 
-        with pytest.raises(ValueError, match="mapped_features"):
-            BusinessMetric(
-                name="network_quality.empty",
-                business_metric_name="empty_metric",
-                metric_domain="network_quality",
-                lifecycle_stage="consume",
-                metric_level="customer",
-                entity_grain="customer_id",
-            )
+        unmapped = BusinessMetric(
+            name="network_quality.empty",
+            business_metric_name="empty_metric",
+            metric_domain="network_quality",
+            lifecycle_stage="consume",
+            metric_level="customer",
+            entity_grain="customer_id",
+        )
+        assert unmapped.mapped_features == []
 
         with pytest.raises(ValueError, match="aggregation_rule"):
             BusinessMetric(

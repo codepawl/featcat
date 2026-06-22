@@ -4,14 +4,18 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import pytest
+from fastapi import HTTPException
 from fastapi.routing import APIRoute
 
 from featcat.catalog.local import LocalBackend
 from featcat.catalog.models import BusinessMetric, DataSource, Feature
 from featcat.server.app import build_app
 from featcat.server.routes.business_metrics import (
+    BusinessMetricCsvImportRequest,
     BusinessMetricUpsertRequest,
     get_business_metric_by_name,
+    import_business_metrics_csv,
     list_business_metrics,
     upsert_business_metric,
 )
@@ -46,6 +50,7 @@ def test_business_metric_routes_are_registered_without_testclient() -> None:
     assert ("/api/business-metrics", ("GET",)) in routes
     assert ("/api/business-metrics", ("POST",)) in routes
     assert ("/api/business-metrics/by-name", ("GET",)) in routes
+    assert ("/api/business-metrics/import-csv", ("POST",)) in routes
 
 
 def test_business_metric_route_crud_and_filters(tmp_path: Path) -> None:
@@ -108,3 +113,57 @@ def test_business_metric_route_searches_objective_text(tmp_path: Path) -> None:
         db.close()
 
     assert [metric.name for metric in matches] == ["network_quality.downtime_minutes_7d"]
+
+
+def test_business_metric_import_csv_dry_run_and_commit(tmp_path: Path) -> None:
+    db = _backend(tmp_path)
+    csv_text = (
+        "\ufeffStage,Domain,Metric Number,Metric Name,Definition,Data Sources,Status,View\n"
+        'Consume,Product,ME-C-D-01,product-net-device-clients,"Line one\nLine two",ACS Server & TR-069,Done,Device\n'
+        "Recommend,Customer,ME-M-CT-09,LowCSAT,Số lượng CSAT 1;2,Survey System,Processing,Per-Contract\n"
+    )
+    try:
+        preview = import_business_metrics_csv(
+            BusinessMetricCsvImportRequest(csv_text=csv_text, namespace="cx360", owner="cx-team", dry_run=True),
+            db=db,
+        )
+        assert preview.total == 2
+        assert preview.created == 2
+        assert preview.updated == 0
+        assert preview.skipped == 0
+        assert db.list_business_metrics() == []
+
+        result = import_business_metrics_csv(
+            BusinessMetricCsvImportRequest(csv_text=csv_text, namespace="cx360", owner="cx-team"),
+            db=db,
+        )
+        metrics = db.list_business_metrics(owner="cx-team")
+    finally:
+        db.close()
+
+    assert result.created == 2
+    assert {metric.business_metric_name for metric in metrics} == {"LowCSAT", "product-net-device-clients"}
+    device_metric = next(metric for metric in metrics if metric.business_metric_name == "product-net-device-clients")
+    assert device_metric.metric_domain == "product"
+    assert device_metric.lifecycle_stage == "consume"
+    assert device_metric.metric_level == "device"
+    assert device_metric.business_definition == "Line one\nLine two"
+    assert device_metric.source_systems == ["ACS Server & TR-069"]
+    assert device_metric.implementation_status == "done"
+    assert device_metric.lifecycle_status == "validated"
+    assert device_metric.mapped_features == []
+
+
+def test_business_metric_import_csv_rejects_missing_required_headers(tmp_path: Path) -> None:
+    db = _backend(tmp_path)
+    try:
+        with pytest.raises(HTTPException) as exc_info:
+            import_business_metrics_csv(
+                BusinessMetricCsvImportRequest(csv_text="Name,Definition\nBad row,Missing taxonomy\n"),
+                db=db,
+            )
+    finally:
+        db.close()
+
+    assert exc_info.value.status_code == 400
+    assert "CSV missing required columns" in str(exc_info.value.detail)

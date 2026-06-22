@@ -102,10 +102,15 @@ METRIC_DOMAINS = {
     "service_ops",
     "contact",
     "customer_profile",
+    "product",
+    "service",
+    "customer",
+    "market_sales",
 }
-LIFECYCLE_STAGES = {"consume", "manage", "leave"}
+LIFECYCLE_STAGES = {"awareness", "consume", "manage", "pay", "renew", "recommend", "leave", "customer_profile"}
 METRIC_LEVELS = {"device", "contract", "customer", "mixed"}
 LIFECYCLE_STATUSES = {"draft", "validated", "production", "deprecated"}
+IMPLEMENTATION_STATUSES = {"done", "processing", "not_started", "unknown"}
 RELATION_TYPES = {"one_to_one", "one_to_many", "many_to_one", "many_to_many"}
 
 
@@ -203,6 +208,10 @@ class BusinessMetric(BaseModel):
     owner: str = ""
     lifecycle_status: str = "draft"
     allowed_use_cases: list[str] = Field(default_factory=list)
+    external_id: str = ""
+    source_systems: list[str] = Field(default_factory=list)
+    implementation_status: str = "unknown"
+    source_view: str = ""
     created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)
 
@@ -225,12 +234,14 @@ class BusinessMetric(BaseModel):
         technical_level = self._infer_entity_level(self.entity_grain)
         if technical_level and technical_level != self.metric_level and not self.aggregation_rule.strip():
             raise ValueError("aggregation_rule is required when metric_level differs from entity_grain")
-        if not self.mapped_features:
-            raise ValueError("mapped_features must be non-empty")
         if any(not feature_ref.strip() for feature_ref in self.mapped_features):
             raise ValueError("mapped_features must not contain empty values")
         if self.lifecycle_status not in LIFECYCLE_STATUSES:
             raise ValueError(f"lifecycle_status must be one of {sorted(LIFECYCLE_STATUSES)}")
+        if self.implementation_status not in IMPLEMENTATION_STATUSES:
+            raise ValueError(f"implementation_status must be one of {sorted(IMPLEMENTATION_STATUSES)}")
+        if any(not source.strip() for source in self.source_systems):
+            raise ValueError("source_systems must not contain empty values")
         return self
 
     @staticmethod

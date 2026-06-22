@@ -97,6 +97,17 @@ Router prefix: `/api/features/bulk`. Source: `featcat/server/routes/bulk.py`.
 | POST   | `/api/features/bulk/groups`   | Add to or remove from group across N features (all-or-nothing).   | `bulk.py:67` (`bulk_groups`) |
 | POST   | `/api/features/bulk/delete`   | Bulk hard-delete features (requires confirm flag).                | `bulk.py:81` (`bulk_delete`) |
 
+## Business Metrics
+
+Router prefix: `/api/business-metrics`. Source: `featcat/server/routes/business_metrics.py`.
+
+| Method | Path                               | Description                                                                 | Source |
+|--------|------------------------------------|-----------------------------------------------------------------------------|--------|
+| GET    | `/api/business-metrics`            | List business metrics with taxonomy, owner, objective, and search filters.  | `business_metrics.py` (`list_business_metrics`) |
+| GET    | `/api/business-metrics/by-name`    | Look up a business metric by canonical name.                                | `business_metrics.py` (`get_business_metric_by_name`) |
+| POST   | `/api/business-metrics`            | Create or update a business metric. `mapped_features` may be empty.         | `business_metrics.py` (`upsert_business_metric`) |
+| POST   | `/api/business-metrics/import-csv` | Import CX/Cus360 CSV rows, with `dry_run` support and row-level errors.     | `business_metrics.py` (`import_business_metrics_csv`) |
+
 ## Documentation
 
 Router prefix: `/api/docs`. Source: `featcat/server/routes/docs.py`.

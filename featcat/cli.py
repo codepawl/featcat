@@ -430,11 +430,17 @@ def _parse_feature_view_specs(
 @flow_app.command("upsert")
 def flow_upsert(
     path: str = typer.Argument(help="Path to source data file (Parquet/CSV) or directory"),
-    source_name: str = typer.Option("", "--source-name", "-s", help="Source name (defaults to input filename stem)"),
-    entity: str = typer.Option(..., "--entity", "-e", help="Target entity name"),
-    entity_primary_key: list[str] = typer.Option(..., "--entity-key", "-k", help="Entity primary key(s), repeatable"),
-    entity_join_key: list[str] = typer.Option([], "--entity-join-key", "-j", help="Entity join key(s), repeatable"),
-    feature_view: list[str] = typer.Option(
+    source_name: str = typer.Option(  # noqa: B008
+        "", "--source-name", "-s", help="Source name (defaults to input filename stem)"
+    ),
+    entity: str = typer.Option(..., "--entity", "-e", help="Target entity name"),  # noqa: B008
+    entity_primary_key: list[str] = typer.Option(  # noqa: B008
+        ..., "--entity-key", "-k", help="Entity primary key(s), repeatable"
+    ),
+    entity_join_key: list[str] = typer.Option(  # noqa: B008
+        [], "--entity-join-key", "-j", help="Entity join key(s), repeatable"
+    ),
+    feature_view: list[str] = typer.Option(  # noqa: B008
         [],
         "--feature-view",
         "-v",
@@ -443,18 +449,20 @@ def flow_upsert(
             " Defaults to one view over all columns when omitted."
         ),
     ),
-    feature_set: str = typer.Option("", "--feature-set", "-f", help="Feature set name (defaults to <source>_set)"),
-    feature_set_views: list[str] = typer.Option(
+    feature_set: str = typer.Option(  # noqa: B008
+        "", "--feature-set", "-f", help="Feature set name (defaults to <source>_set)"
+    ),
+    feature_set_views: list[str] = typer.Option(  # noqa: B008
         [],
         "--with-feature-view",
         "-x",
         help="FeatureView names to include in the feature set. Defaults to all created views.",
     ),
-    relationship: str = typer.Option(
+    relationship: str = typer.Option(  # noqa: B008
         "", "--relationship", help="Optional existing relationship name to attach to each view"
     ),
-    fmt: str | None = typer.Option(None, "--format", help="Source format: parquet or csv"),
-    description: str = typer.Option("", "--description", help="Source description"),
+    fmt: str | None = typer.Option(None, "--format", help="Source format: parquet or csv"),  # noqa: B008
+    description: str = typer.Option("", "--description", help="Source description"),  # noqa: B008
 ) -> None:
     """One-command onboarding: source → entity → feature views → feature set."""
     if is_s3_uri(path):
@@ -487,9 +495,8 @@ def flow_upsert(
             console.print(f"[green]Source added:[/green] {source_record.name} -> {source_record.path}")
         else:
             if existing.path != resolved_path or existing.storage_type != storage_type:
-                console.print(
-                    f"[red]Source name already exists with different path or storage type:[/red] {effective_source_name}"
-                )
+                message = "[red]Source name already exists with different path or storage type:[/red]"
+                console.print(f"{message} {effective_source_name}")
                 raise typer.Exit(1)
             db.update_source(
                 effective_source_name,
@@ -532,10 +539,7 @@ def flow_upsert(
         db.upsert_entity(entity_obj)
         console.print(f"[green]Entity upserted:[/green] {entity}")
 
-        if feature_set_views:
-            feature_set_view_names = feature_set_views
-        else:
-            feature_set_view_names = []
+        feature_set_view_names = feature_set_views or []
 
         view_specs = _parse_feature_view_specs(feature_view, source_record.name, column_names)
         feature_views_created: list[str] = []
@@ -603,7 +607,9 @@ def flow_upsert(
 
 @flow_app.command("apply")
 def flow_apply(
-    config_path: Path = typer.Argument(..., help="YAML config file path (reuses `featcat apply`)"),
+    config_path: Path = typer.Argument(  # noqa: B008
+        ..., help="YAML config file path (reuses `featcat apply`)"
+    ),
 ) -> None:
     """Apply a config file with the same behavior as `featcat apply`."""
     apply_cmd(config_path)
@@ -2804,7 +2810,7 @@ def metric_info(
     console.print(f"  Owner:       {metric.owner or '(none)'}")
     console.print(f"  Status:      {metric.lifecycle_status}")
     console.print(f"  Use cases:   {', '.join(metric.allowed_use_cases) if metric.allowed_use_cases else '(none)'}")
-    console.print(f"  Features:    {', '.join(metric.mapped_features)}")
+    console.print(f"  Features:    {', '.join(metric.mapped_features) if metric.mapped_features else '(none)'}")
 
 
 @metric_app.command("upsert")
@@ -2818,8 +2824,8 @@ def metric_upsert(
     metric_level: str = typer.Option(..., "--metric-level", help="Metric level"),
     entity_grain: str = typer.Option(..., "--entity-grain", help="Technical grain used for joins/serving"),
     aggregation_rule: str = typer.Option("", "--aggregation-rule", help="Required when rollup is needed"),
-    mapped_features: list[str] = typer.Option(  # noqa: B008
-        ...,
+    mapped_features: list[str] | None = typer.Option(  # noqa: B008
+        None,
         "--mapped-feature",
         help="Technical feature mapped to the metric",
     ),
@@ -2848,7 +2854,7 @@ def metric_upsert(
             metric_level=metric_level,
             entity_grain=entity_grain,
             aggregation_rule=aggregation_rule,
-            mapped_features=mapped_features,
+            mapped_features=mapped_features or [],
             owner=owner,
             lifecycle_status=lifecycle_status,
             allowed_use_cases=allowed_use_cases,
