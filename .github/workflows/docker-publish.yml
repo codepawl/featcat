@@ -65,7 +65,7 @@ jobs:
           password: ${{ env.DOCKERHUB_TOKEN }}
 
       - id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         if: steps.dockerhub.outputs.configured == 'true'
         with:
           images: docker.io/nxank4/featcat
