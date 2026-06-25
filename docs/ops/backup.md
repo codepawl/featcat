@@ -99,8 +99,8 @@ Confirm the row count matches the production catalog at the time of the dump (`S
 
 featcat assumes source parquets are owned by their producers (your data platform / S3 bucket / SFTP drop). featcat stores only the *path*, not the file content. If a path moves:
 
-1. Update the source: `featcat sources update user_behavior --path /new/path/to/file.parquet`
-2. Re-scan: `featcat scan user_behavior` (preserves the existing feature rows; only updates stats)
+1. Update the source path through `PATCH /api/sources/{name}` or the web UI.
+2. Re-scan: `featcat source scan user_behavior` (preserves the existing feature rows; only updates stats)
 
 Don't re-add the source — that creates a duplicate `data_sources` row.
 
@@ -127,7 +127,9 @@ Don't re-add the source — that creates a duplicate `data_sources` row.
 
 3. Re-download the LLM model:
    ```bash
-   ./dev.sh --download-model-only
+   mkdir -p deploy/models
+   curl -L -o deploy/models/gemma-4-E2B-it-Q4_K_M.gguf \
+       "https://huggingface.co/google/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q4_K_M.gguf"
    ```
 
 4. Bring up the rest of the stack:
@@ -139,7 +141,7 @@ Don't re-add the source — that creates a duplicate `data_sources` row.
 
 5. Verify the catalog is intact:
    ```bash
-   docker compose exec featcat featcat features list --limit 5
+   docker compose exec featcat featcat feature list
    ```
 
 Target RTO: < 30 min on prepared infrastructure. Do a tabletop run quarterly to keep this honest.

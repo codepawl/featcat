@@ -139,11 +139,10 @@ Types: `feat`, `fix`, `docs`, `chore`, `refactor`, `test`, `perf`.
 Subject in imperative mood, ≤ 70 chars. Body wraps at 72.
 
 ```
-feat(monitoring): add per-feature drift threshold override
+docs(monitoring): clarify sensitive-feature drift guidance
 
-Lets `featcat hints set <name> --warning-psi 0.05` override the
-global threshold for sensitive features. Stored on `feature_docs.hints`
-as a structured JSON field; falls back to the global default when unset.
+Explains how to use feature hints to record why a reviewer should
+investigate drift earlier than the global warning threshold.
 
 Co-Authored-By: …
 ```

@@ -20,6 +20,14 @@
       "dark": "Dark"
     }
   },
+  "auth": {
+    "title": "API token",
+    "description": "Used for servers started with FEATCAT_SERVER_AUTH_TOKEN.",
+    "placeholder": "Bearer token",
+    "save": "Save",
+    "saved": "Saved",
+    "clear": "Clear"
+  },
   "llm_cache": {
     "title": "LLM Response Cache",
     "description": "Cached AI responses keyed by prompt + system. Clearing forces a fresh LLM call next time.",

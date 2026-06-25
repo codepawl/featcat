@@ -29,6 +29,7 @@ class DataSource(BaseModel):
     entity_key: str | None = None
     event_timestamp_column: str | None = None
     created_timestamp_column: str | None = None
+    auto_refresh: bool = False
     created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)
 

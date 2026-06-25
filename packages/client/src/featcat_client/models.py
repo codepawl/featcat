@@ -51,6 +51,8 @@ class DataSource(_Base):
     entity_key: str | None = None
     event_timestamp_column: str | None = None
     created_timestamp_column: str | None = None
+    auto_refresh: bool = False
+    auto_refresh: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -66,6 +68,7 @@ class DataSourceCreateRequest(_Base):
     entity_key: str | None = None
     event_timestamp_column: str | None = None
     created_timestamp_column: str | None = None
+    auto_refresh: bool | None = None
 
 
 class DataSourceUpdateRequest(_Base):

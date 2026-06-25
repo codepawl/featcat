@@ -154,6 +154,7 @@ def test_add_and_get_source(db: FakeCatalog, tmp_path: Path, monkeypatch: pytest
         db=db,
     )
     assert resp["name"] == "test-src"
+    assert resp["auto_refresh"] is False
     assert list_sources(db=db)[0]["name"] == "test-src"
     got = get_source("test-src", db=db)
     assert got["name"] == "test-src"

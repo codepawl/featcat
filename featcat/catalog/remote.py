@@ -162,6 +162,7 @@ class RemoteBackend(CatalogBackend):
         entity_key: str | None = None,
         event_timestamp_column: str | None = None,
         created_timestamp_column: str | None = None,
+        auto_refresh: bool | None = None,
     ) -> Any:
         body: dict[str, Any] = {}
         if description is not None:
@@ -174,6 +175,8 @@ class RemoteBackend(CatalogBackend):
             body["event_timestamp_column"] = event_timestamp_column
         if created_timestamp_column is not None:
             body["created_timestamp_column"] = created_timestamp_column
+        if auto_refresh is not None:
+            body["auto_refresh"] = auto_refresh
         result = self._request("PATCH", f"/api/sources/{name}", json=body)
         return DataSource.model_validate(result)
 

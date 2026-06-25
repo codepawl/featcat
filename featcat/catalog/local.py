@@ -604,9 +604,10 @@ class LocalBackend(CatalogBackend):
             s.execute(
                 text(
                     "INSERT INTO data_sources (id, name, path, storage_type, format, description, "
-                    "entity_key, event_timestamp_column, created_timestamp_column, created_at, updated_at) "
+                    "entity_key, event_timestamp_column, created_timestamp_column, auto_refresh, created_at, updated_at) "
                     "VALUES (:id, :name, :path, :storage_type, :format, :description, "
-                    ":entity_key, :event_timestamp_column, :created_timestamp_column, :created_at, :updated_at)"
+                    ":entity_key, :event_timestamp_column, :created_timestamp_column, :auto_refresh, "
+                    ":created_at, :updated_at)"
                 ),
                 {
                     "id": source.id,
@@ -618,6 +619,7 @@ class LocalBackend(CatalogBackend):
                     "entity_key": source.entity_key,
                     "event_timestamp_column": source.event_timestamp_column,
                     "created_timestamp_column": source.created_timestamp_column,
+                    "auto_refresh": int(source.auto_refresh),
                     "created_at": source.created_at,
                     "updated_at": source.updated_at,
                 },
@@ -649,6 +651,7 @@ class LocalBackend(CatalogBackend):
         entity_key: str | None = None,
         event_timestamp_column: str | None = None,
         created_timestamp_column: str | None = None,
+        auto_refresh: bool | None = None,
     ) -> DataSource:
         """Update mutable metadata. Path/storage_type/name are immutable —
         renaming would invalidate every dependent feature's name prefix.
@@ -676,6 +679,9 @@ class LocalBackend(CatalogBackend):
         if created_timestamp_column is not None:
             sets.append("created_timestamp_column = :created_timestamp_column")
             params["created_timestamp_column"] = created_timestamp_column or None
+        if auto_refresh is not None:
+            sets.append("auto_refresh = :auto_refresh")
+            params["auto_refresh"] = int(auto_refresh)
         if not sets:
             return source  # no-op
         sets.append("updated_at = :now")

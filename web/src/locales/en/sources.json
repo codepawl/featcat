@@ -46,6 +46,9 @@
       "path": "Path",
       "type": "Type",
       "format": "Format",
+      "auto_refresh": "Scheduled rescans",
+      "auto_refresh_on": "Enabled",
+      "auto_refresh_off": "Disabled",
       "created": "Created",
       "updated": "Updated"
     },
@@ -81,7 +84,8 @@
       "path_placeholder": "/path/to/file.parquet or s3://bucket/key.parquet",
       "description": "Description",
       "description_placeholder": "Optional",
-      "scan_after": "Scan immediately after adding"
+      "scan_after": "Scan immediately after adding",
+      "auto_refresh": "Include in scheduled rescans"
     },
     "submit": "Add",
     "adding": "Adding…",

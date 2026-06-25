@@ -84,7 +84,7 @@ featcat ask "features related to user behavior in the last 30 days"
 # Hỏi bằng tiếng Việt
 featcat ask "các feature liên quan đến hành vi người dùng"
 
-# Khi không có Ollama, tự động dùng fuzzy search
+# Khi không có LLM server, tự động dùng fuzzy search
 ```
 
 ### Quality Monitoring
@@ -201,7 +201,7 @@ featcat monitor check device_perf.cpu_usage --llm
 ## Mẹo và thủ thuật
 
 - **Cache**: Auto-doc và NL query được cache. Dùng `--no-cache` để bypass
-- **Offline mode**: Khi không có Ollama, `featcat ask` tự động dùng fuzzy search
+- **Offline mode**: Khi không có LLM server, `featcat ask` tự động dùng fuzzy search
 - **Shell completion**: `featcat --install-completion bash` (hoặc zsh/fish)
 - **Export nhanh**: `featcat export --format json > features.json`
 - **Backup**: Chỉ cần copy file `catalog.db` là đủ

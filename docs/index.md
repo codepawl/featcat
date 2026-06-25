@@ -32,11 +32,11 @@ uv pip install -e ".[server,embeddings]"
 featcat init
 
 # Point at a Parquet
-featcat add-source --name user_behavior --path /data/user_behavior.parquet
-featcat scan user_behavior
+featcat source add user_behavior /data/user_behavior.parquet
+featcat source scan user_behavior
 
 # Browse it
-featcat list                                   # CLI
+featcat feature list                           # CLI
 featcat serve --host 0.0.0.0 --port 8000       # Web UI at :8000
 ```
 
@@ -61,7 +61,7 @@ similar = client.find_similar("user_behavior.session_count_30d", top_k=5)
 | Pull data into a notebook | [Notebook Quickstart](getting-started/notebook-quickstart.md) |
 | Use the Python SDK | [SDK Quickstart](sdk/quickstart.md) |
 | Understand what's running where | [Architecture Overview](architecture/overview.md) |
-| Deploy to production | [Deployment Guide](ops/deployment.md) *(coming soon)* |
+| Deploy to production | [Deployment Guide](ops/deployment.md) |
 
 ## Links
 

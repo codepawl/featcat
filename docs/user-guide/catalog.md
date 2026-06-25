@@ -44,13 +44,13 @@ Every catalog operation is available from the CLI. Useful for piping into other 
 
 ```bash
 # List with filters (same params as the web UI)
-featcat features list --source user_behavior --has-doc --tag churn
+featcat feature list --source user_behavior --has-doc --tag churn
 
-# Get one feature as JSON
-featcat features show user_behavior.session_count_30d --json
+# Show one feature
+featcat feature info user_behavior.session_count_30d
 
 # Search
-featcat features search "user activity 30 days" --limit 10
+featcat feature search "user activity 30 days"
 ```
 
 The CLI uses the same backend abstraction as the web UI ([CatalogBackend](../architecture/overview.md#backend-abstraction)), so behavior matches whether you're pointed at SQLite locally or PostgreSQL in production.

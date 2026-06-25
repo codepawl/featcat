@@ -21,11 +21,11 @@ A *group* is a named bundle of features that belong together — typically the i
 === "CLI"
 
     ```bash
-    featcat groups create churn_v2 \
+    featcat group create churn_v2 \
         --description "Inputs for the v2 churn model" \
         --project ml-platform
 
-    featcat groups add-members churn_v2 \
+    featcat group add churn_v2 \
         user_behavior.session_count_30d \
         user_behavior.event_count_30d \
         device_performance.crash_count_7d
@@ -89,24 +89,25 @@ In the web UI, the group detail page surfaces this as a top banner with one-clic
 When the upstream pipeline changes — say, a column's semantics shift — regenerate all member docs in one call:
 
 ```bash
-featcat groups regenerate-docs churn_v2 --hint "v2 schema: 30-day window per user, excluding bots"
+featcat group regenerate-docs churn_v2 --hint "v2 schema: 30-day window per user, excluding bots"
 ```
 
 The hint flows into every member's autodoc prompt, so descriptions stay consistent across the bundle.
 
-## Deprecating a group
+## Freezing a group version
 
-When a group is replaced (`churn_v2` → `churn_v3`):
+When a group becomes a stable input contract, freeze the current membership:
 
 ```bash
-featcat groups deprecate churn_v2 --successor churn_v3
+featcat group freeze churn_v2 --note "Q4 model input contract"
+featcat group versions churn_v2
 ```
 
-Doesn't delete — sets `deprecated=true` and stores the successor name. The web UI hides deprecated groups by default with a toggle to show them; the SDK still returns them but with `deprecated=True` on the model.
+Frozen versions can be exported later with `featcat group export churn_v2 --version 1 --format json`.
 
 ## Common patterns
 
-- **Branched experiments**: clone a group via `featcat groups clone churn_v2 churn_v2_experiment`, swap a few members, run an A/B.
+- **Branched experiments**: create a second group with `featcat group create`, add the experimental members, then freeze both groups before comparing.
 - **Subset for ablation**: `detail.to_polars(only=["session_count_30d", "event_count_30d"])` returns a subset frame without redefining the group.
 - **Cross-source joins**: members can come from any source. The SDK transparently reads each parquet and joins them. Good for joining `user_behavior` features with `device_performance` features.
 

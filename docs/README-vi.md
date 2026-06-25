@@ -7,7 +7,7 @@
 
 **Feature Catalog tích hợp AI cho các team Data Science**
 
-[English](../README.md)
+[English](index.md)
 
 featcat là một Feature Catalog nhẹ, được thiết kế cho các team Data Science. Đây **không phải** là Feature Store (không có online serving) — mà là một công cụ quản lý metadata + AI layer để tìm kiếm, document, và giám sát chất lượng features.
 
@@ -50,9 +50,8 @@ featcat source scan device_perf
 featcat feature list
 featcat feature info device_perf.cpu_usage
 
-# 5. (Tuỳ chọn) Bật AI features — cần Ollama
-ollama serve &
-ollama pull lfm2.5-thinking
+# 5. (Tuỳ chọn) Bật AI features — cần llama.cpp server
+export FEATCAT_LLAMACPP_URL=http://localhost:8080
 featcat discover "churn prediction cho khách hàng"
 featcat ask "features liên quan đến behavior người dùng"
 ```

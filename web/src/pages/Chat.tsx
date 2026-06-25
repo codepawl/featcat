@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Send, Sparkles, Activity, Search, Lightbulb, Brain, Loader2, Trash2, ArrowUpRight, AlertCircle, RotateCw, ChevronDown, ArrowUp, Paperclip, X, FileText, Database, Table, Code2, Braces } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { api, invalidateCache } from '../api'
+import { api, authHeaders, invalidateCache } from '../api'
 import { useChatStore } from '../hooks/useChatStore'
 import { ChatMessage } from '../components/ChatMessage'
 import { Reasoning, ReasoningTrigger, ReasoningContent } from '@/components/ai-elements/reasoning'
@@ -260,7 +260,7 @@ export function Chat() {
     try {
       const res = await fetch('/api/ai/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({
           query,
           session_id: sessionIdRef.current,

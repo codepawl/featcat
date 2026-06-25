@@ -126,6 +126,22 @@ def list_features(
     from ...catalog.search import highlight_matches, search_features
 
     if limit is not None:
+        if health_grade or drift_status:
+            return _list_features_paginated_enriched(
+                db=db,
+                source=source,
+                search=search,
+                dtype=dtype,
+                health_grade=health_grade,
+                drift_status=drift_status,
+                has_doc=has_doc,
+                owner=owner,
+                tag=tag,
+                sort=sort,
+                order=order,
+                limit=limit,
+                offset=offset,
+            )
         return _list_features_paginated(
             db=db,
             source=source,
@@ -250,6 +266,77 @@ def _list_features_paginated(
         _enrich_with_health(d, f.id, all_docs, drift_map, usage_map)
         items.append(d)
     return {"items": items, "total": total, "limit": limit, "offset": offset}
+
+
+def _list_features_paginated_enriched(
+    *,
+    db: Any,
+    source: str | None,
+    search: str | None,
+    dtype: str | None,
+    health_grade: str | None,
+    drift_status: str | None,
+    has_doc: bool | None,
+    owner: str | None,
+    tag: str | None,
+    sort: str,
+    order: str,
+    limit: int,
+    offset: int,
+) -> dict[str, Any]:
+    """Paginated response for filters that require full health enrichment."""
+    from ...catalog.search import highlight_matches, search_features
+
+    features = db.list_features(source_name=source)
+    all_docs, drift_map, usage_map = _bulk_health_data(db)
+    enriched: list[dict] = []
+    for f in features:
+        d = f.model_dump(mode="json")
+        d["has_doc"] = f.id in all_docs
+        doc = all_docs.get(f.id)
+        d["short_description"] = doc.get("short_description", "") if doc else ""
+        _enrich_with_health(d, f.id, all_docs, drift_map, usage_map)
+        enriched.append(d)
+
+    if dtype:
+        enriched = [d for d in enriched if d.get("dtype") == dtype]
+    if health_grade:
+        enriched = [d for d in enriched if d.get("health_grade") == health_grade]
+    if drift_status:
+        enriched = [d for d in enriched if drift_map.get(d["id"], "healthy") == drift_status]
+    if has_doc is not None:
+        enriched = [d for d in enriched if d.get("has_doc") == has_doc]
+    if owner:
+        enriched = [d for d in enriched if d.get("owner") == owner]
+    if tag:
+        enriched = [d for d in enriched if tag in (d.get("tags") or [])]
+
+    search_scores: dict[str, float] = {}
+    highlights: dict[str, dict] = {}
+    if search:
+        ranked = search_features(search, enriched)
+        enriched = [f for f, _ in ranked]
+        search_scores = {f["name"]: score for f, score in ranked}
+        highlights = {f["name"]: highlight_matches(search, f) for f, _ in ranked}
+    else:
+        reverse = order == "desc"
+        if sort == "health":
+            enriched.sort(key=lambda d: d.get("health_score", 0), reverse=reverse)
+        elif sort == "created_at":
+            enriched.sort(key=lambda d: d.get("created_at", ""), reverse=reverse)
+        elif sort == "updated_at":
+            enriched.sort(key=lambda d: d.get("updated_at", ""), reverse=reverse)
+        else:
+            enriched.sort(key=lambda d: d.get("name", ""), reverse=reverse)
+
+    for d in enriched:
+        if d["name"] in highlights:
+            d["highlight"] = highlights[d["name"]]
+        if d["name"] in search_scores:
+            d["search_score"] = search_scores[d["name"]]
+
+    total = len(enriched)
+    return {"items": enriched[offset : offset + limit], "total": total, "limit": limit, "offset": offset}
 
 
 @router.get("/health-summary")

@@ -1,26 +1,55 @@
-# Cookbook
+# SDK cookbook
 
-> **Coming soon (T3.3b/c)** — content for this page lands in a follow-up PR.
+Short recipes for common notebook and pipeline workflows.
 
-The scaffolding for the docs site is in place; this page is intentionally
-a placeholder so the navigation tree is stable across the next two PRs that
-fill in user-guide, ops, and contributing content.
+## Find a candidate feature
 
-## What this page will cover
+```python
+from featcat_client import FeatCatClient
 
-See `.claude/plan/featcat-scaleup-tasks.md` § T3.3 for the full content
-outline. In short:
+client = FeatCatClient("http://localhost:8000", actor="eda-notebook")
+matches = client.search("30 day user activity", limit=10)
+for feature in matches:
+    print(feature.name, feature.dtype, feature.owner)
+```
 
-- What the feature does (1 paragraph)
-- When to use it
-- Step-by-step instructions
-- Code examples
-- Troubleshooting common issues
-- Related pages
+## Read a feature column
 
-For now, the most useful starting points are:
+```python
+df = client.read_feature("user_behavior.session_count_30d")
+print(df.head())
+```
 
-- [Home](../index.md)
-- [Installation](../getting-started/installation.md)
-- [First Feature](../getting-started/first-feature.md)
-- [Architecture Overview](../architecture/overview.md)
+The SDK resolves the source path from the catalog and reads the parquet locally or through the path scheme the source uses.
+
+## Join a feature group
+
+```python
+detail = client.get_group("churn_v2")
+df = detail.to_polars(entity_key="user_id")
+```
+
+Pass `entity_key` explicitly in production so joins do not depend on auto-detection.
+
+## Compare similar features
+
+```python
+base = "user_behavior.session_count_30d"
+for feature in client.find_similar(base, top_k=5, threshold=0.25):
+    print(feature.name)
+```
+
+The server chooses pgvector similarity when embeddings are available and falls back to TF-IDF otherwise.
+
+## Handle missing features
+
+```python
+from featcat_client import FeatureNotFound
+
+try:
+    feature = client.get_feature("user_behavior.missing_col")
+except FeatureNotFound:
+    feature = None
+```
+
+Catch `FeatCatError` when you want one handler for network, server, and not-found failures.

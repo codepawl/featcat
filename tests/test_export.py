@@ -94,6 +94,41 @@ class TestSingleSourceExport:
         assert set(t.column_names) == {"session_count", "churn_label"}
         assert t.num_rows == 5
 
+    def test_export_reads_through_storage_abstraction(self, tmp_path, monkeypatch):
+        from featcat.catalog.local import LocalBackend
+        from featcat.catalog.models import DataSource, Feature
+
+        db = LocalBackend(str(tmp_path / "storage-export.db"))
+        db.init_db()
+        source = DataSource(name="remote", path="s3://bucket/features.parquet")
+        db.add_source(source)
+        db.upsert_feature(
+            Feature(
+                name="remote.score",
+                data_source_id=source.id,
+                column_name="score",
+                dtype="double",
+            )
+        )
+
+        calls: list[tuple[str, list[str]]] = []
+
+        def _fake_read(path: str, columns: list[str]) -> pa.Table:
+            calls.append((path, columns))
+            return pa.table({"score": pa.array([0.1, 0.2])})
+
+        monkeypatch.setattr("featcat.catalog.exporter.read_parquet_columns", _fake_read)
+
+        try:
+            output = str(tmp_path / "export.parquet")
+            result = export_features(["remote.score"], db=db, output_path=output)
+        finally:
+            db.close()
+
+        assert calls == [("s3://bucket/features.parquet", ["score"])]
+        assert result.row_count == 2
+        assert Path(output).exists()
+
     def test_csv_format(self, catalog_with_sources, tmp_path):
         db = catalog_with_sources
         output = str(tmp_path / "export.csv")

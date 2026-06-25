@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -77,6 +78,7 @@ class Settings(BaseSettings):
     server_host: str = "0.0.0.0"
     server_port: int = 8000
     server_auth_token: str | None = None
+    cors_origins: str | list[str] = "*"
 
     # Internal auth for the web UI / API. When enabled, requests must carry
     # a trusted identity header from the internal SSO proxy or the shared
@@ -132,6 +134,18 @@ class Settings(BaseSettings):
     # work to Celery workers via .delay(). The [tasks] extra must be installed for "celery" mode.
     tasks_backend: str = "apscheduler"
 
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_cors_origins(cls, data: Any) -> Any:
+        """Accept FEATCAT_CORS_ORIGINS as JSON list or comma-separated text."""
+        if not isinstance(data, dict):
+            return data
+        raw = data.get("cors_origins")
+        if isinstance(raw, str):
+            parts = [p.strip() for p in raw.split(",") if p.strip()]
+            data["cors_origins"] = parts or ["*"]
+        return data
+
     @model_validator(mode="after")
     def _validate_s3_paired_keys(self) -> Settings:
         """Reject partial S3 credential config.
@@ -160,39 +174,49 @@ class Settings(BaseSettings):
             )
         return self
 
+    def cors_origin_list(self) -> list[str]:
+        """Return configured CORS origins as a list for Starlette middleware."""
+        raw = self.cors_origins
+        if isinstance(raw, str):
+            parts = [p.strip() for p in raw.split(",") if p.strip()]
+            return parts or ["*"]
+        return raw or ["*"]
+
 
 # Keep a record of which keys came from which source for `config show`
 _setting_sources: dict[str, str] = {}
 
 
 def load_settings(overrides: dict[str, Any] | None = None) -> Settings:
-    """Load settings with priority: overrides > env vars > project YAML > user YAML > defaults.
-
-    Env vars are handled automatically by pydantic-settings on top of the init kwargs.
-    """
-    defaults = Settings()
-    default_dict = defaults.model_dump()
+    """Load settings with priority: overrides > env vars > project YAML > user YAML > defaults."""
+    all_keys = set(Settings.model_fields.keys())
 
     # Layer 1: user config
     user_config = _load_yaml(CONFIG_USER_PATH)
     # Layer 2: project config
     project_config = _load_yaml(CONFIG_PROJECT_PATH)
+    # Layer 3: env config, parsed by pydantic-settings so types match Settings.
+    env_settings = Settings()
+    env_keys = {key for key in all_keys if f"FEATCAT_{key.upper()}" in os.environ}
+    env_config = {key: getattr(env_settings, key) for key in env_keys}
 
-    # Merge: start with user, then project on top
+    # Merge: start with user, then project, env, and explicit overrides.
     merged: dict[str, Any] = {}
     merged.update(user_config)
     merged.update(project_config)
+    merged.update(env_config)
 
     if overrides:
         merged.update(overrides)
 
     # Track sources for config show
     _setting_sources.clear()
-    all_keys = set(default_dict.keys())
 
     for key in all_keys:
         if overrides and key in overrides:
             _setting_sources[key] = "override"
+        elif key in env_config:
+            _setting_sources[key] = "env"
         elif key in project_config:
             _setting_sources[key] = "project"
         elif key in user_config:
@@ -200,22 +224,7 @@ def load_settings(overrides: dict[str, Any] | None = None) -> Settings:
         else:
             _setting_sources[key] = "default"
 
-    # Build settings: pass merged YAML as init kwargs, env vars override via pydantic-settings
-    settings = Settings(**{k: v for k, v in merged.items() if k in all_keys})
-
-    # Re-check: if env var is set and differs from YAML value, mark as "env"
-    env_settings = Settings()  # Pure env-only load
-    for key in all_keys:
-        env_val = getattr(env_settings, key)
-        final_val = getattr(settings, key)
-        yaml_val = merged.get(key)
-        from_env = (
-            yaml_val is not None and env_val != default_dict[key] and final_val == env_val and env_val != yaml_val
-        ) or (yaml_val is None and env_val != default_dict[key])
-        if from_env:
-            _setting_sources[key] = "env"
-
-    return settings
+    return Settings(_env_prefix="__FEATCAT_DISABLED__", **{k: v for k, v in merged.items() if k in all_keys})
 
 
 def get_setting_source(key: str) -> str:

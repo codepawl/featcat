@@ -173,12 +173,11 @@ except ConnectionError:
 
 ## Caching
 
-Two layers, both per-process:
+Parquet reads are cached per-process:
 
-- **HTTP GETs**: 10-second client-side cache for read endpoints. Mutations bypass and invalidate by prefix.
 - **Parquet reads**: `lru_cache(maxsize=64)` keyed on path. Restart the kernel to drop.
 
-There's deliberately no remote cache (no Redis, no etag handshakes) — featcat catalog state is small enough that a 10-second TTL is fine, and notebook users don't want surprise staleness.
+There's deliberately no SDK-level HTTP cache — featcat catalog state is small enough that fresh metadata reads are fine, and notebook users don't want surprise staleness.
 
 ## Lifecycle
 
@@ -198,6 +197,6 @@ finally:
 
 ## What's next
 
-- **[SDK Reference](reference.md)** *(coming soon)* — every public class and method, auto-generated from docstrings via `mkdocstrings`.
-- **[Cookbook](cookbook.md)** *(coming soon)* — recipes for cross-source joins, drift inspection, bulk metadata edits.
+- **[SDK Reference](reference.md)** — public client methods and model/error types.
+- **[Cookbook](cookbook.md)** — recipes for notebooks and pipelines.
 - **[Notebook Quickstart](../getting-started/notebook-quickstart.md)** — the same content but framed for first-time notebook users.

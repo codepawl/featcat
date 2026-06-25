@@ -127,6 +127,13 @@ def read_parquet_sample(path: str, n_rows: int = 10_000) -> pa.Table:
     return pa.Table.from_batches(batches, schema=pf.schema_arrow)
 
 
+def read_parquet_columns(path: str, columns: list[str]) -> pa.Table:
+    """Read selected columns from a local or S3 Parquet file."""
+    if is_s3_uri(path):
+        return _s3_read_columns(path, columns)
+    return pq.read_table(path, columns=columns)
+
+
 # ---------------------------------------------------------------------------
 # S3 storage
 # ---------------------------------------------------------------------------
@@ -234,3 +241,10 @@ def _s3_read_sample(path: str, n_rows: int = 10_000) -> pa.Table:
     if not batches:
         return pa.table({})
     return pa.Table.from_batches(batches, schema=pf.schema_arrow)
+
+
+def _s3_read_columns(path: str, columns: list[str]) -> pa.Table:
+    """Read selected columns from an S3 Parquet file."""
+    fs = _get_s3_filesystem()
+    s3_path = _s3_uri_to_path(path)
+    return pq.read_table(s3_path, columns=columns, filesystem=fs)

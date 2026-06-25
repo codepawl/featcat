@@ -100,7 +100,7 @@ featcat ask "features related to user behavior in the last 30 days"
 # Ask in Vietnamese
 featcat ask "các feature liên quan đến hành vi người dùng"
 
-# When Ollama is unavailable, automatically falls back to fuzzy search
+# When the LLM server is unavailable, automatically falls back to fuzzy search
 ```
 
 ### Quality Monitoring
@@ -346,7 +346,7 @@ external monitors can alert on the same conditions the CLI surfaces.
 ## Tips and Tricks
 
 - **Cache**: Auto-doc and NL query results are cached. Use `--no-cache` to bypass
-- **Offline mode**: When Ollama is unavailable, `featcat ask` automatically uses fuzzy search
+- **Offline mode**: When the LLM server is unavailable, `featcat ask` automatically uses fuzzy search
 - **Shell completion**: `featcat --install-completion bash` (or zsh/fish)
 - **Quick export**: `featcat export --format json > features.json`
 - **Backup**: Just copy `catalog.db` — that's all you need

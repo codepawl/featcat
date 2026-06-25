@@ -34,6 +34,11 @@ export function clearAuthToken(): void {
   }
 }
 
+export function authHeaders(): Record<string, string> {
+  const token = getAuthToken()
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
+
 async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const token = getAuthToken()
   const res = await fetch(`${API}${endpoint}`, {

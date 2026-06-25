@@ -300,6 +300,7 @@ class FeatCatClient:
         entity_key: str | None = None,
         event_timestamp_column: str | None = None,
         created_timestamp_column: str | None = None,
+        auto_refresh: bool | None = None,
     ) -> DataSource:
         body = DataSourceUpdateRequest(
             description=description,
@@ -307,6 +308,7 @@ class FeatCatClient:
             entity_key=entity_key,
             event_timestamp_column=event_timestamp_column,
             created_timestamp_column=created_timestamp_column,
+            auto_refresh=auto_refresh,
         )
         row = self._request(
             "PATCH",

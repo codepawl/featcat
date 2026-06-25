@@ -135,7 +135,7 @@ The applier looks up each parent in the catalog: feature-by-name first, then sou
 >
 > The default install stays lean and falls back to the manual `featcat lineage set` path; auto-detect surfaces a clear error if the extra is missing.
 
-Conventional pattern: pair every `featcat docs generate` with either a `featcat lineage set` call (when the SQL lives in your dbt repo, not the catalog) or a `featcat lineage detect --from <file> --apply --confirm` call in the same script that built the feature.
+Conventional pattern: pair every `featcat doc generate` with `featcat lineage detect --from <file> --apply --confirm` in the same script that built the feature.
 
 ## Limitations
 
@@ -147,4 +147,4 @@ Conventional pattern: pair every `featcat docs generate` with either a `featcat 
 
 - **[Catalog browser](catalog.md)** — features list shows lineage in the detail panel
 - **[Bulk operations](bulk.md)** — for setting lineage on many features at once (use the bulk tag endpoint with structured JSON)
-- **[Architecture › Data Layer](../architecture/data.md)** *(coming soon)* — `feature_lineage` schema
+- **[Architecture › Data Layer](../architecture/data.md)** — `feature_lineage` schema

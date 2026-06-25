@@ -50,7 +50,7 @@ Optional extras (install only what you need):
 |---|---|---|
 | `[server]` | FastAPI + uvicorn + APScheduler | Running the API/web UI |
 | `[tui]` | Textual | The terminal UI (`featcat ui`) |
-| `[s3]` | s3fs | Sources at `s3://…` paths |
+| `[s3]` | Compatibility placeholder | S3 support is built into the default install via PyArrow |
 | `[embeddings]` | sentence-transformers + torch | Vector similarity, NL-query embed-first |
 | `[tasks]` | celery + redis + flower | Distributed background jobs |
 | `[docs]` | mkdocs-material + mkdocstrings | Building this site locally |
@@ -89,6 +89,7 @@ Default endpoints:
 | `FEATCAT_DB_URL` | from compose | Override the connection string |
 | `FEATCAT_LLM_MODEL` | `gemma-4-E2B-it` | Model name passed to the API |
 | `FEATCAT_LLAMACPP_URL` | `http://llm:8080` | Where the API reaches the LLM |
+| `FEATCAT_CORS_ORIGINS` | `*` | Comma-separated list of allowed browser origins |
 | `POSTGRES_USER` / `_PASSWORD` / `_DB` | `featcat` / `featcat_local_only` / `featcat` | Postgres credentials |
 | `FEATCAT_SERVER_AUTH_TOKEN` | unset | When set, all `/api/*` requests need `Authorization: Bearer <token>` |
 | `FEATCAT_REDIS_URL` | `redis://redis:6379/0` | Only used by the `tasks` profile |
@@ -103,7 +104,7 @@ python scripts/migrate_sqlite_to_postgres.py \
     --target postgresql+psycopg2://featcat:featcat_local_only@localhost:5432/featcat
 ```
 
-The script verifies row counts plus a 10-row content spot-check (JSON-aware for `tags`, `stats`, etc.). It aborts on any mismatch — see [Architecture › Data Layer](../architecture/data.md) *(coming soon)* for the full migration story.
+The script verifies row counts plus a 10-row content spot-check (JSON-aware for `tags`, `stats`, etc.). It aborts on any mismatch — see [Architecture › Data Layer](../architecture/data.md) for the full migration story.
 
 ## SDK-only install on notebook hosts
 
@@ -149,4 +150,4 @@ Demo rows are marked with `tags=['demo']` (features), `detected_method='demo'` (
 - **`alembic upgrade head` fails on first run** — make sure the postgres container is `healthy`; the entrypoint waits via `depends_on: condition: service_healthy`. If it timed out, `docker compose logs postgres` usually tells you why.
 - **`sentence-transformers` install pulls torch and takes forever** — that's expected (~1 GB). Skip the `[embeddings]` extra if you don't need vector similarity; the existing TF-IDF path still works.
 
-→ [Operations › Troubleshooting](../ops/troubleshooting.md) *(coming soon)*
+→ [Operations › Troubleshooting](../ops/troubleshooting.md)

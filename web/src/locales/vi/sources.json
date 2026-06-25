@@ -45,6 +45,9 @@
       "path": "Đường dẫn",
       "type": "Loại",
       "format": "Định dạng",
+      "auto_refresh": "Quét lại theo lịch",
+      "auto_refresh_on": "Bật",
+      "auto_refresh_off": "Tắt",
       "created": "Tạo lúc",
       "updated": "Cập nhật"
     },
@@ -80,7 +83,8 @@
       "path_placeholder": "/path/to/file.parquet hoặc s3://bucket/key.parquet",
       "description": "Mô tả",
       "description_placeholder": "Tùy chọn",
-      "scan_after": "Quét ngay sau khi thêm"
+      "scan_after": "Quét ngay sau khi thêm",
+      "auto_refresh": "Bao gồm trong lịch quét lại"
     },
     "submit": "Thêm",
     "adding": "Đang thêm…",

@@ -20,6 +20,14 @@
       "dark": "Tối"
     }
   },
+  "auth": {
+    "title": "API token",
+    "description": "Dùng cho server chạy với FEATCAT_SERVER_AUTH_TOKEN.",
+    "placeholder": "Bearer token",
+    "save": "Lưu",
+    "saved": "Đã lưu",
+    "clear": "Xóa"
+  },
   "llm_cache": {
     "title": "Bộ nhớ đệm phản hồi LLM",
     "description": "Phản hồi AI đã cache theo prompt + system. Xóa cache sẽ buộc gọi LLM mới ở lần sau.",

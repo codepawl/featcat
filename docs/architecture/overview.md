@@ -1,6 +1,6 @@
 # Architecture overview
 
-featcat has four interfaces (CLI, TUI, REST API, web UI) sitting on top of one shared backend abstraction. This page is the bird's-eye view; deeper dives in [Data Layer](data.md) *(coming soon)* and [AI Layer](ai.md) *(coming soon)*.
+featcat has four interfaces (CLI, TUI, REST API, web UI) sitting on top of one shared backend abstraction. This page is the bird's-eye view; deeper dives live in [Data Layer](data.md) and [AI Layer](ai.md).
 
 ```mermaid
 flowchart TB
@@ -72,7 +72,7 @@ Every interface goes through `CatalogBackend`, defined in `featcat/catalog/backe
 - **SQLite** — dev + test target. Same SQLAlchemy models, fewer features (no pgvector, no tsvector). Roughly: anything that needs Postgres-only DDL has a sqlite fallback in the code (TF-IDF instead of pgvector, in-process token scan instead of tsvector).
 - **Schema source of truth**: `featcat/db/models.py` (SQLAlchemy). Migrations in `featcat/db/migrations/versions/`.
 
-→ [Architecture › Data Layer](data.md) *(coming soon)*
+→ [Architecture › Data Layer](data.md)
 
 ### AI layer
 
@@ -80,7 +80,7 @@ Every interface goes through `CatalogBackend`, defined in `featcat/catalog/backe
 - **sentence-transformers** — CPU-friendly embedding model (`all-MiniLM-L6-v2`, 384-dim). Optional via the `[embeddings]` extra. Powers vector similarity + NL-query embed-first retrieval.
 - **Plugins** — under `featcat/plugins/`. Each is a `BasePlugin` with an `execute(catalog_db, llm, **kwargs) → PluginResult`. Discoverable, reused by CLI / API / scheduler.
 
-→ [Architecture › AI Layer](ai.md) *(coming soon)*
+→ [Architecture › AI Layer](ai.md)
 
 ### Scheduler / job queue
 
@@ -89,7 +89,7 @@ Two paths coexist during the migration window:
 - **APScheduler** (in-process) — current production. Lives in `featcat/server/scheduler.py`. Four default jobs: `monitor_check`, `doc_generate`, `source_scan`, `baseline_refresh`.
 - **Celery + Redis** (opt-in) — distributed. `featcat/tasks/app.py` defines the Celery app + queues. All four default jobs (`monitor_check`, `doc_generate`, `source_scan`, `baseline_refresh`) have Celery tasks as of T1.5b. Toggle with `FEATCAT_TASKS_BACKEND=celery`; APScheduler still drives the cron triggers and ships work to Celery via `send_task()`. Activated via the `tasks` Docker Compose profile.
 
-→ [Architecture › Deployment](deployment.md) *(coming soon)*
+→ [Architecture › Deployment](deployment.md)
 
 ## Request lifecycle (web UI clicking around)
 
@@ -112,7 +112,7 @@ sequenceDiagram
     FastAPI-->>Browser: {items, total, limit, offset}
 ```
 
-The paginated path pushes filters to SQL via the `Embedding`/`tsvector`/regular indexes the migration adds. The legacy unpaginated path (`?limit` absent) is kept for back-compat — see [User Guide › Catalog Browser](../user-guide/catalog.md) *(coming soon)*.
+The paginated path pushes filters to SQL via the `Embedding`/`tsvector`/regular indexes the migration adds. The legacy unpaginated path (`?limit` absent) is kept for back-compat — see [User Guide › Catalog Browser](../user-guide/catalog.md).
 
 ## Where to look in the code
 
@@ -133,6 +133,6 @@ The paginated path pushes filters to SQL via the `Embedding`/`tsvector`/regular 
 
 ## What's next
 
-- **[Data Layer](data.md)** *(coming soon)* — schema, indexes, migration story (sqlite → postgres), pgvector + tsvector setup.
-- **[AI Layer](ai.md)** *(coming soon)* — plugin contract, agent loop, embedding pipeline, prompt structure.
-- **[Deployment](deployment.md)** *(coming soon)* — Docker Compose stack, environment variables, scaling considerations.
+- **[Data Layer](data.md)** — schema, indexes, migration story (sqlite → postgres), pgvector + tsvector setup.
+- **[AI Layer](ai.md)** — plugin contract, agent loop, embedding pipeline, prompt structure.
+- **[Deployment](deployment.md)** — Docker Compose stack, environment variables, scaling considerations.

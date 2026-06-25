@@ -224,3 +224,36 @@ class TestHealthAPI:
         assert "health_breakdown" in data
         assert data["health_score"] >= 0
         assert data["health_grade"] in ("A", "B", "C", "D")
+
+    def test_paginated_health_grade_filter_is_applied(self, client, tmp_path, monkeypatch):
+        """Health-grade filters require enrichment even on paginated responses."""
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+
+        table = pa.table({"a": pa.array([1, 2]), "b": pa.array([3, 4])})
+        path = tmp_path / "grades.parquet"
+        pq.write_table(table, path)
+        client.post("/api/sources", json={"path": str(path), "name": "grade_src"})
+        client.post("/api/sources/grade_src/scan")
+
+        features = client.app.state.backend.list_features(source_name="grade_src")
+        feature_by_col = {f.column_name: f for f in features}
+
+        def _fake_health_data(_db):
+            return (
+                {feature_by_col["a"].id: {"short_description": "documented"}},
+                {feature_by_col["a"].id: "healthy", feature_by_col["b"].id: "critical"},
+                {
+                    feature_by_col["a"].id: {"views": 5, "queries": 1},
+                    feature_by_col["b"].id: {"views": 0, "queries": 0},
+                },
+            )
+
+        monkeypatch.setattr("featcat.server.routes.features._bulk_health_data", _fake_health_data)
+
+        resp = client.get("/api/features", params={"source": "grade_src", "limit": 10, "health_grade": "A"})
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 1
+        assert [item["name"] for item in data["items"]] == ["grade_src.a"]

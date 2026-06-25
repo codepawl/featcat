@@ -44,7 +44,7 @@ for f in similar:
     print(f.name)
 ```
 
-When the server has [embeddings enabled](../architecture/ai.md) *(coming soon)* this uses pgvector cosine. Otherwise it falls back to TF-IDF over names + tags + descriptions. Same client call either way.
+When the server has [embeddings enabled](../architecture/ai.md) this uses pgvector cosine. Otherwise it falls back to TF-IDF over names + tags + descriptions. Same client call either way.
 
 ### Pull a whole feature group as one joined frame
 
@@ -106,5 +106,5 @@ Caching: parquet reads are LRU-cached at module level (size 64). If the underlyi
 ## What's next
 
 - **[SDK Quickstart](../sdk/quickstart.md)** — the full method-by-method walkthrough.
-- **[SDK Reference](../sdk/reference.md)** *(coming soon)* — every public class and method.
-- **[Cookbook](../sdk/cookbook.md)** *(coming soon)* — recipes for common notebook workflows: feature discovery, cross-source joins, drift inspection.
+- **[SDK Reference](../sdk/reference.md)** — every public client method.
+- **[Cookbook](../sdk/cookbook.md)** — recipes for common notebook workflows: feature discovery, cross-source joins, drift inspection.

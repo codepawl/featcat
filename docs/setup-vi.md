@@ -7,7 +7,7 @@
 | Thành phần | Yêu cầu | Bắt buộc? |
 |------------|---------|-----------|
 | Python | >= 3.10 | Có |
-| Ollama | >= 0.1.0 | Không (chỉ cần cho AI features) |
+| llama.cpp server | Docker image hoặc local binary | Không (chỉ cần cho AI features) |
 | OS | Linux, macOS, WSL2 | Có |
 | Disk | ~100MB cho model + DB | Có |
 
@@ -41,42 +41,19 @@ Các extras:
 > Hỗ trợ S3 / MinIO đã có sẵn trong install mặc định (dùng PyArrow S3FileSystem
 > tích hợp sẵn) — không cần extra riêng. Chỉ cần đặt biến môi trường `FEATCAT_S3_*`.
 
-## Bước 3: Cài đặt Ollama (tuỳ chọn nhưng khuyến nghị)
+## Bước 3: Chạy llama.cpp (tuỳ chọn nhưng khuyến nghị)
 
-Ollama là local LLM server. Cài đặt để dùng AI Discovery, Auto-doc, và NL Query.
+featcat gọi llama.cpp-compatible HTTP server cho AI Discovery, Auto-doc, và NL Query. Script dev có thể khởi động server này:
 
 ```bash
-# Linux
-curl -fsSL https://ollama.ai/install.sh | sh
-
-# Khởi động Ollama
-ollama serve
-
-# Pull model (cửa sổ terminal khác)
-ollama pull lfm2.5-thinking
+./dev.sh
 ```
 
-> **Tip**: Model `lfm2.5-thinking` chạy tốt trên máy 8GB RAM.
-
-### Tự động khởi động Ollama (systemd)
+Hoặc tự chạy server rồi trỏ featcat tới endpoint đó:
 
 ```bash
-sudo tee /etc/systemd/system/ollama.service << 'EOF'
-[Unit]
-Description=Ollama LLM Server
-After=network.target
-
-[Service]
-ExecStart=/usr/local/bin/ollama serve
-Restart=always
-User=$USER
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-sudo systemctl daemon-reload
-sudo systemctl enable --now ollama
+export FEATCAT_LLAMACPP_URL=http://localhost:8080
+export FEATCAT_LLM_MODEL=gemma-4-E2B-it
 ```
 
 ## Bước 4: Khởi tạo catalog
@@ -119,9 +96,9 @@ featcat đọc cấu hình từ environment variables (prefix `FEATCAT_`):
 
 | Biến | Mặc định | Mô tả |
 |------|----------|-------|
-| `FEATCAT_LLM_BACKEND` | `ollama` | Backend LLM: `ollama` hoặc `llamacpp` |
-| `FEATCAT_LLM_MODEL` | `lfm2.5-thinking` | Model name |
-| `FEATCAT_OLLAMA_URL` | `http://localhost:11434` | Ollama server URL |
+| `FEATCAT_LLM_BACKEND` | `llamacpp` | Backend LLM |
+| `FEATCAT_LLM_MODEL` | `gemma-4-E2B-it` | Model name |
+| `FEATCAT_LLAMACPP_URL` | `http://localhost:8080` | llama.cpp server URL |
 | `FEATCAT_CATALOG_DB_PATH` | `catalog.db` | Đường dẫn database |
 | `FEATCAT_MAX_CONTEXT_FEATURES` | `100` | Số features tối đa gửi cho LLM |
 | `FEATCAT_LLM_TIMEOUT` | `120` | Timeout (giây) cho LLM request |
@@ -140,7 +117,7 @@ EC2/ECS/EKS. Xem admin guide cho thứ tự ưu tiên đầy đủ.
 
 Ví dụ file `.env`:
 ```bash
-FEATCAT_LLM_MODEL=lfm2.5-thinking
+FEATCAT_LLM_MODEL=gemma-4-E2B-it
 FEATCAT_S3_ENDPOINT_URL=http://minio.internal:9000
 FEATCAT_S3_ACCESS_KEY=minioadmin
 FEATCAT_S3_SECRET_KEY=minioadmin

@@ -1,4 +1,4 @@
-.PHONY: install lint format type-check test test-cov build clean distclean check release-check docs docs-serve docs-clean bench docker-version docker-build docker-push
+.PHONY: install lint format type-check test test-cov build clean distclean check release-check docs docs-check docs-serve docs-clean bench docker-version docker-build docker-push
 
 DOCKER_IMAGE ?= nxank4/featcat
 VERSION := $(shell grep '^__version__' featcat/__init__.py | cut -d'"' -f2)
@@ -48,6 +48,9 @@ distclean: clean
 # T3.3 — MkDocs site. Install once with: uv pip install -e ".[docs]"
 docs:
 	uv run mkdocs build
+
+docs-check:
+	python3 scripts/check_docs_consistency.py
 
 docs-serve:
 	uv run mkdocs serve --dev-addr 0.0.0.0:8001

@@ -45,7 +45,9 @@ The `actor` is a free-form string — your username or pipeline identifier. Use 
 Each feature has an `owner` field (string). Notifications about a feature are routed to its owner. Set with:
 
 ```bash
-featcat features update user_behavior.session_count_30d --owner alice
+curl -X PATCH 'http://localhost:8000/api/features/by-name?name=user_behavior.session_count_30d' \
+    -H 'Content-Type: application/json' \
+    -d '{"owner": "alice"}'
 ```
 
 If a feature has no owner, drift / doc / cert notifications go to a single `__catchall__` actor that the dashboard surfaces under "Unassigned alerts." Set up a rotation by tagging a person to that actor.
@@ -57,20 +59,10 @@ For groups, notifications fan out to every owner of any member feature, deduped.
 By default:
 
 - **Critical drift** notifies on every check (not just the first transition into critical).
-- **Warning drift** is silent. Enable per-feature with `featcat hints set <name> --notify-on warning`.
+- **Warning drift** is silent by default.
 - **Doc generation completed** notifies once per batch, not per feature.
 
-Reduce noise with:
-
-```bash
-# Mute a feature you don't care about
-featcat features update <name> --notify off
-
-# Mute a whole source
-featcat sources update <name> --notify off
-```
-
-The web UI **Settings** tab has a notification preferences panel that mirrors these CLI options.
+Reduce noise by keeping feature owners accurate and using the web UI filters to focus on critical alerts.
 
 ## Polling vs push
 
@@ -84,7 +76,7 @@ When integration *is* added, the `create_notification(...)` API stays the same a
 
 ## Common questions
 
-- **"I'm not getting drift notifications."** — Is the feature owner set? `featcat features show <name>` to check. Set with `--owner`.
+- **"I'm not getting drift notifications."** — Is the feature owner set? `featcat feature info <name>` to check. Update owner through the feature edit API or the web UI.
 - **"The unread count is wrong."** — Hard refresh the browser; the React store may have drifted from the server. The server-side counts are authoritative.
 - **"Can I get a digest instead of one-by-one?"** — Not today. Open an issue with the cadence you want; daily / weekly digest is straightforward to add as a scheduled job.
 
@@ -93,4 +85,4 @@ When integration *is* added, the `create_notification(...)` API stays the same a
 - **[Monitoring](monitoring.md)** — drift triggers most notifications
 - **[Documentation](docs.md)** — doc batch completion notifications
 - **[Catalog browser](catalog.md)** — owner field is in the feature detail panel
-- **[Architecture › Data Layer](../architecture/data.md)** *(coming soon)* — notifications schema
+- **[Architecture › Data Layer](../architecture/data.md)** — notifications schema

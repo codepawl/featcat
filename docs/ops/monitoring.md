@@ -36,7 +36,7 @@ For a load-balancer probe, hit `GET /api/health/ready`. Returns 200 only when al
 
 ## Logging
 
-Default: structured JSON to stdout when `FEATCAT_LOG_JSON=true`.
+Default: application logs go to stdout/stderr and can be collected by Docker or your host logging agent.
 
 ```json
 {"ts": "2026-05-08T05:01:23Z", "level": "info", "logger": "featcat.api", "msg": "request",

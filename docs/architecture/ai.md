@@ -111,9 +111,9 @@ sequenceDiagram
 | Plugin | Entry point | What it does |
 |---|---|---|
 | `DiscoveryPlugin` | `featcat discover --query "..."` | Embedding+keyword search, returns ranked features |
-| `AutodocPlugin` | `featcat docs generate ...` | Generates short/long descriptions per feature |
+| `AutodocPlugin` | `featcat doc generate ...` | Generates short/long descriptions per feature |
 | `MonitoringPlugin` | `featcat monitor check` | Runs PSI + asks the LLM for a one-line summary on critical drift |
-| `NLQueryPlugin` | `featcat query "..."` | Translates natural language to a feature spec |
+| `NLQueryPlugin` | `featcat ask "..."` | Translates natural language to a feature spec |
 
 Contract: `BasePlugin.execute(catalog_db: CatalogBackend, llm: BaseLLM, **kwargs) -> PluginResult`. `PluginResult` has `status`, `data`, `errors`. Plugins are called identically from CLI / API / scheduler.
 
@@ -126,7 +126,7 @@ Contract: `BasePlugin.execute(catalog_db: CatalogBackend, llm: BaseLLM, **kwargs
 For environments without LLM access:
 
 ```bash
-FEATCAT_LLM_ENABLED=false featcat serve
+FEATCAT_LLM_BACKEND=llamacpp FEATCAT_LLAMACPP_URL=http://localhost:8080 featcat serve
 ```
 
 The catalog browser, monitoring (without LLM summaries), groups, and the SDK still work. Only the chat page, autodoc, NL query, and similarity-via-embeddings degrade.

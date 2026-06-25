@@ -26,6 +26,7 @@ class SourceCreate(BaseModel):
     entity_key: str | None = None
     event_timestamp_column: str | None = None
     created_timestamp_column: str | None = None
+    auto_refresh: bool = False
 
 
 class SourceUpdate(BaseModel):
@@ -33,8 +34,8 @@ class SourceUpdate(BaseModel):
 
     ``name``, ``path`` and ``storage_type`` are intentionally absent — renaming
     a source would invalidate every dependent feature's name prefix, so it's
-    deferred. Description, format, and join metadata are safe metadata-only
-    edits.
+    deferred. Description, format, join metadata, and auto-refresh scheduling
+    are safe metadata-only edits.
     """
 
     description: str | None = None
@@ -42,6 +43,7 @@ class SourceUpdate(BaseModel):
     entity_key: str | None = None
     event_timestamp_column: str | None = None
     created_timestamp_column: str | None = None
+    auto_refresh: bool | None = None
 
 
 class SourceImpactGroup(BaseModel):
@@ -136,6 +138,7 @@ def update_source(name: str, body: SourceUpdate, db=Depends(get_db)):
             entity_key=body.entity_key,
             event_timestamp_column=body.event_timestamp_column,
             created_timestamp_column=body.created_timestamp_column,
+            auto_refresh=body.auto_refresh,
         )
     except KeyError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e

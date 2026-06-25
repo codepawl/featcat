@@ -560,6 +560,7 @@ function CreateSourceModal({
   const [path, setPath] = useState('')
   const [description, setDescription] = useState('')
   const [scanAfter, setScanAfter] = useState(true)
+  const [autoRefresh, setAutoRefresh] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [scanning, setScanning] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
@@ -571,6 +572,7 @@ function CreateSourceModal({
       setPath('')
       setDescription('')
       setScanAfter(true)
+      setAutoRefresh(false)
       setSubmitting(false)
       setScanning(false)
       setSubmitError(null)
@@ -600,6 +602,7 @@ function CreateSourceModal({
         name: name.trim(),
         path: path.trim(),
         description: description.trim(),
+        auto_refresh: autoRefresh,
       }
       await api.sources.add(body)
       invalidateCache('/sources')
@@ -714,6 +717,16 @@ function CreateSourceModal({
           {t('add_modal.fields.scan_after')}
         </label>
 
+        <label className="flex items-center gap-2 text-[13px] cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={autoRefresh}
+            onChange={(e) => setAutoRefresh(e.target.checked)}
+            className="rounded"
+          />
+          {t('add_modal.fields.auto_refresh')}
+        </label>
+
         {submitError && (
           <p className="text-[12px] text-[var(--danger)] bg-[var(--danger-subtle-bg)] rounded-lg px-3 py-2">
             {submitError}
@@ -806,6 +819,9 @@ function SourceDetail({
             <span className="font-mono text-[12px] break-all">{source.path}</span>
           </MetaRow>
           <MetaRow label={t('detail.metadata.format')}>{source.format}</MetaRow>
+          <MetaRow label={t('detail.metadata.auto_refresh')}>
+            {source.auto_refresh ? t('detail.metadata.auto_refresh_on') : t('detail.metadata.auto_refresh_off')}
+          </MetaRow>
           <MetaRow label={t('detail.metadata.created')}>{formatTimestamp(source.created_at)}</MetaRow>
           <MetaRow label={t('detail.metadata.updated')}>{formatTimestamp(source.updated_at)}</MetaRow>
         </dl>

@@ -14,35 +14,35 @@ Auto-generated documentation is featcat's core value-add: every feature gets a s
 For a single feature:
 
 ```bash
-featcat docs generate user_behavior.session_count_30d
+featcat doc generate user_behavior.session_count_30d
 ```
 
-For all features in a source (most common at first scan):
+For all currently undocumented features:
 
 ```bash
-featcat docs generate --source user_behavior
+featcat doc generate
 ```
 
 For a group:
 
 ```bash
-featcat groups regenerate-docs churn_v2
+featcat group regenerate-docs churn_v2
 ```
 
-For everything missing docs (catch-up batch):
+To force regeneration for features that already have docs:
 
 ```bash
-featcat docs generate --missing-only
+featcat doc generate --all
 ```
 
 ## Watching progress
 
-Generation is async. The CLI returns a `job_id`; poll with:
+The CLI path runs synchronously and prints progress. Async batch generation is exposed through the API and group regeneration endpoints:
 
 ```bash
-featcat docs status --job <job_id>
-# Documented: 12 / 50 (24%) — running
-# ETA ~ 4m12s
+curl -X POST http://localhost:8000/api/docs/generate-batch \
+    -H 'Content-Type: application/json' \
+    -d '{"feature_specs": ["user_behavior.session_count_30d"], "regenerate_existing": true}'
 ```
 
 Or watch in the web UI: the Features page shows a progress banner while a doc batch is running, and feature rows pulse as they're completed.
@@ -66,17 +66,15 @@ Or watch in the web UI: the Features page shows a progress banner while a doc ba
 Hints are short snippets of context you give the LLM, persisted on the feature so future regenerations stay consistent.
 
 ```bash
-featcat hints set user_behavior.session_count_30d \
-    "Counts distinct sessions per user over the trailing 30 days. \
-     Excludes sessions <2s (bot heuristic)."
+featcat feature set-hint user_behavior.session_count_30d \
+    --hint "Counts distinct sessions per user over the trailing 30 days. Excludes sessions <2s."
 ```
 
-Subsequent `docs generate` calls include the hint. Per-source hints (`featcat hints set --source user_behavior "..."`) apply to all features in that source unless overridden.
-
-You can also pass a one-off hint at generate time without saving it:
+Subsequent `featcat doc generate` calls include the hint. Show or clear it with:
 
 ```bash
-featcat docs generate user_behavior.session_count_30d --hint "v2 sessionization rules"
+featcat feature show-hint user_behavior.session_count_30d
+featcat feature clear-hint user_behavior.session_count_30d
 ```
 
 Hints make the difference between docs that feel obvious and docs that feel right. The LLM has stats but no business context — give it the bot-filter rule, the v2 / v3 distinction, the unit, and so on.
@@ -107,11 +105,11 @@ Each doc has these fields:
 
 ## Glossary
 
-`featcat docs glossary` returns a deduped list of terms across all descriptions, useful for spotting inconsistent vocabulary ("session" vs "visit", "user" vs "device"). The web UI exposes this as the **Glossary** tab. Edit a term's canonical form and any future generation will use it.
+`GET /api/docs/glossary` returns a canonical glossary of scores, severities, and metric definitions. The web UI exposes this in the help/glossary surfaces.
 
 ## Doc debt
 
-`GET /api/docs/stats/doc-debt` reports the catalog's documentation gap:
+`GET /api/docs/stats` reports the catalog's documentation gap:
 
 ```json
 {
@@ -127,7 +125,7 @@ The dashboard shows this as a tile. Aim for ≥ 95 % before a sprint review.
 
 ## Caching
 
-LLM responses cache to SQLite by prompt hash (`featcat/llm/cached.py`), so regenerating the same feature with the same hint and stats is free. Bust by passing `--force` to `docs generate`, which adds a salt to the prompt.
+LLM responses cache to SQLite by prompt hash (`featcat/llm/cached.py`), so regenerating the same feature with the same hint and stats is cheap. Bypass the cache with `featcat doc generate --no-cache`.
 
 ## Failure modes
 

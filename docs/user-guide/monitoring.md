@@ -18,22 +18,17 @@ featcat uses **PSI** (Population Stability Index) by default for numeric feature
 | `0.1 – 0.25` | **Warning** — investigate |
 | `> 0.25` | **Critical** — likely broken or shifted upstream |
 
-Thresholds are configurable per feature (`featcat hints set <name> --warning-psi 0.05` for tighter monitoring on a sensitive feature).
+The default thresholds are configured globally in settings (`monitoring_threshold_warning` and `monitoring_threshold_critical`).
 
 ## Setting a baseline
 
 A baseline is a frozen snapshot of stats — bins, counts, mean/std/null-ratio. Future checks compare against it.
 
 ```bash
-featcat baseline set --source user_behavior          # all features in source
-featcat baseline set user_behavior.session_count_30d # one feature
+featcat monitor baseline
 ```
 
-The current parquet contents become the baseline. Store the baseline date with notes:
-
-```bash
-featcat baseline set user_behavior.session_count_30d --notes "v2 schema cutover, post-bot-filter"
-```
+The current parquet contents become the baseline for all registered features.
 
 ## Running checks
 
@@ -41,14 +36,13 @@ Manually:
 
 ```bash
 featcat monitor check                                # full catalog
-featcat monitor check --source user_behavior        # one source
 featcat monitor check user_behavior.session_count_30d
 ```
 
 In production, the scheduler runs `monitor_check` every 6 hours by default. Configure with:
 
 ```bash
-featcat schedule set monitor_check --cron "0 */6 * * *"
+featcat job schedule monitor_check "0 */6 * * *"
 ```
 
 ## What a check produces
@@ -71,7 +65,7 @@ For each feature, a `monitoring_checks` row:
 Aggregated:
 
 ```bash
-featcat monitor report --since 30d
+featcat monitor report
 # 412 features checked, 8 warning, 1 critical, 403 stable
 ```
 
@@ -102,21 +96,22 @@ For pipelines, poll `GET /api/monitor/report?severity=critical` and act on the r
 If the new distribution is the *correct* one (e.g. you fixed a long-standing bug, or migrated to a new sessionization), accept it as the new baseline:
 
 ```bash
-featcat baseline set user_behavior.session_count_30d \
-    --notes "Refresh after migrating bot-filter to v3, 2026-05-06"
+featcat monitor baseline
 ```
 
-The previous baseline is archived (`baselines_history`) so you can compare across regimes.
+For routine refreshes, adjust the built-in `baseline_refresh` job cadence:
 
-For routine refreshes (weekly snapshot), enable `auto_refresh=true` on the source. The scheduler re-baselines on whatever cadence you set with `featcat baseline schedule --source user_behavior --cron "0 0 * * 0"`.
+```bash
+featcat job schedule baseline_refresh "0 0 * * 0"
+```
 
 ## Tuning false positives
 
 Common culprits:
 
 - **Holiday seasonality** — Christmas, lunar new year, sporting events. Add a per-feature `seasonality_window` and PSI is computed against the same window in the baseline year.
-- **Sample size** — small N inflates PSI. The check skips features with `n_now < 1000` by default; bump or lower with `--min-n`.
-- **Long-tail features** — heavy-tailed distributions often look unstable with default 10-bin PSI. Switch to KS test (`featcat hints set <name> --drift-method ks`).
+- **Sample size** — small N inflates PSI. Treat warnings on tiny samples as triage inputs, not automatic failures.
+- **Long-tail features** — heavy-tailed distributions often look unstable with default 10-bin PSI. Add generation hints and owner notes so reviewers understand the expected shape.
 
 ## Caveats
 
@@ -153,4 +148,4 @@ Both metrics are computed against a deterministic Gaussian proxy derived from th
 - **[Notifications](notifications.md)** — drift alerts surface here
 - **[Bulk operations](bulk.md)** — set baselines for many features at once
 - **[Catalog browser](catalog.md)** — filter features by drift status
-- **[Architecture › Data Layer](../architecture/data.md)** *(coming soon)* — `monitoring_checks` schema
+- **[Architecture › Data Layer](../architecture/data.md)** — `monitoring_checks` schema

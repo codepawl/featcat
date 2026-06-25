@@ -1,6 +1,6 @@
 # Bulk operations
 
-Three operations support batch mode out of the box: tagging, group membership, and deletion. All three share the same shape: pass a list of feature names + the operation, get back per-feature success/failure.
+Three API operations support batch mode out of the box: tagging, group membership, and deletion. All three share the same shape: pass a list of feature IDs plus the operation, get back the requested and changed counts.
 
 ## When to use it
 
@@ -12,41 +12,19 @@ Three operations support batch mode out of the box: tagging, group membership, a
 ## Bulk tagging
 
 ```bash
-featcat features tag-bulk \
-    --names user_behavior.session_count_30d \
-    --names user_behavior.event_count_30d \
-    --names device_performance.crash_count_7d \
-    --add team=data-platform \
-    --add domain=churn
-```
-
-Or by filter:
-
-```bash
-featcat features tag-bulk --source user_behavior --add team=data-platform
-```
-
-`--add` adds tags; `--remove` strips them; both can repeat. Tags are stored as a JSONB column on PostgreSQL, JSON text on SQLite. They're free-form strings — convention is `key=value` but `churn` works fine too.
-
-API:
-
-```bash
-curl -X POST http://localhost:8000/api/bulk/tags \
+curl -X POST http://localhost:8000/api/features/bulk/tags \
     -H 'Content-Type: application/json' \
     -d '{
-          "feature_names": ["user_behavior.session_count_30d", ...],
-          "add": ["team=data-platform", "domain=churn"],
-          "remove": ["team=legacy"]
+          "feature_ids": ["feature-id-1", "feature-id-2"],
+          "action": "add",
+          "tags": ["team=data-platform", "domain=churn"]
         }'
 ```
 
-Response:
+`action` is `add`, `remove`, or `replace`. Tags are stored as a JSONB column on PostgreSQL, JSON text on SQLite. They're free-form strings — convention is `key=value` but `churn` works fine too.
 
 ```json
-{
-  "succeeded": ["user_behavior.session_count_30d", ...],
-  "failed": [{"name": "missing.feature", "error": "not found"}]
-}
+{"updated": 2, "requested": 2}
 ```
 
 ## Bulk group membership
@@ -54,21 +32,21 @@ Response:
 Add many features to a group:
 
 ```bash
-curl -X POST http://localhost:8000/api/bulk/groups \
+curl -X POST http://localhost:8000/api/features/bulk/groups \
     -H 'Content-Type: application/json' \
     -d '{
-          "group_name": "churn_v2",
-          "feature_names": ["user_behavior.session_count_30d", ...],
-          "operation": "add"
+          "group_id": "group-id",
+          "feature_ids": ["feature-id-1", "feature-id-2"],
+          "action": "add_to"
         }'
 ```
 
-`operation` is `add` or `remove`. The web UI's [shared FeatureSelector](catalog.md) calls this endpoint when you click **Add to group** in the catalog with multiple rows selected.
+`action` is `add_to` or `remove_from`. The web UI's [shared FeatureSelector](catalog.md) calls this endpoint when you click **Add to group** in the catalog with multiple rows selected.
 
 CLI:
 
 ```bash
-featcat groups add-members churn_v2 \
+featcat group add churn_v2 \
     user_behavior.session_count_30d \
     user_behavior.event_count_30d
 ```
@@ -78,63 +56,32 @@ featcat groups add-members churn_v2 \
 Deletion cascades children explicitly (`feature_docs`, `monitoring_baselines`, `monitoring_checks`, `usage_log`) before the feature itself, since FKs aren't `ON DELETE CASCADE` to keep the SQLite path simple.
 
 ```bash
-curl -X POST http://localhost:8000/api/bulk/delete \
+curl -X POST http://localhost:8000/api/features/bulk/delete \
     -H 'Content-Type: application/json' \
     -d '{
-          "feature_names": [...],
-          "dry_run": true
+          "feature_ids": ["feature-id-1", "feature-id-2"],
+          "confirm": true
         }'
 ```
 
-`dry_run: true` returns what *would* be deleted (with row counts per child table) without committing. **Always run with `dry_run: true` first** for irreversible operations.
-
-CLI:
-
-```bash
-featcat features delete-bulk --source legacy_pipeline --dry-run
-# Would delete 47 features:
-#   - legacy_pipeline.col_a (3 baselines, 12 monitoring_checks, 0 usage_log)
-#   - ...
-
-featcat features delete-bulk --source legacy_pipeline --confirm
-```
+Bulk delete requires `confirm: true`; there is no CLI wrapper or dry-run endpoint today. Take a database backup before destructive bulk deletes.
 
 ## Bulk scan
 
 Scanning many sources at once:
 
 ```bash
-featcat scan-bulk --pattern "/sources/user_*"      # glob over filesystem
-featcat scan-bulk --from-yaml sources.yaml         # batch declarative config
+featcat scan-bulk /sources --recursive
+featcat scan-bulk s3://bucket/features/ --recursive --dry-run
 ```
 
-`sources.yaml`:
-
-```yaml
-sources:
-  - name: user_behavior
-    path: /sources/user_behavior_30d.parquet
-    description: 30-day user behavior fixture
-  - name: device_performance
-    path: /sources/device_performance.parquet
-```
-
-Useful for first-time onboarding or for keeping a YAML manifest under git as the source of truth for which feeds the catalog watches.
+Useful for first-time onboarding a directory or S3 prefix of Parquet files.
 
 ## Dry-run discipline
 
 Tagging and group membership are reversible with one more API call. Deletion is **not**. Recommended pattern for any deletion:
 
-```bash
-# 1. dry-run to see scope
-featcat features delete-bulk --source legacy --dry-run > /tmp/preview.json
-
-# 2. eyeball the output
-jq '.would_delete | length' /tmp/preview.json
-
-# 3. confirm
-featcat features delete-bulk --source legacy --confirm
-```
+Use `featcat export --format json --output backup/catalog-before-delete.json` or a database-level backup before calling the delete endpoint.
 
 The web UI's bulk actions menu always has a confirmation dialog for deletes, listing exact counts before you click through.
 
@@ -145,8 +92,9 @@ The web UI's bulk actions menu always has a confirmation dialog for deletes, lis
 
 ## Limitations / future work
 
-- **No bulk doc-regenerate yet** — that runs through the Celery batch path; see [Documentation](docs.md#generating-docs).
-- **No bulk owner / status change yet** — slated for the next bulk update PR. For now, loop the single-feature endpoints.
+- **No CLI wrappers for feature bulk endpoints yet** — call the API directly or use the web UI.
+- **No bulk doc-regenerate in this endpoint group** — batch docs run through `/api/docs/generate-batch`; see [Documentation](docs.md#generating-docs).
+- **No bulk owner / status change yet** — slated for a future bulk update PR. For now, loop the single-feature endpoints.
 - **No undo log.** Deletion is permanent. Take a SQLite snapshot or PostgreSQL pg_dump before destructive bulk runs in production.
 
 ## Related

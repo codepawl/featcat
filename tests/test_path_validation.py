@@ -140,6 +140,23 @@ class TestScanBulkValidation:
         assert r.status_code == 422
         assert "control" in r.json()["detail"].lower()
 
+    def test_scan_failure_does_not_register_empty_source(self, api_client, tmp_path: Path, monkeypatch):
+        data_dir = tmp_path / "bulk"
+        data_dir.mkdir()
+        bad_file = data_dir / "bad.parquet"
+        bad_file.write_text("not parquet")
+
+        def _raise(_path: str):
+            raise RuntimeError("bad parquet")
+
+        monkeypatch.setattr("featcat.server.routes.scan.scan_source", _raise)
+
+        r = api_client.post("/api/scan-bulk", json={"path": str(data_dir), "recursive": False})
+
+        assert r.status_code == 200
+        assert r.json()["details"][0]["status"] == "error"
+        assert api_client.get("/api/sources").json() == []
+
 
 class TestSourcesValidation:
     def test_empty_path_returns_422(self, api_client):

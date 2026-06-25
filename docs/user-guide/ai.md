@@ -1,6 +1,6 @@
 # AI assistant
 
-featcat ships with a chat-based AI assistant that knows your catalog. It's grounded — it answers from the actual features and docs in your DB via [tool calls](../architecture/ai.md) *(coming soon)*, not from training-data memorization. You can ask it to find features, compare them, summarize drift, or write SQL.
+featcat ships with a chat-based AI assistant that knows your catalog. It's grounded — it answers from the actual features and docs in your DB via [tool calls](../architecture/ai.md), not from training-data memorization. You can ask it to find features, compare them, summarize drift, or write SQL.
 
 ## When to use it
 
@@ -85,10 +85,10 @@ Server-side env vars:
 
 ```bash
 FEATCAT_LLM_BACKEND=llamacpp           # only supported backend today
-FEATCAT_LLM_BASE_URL=http://llm:8080   # llama.cpp server
+FEATCAT_LLAMACPP_URL=http://llm:8080   # llama.cpp server
 FEATCAT_LLM_MODEL=gemma-4-E2B-it-Q4_K_M
 FEATCAT_LLM_MAX_TOOL_ROUNDS=2
-FEATCAT_LLM_TIMEOUT_SECONDS=180
+FEATCAT_LLM_TIMEOUT=180
 ```
 
 The default model returns `<think>...</think>` blocks before the answer. featcat detects and renders these as a separate "thinking" channel so the user sees the chain of thought without it polluting the final answer.
@@ -102,6 +102,6 @@ The default model returns `<think>...</think>` blocks before the answer. featcat
 
 ## Related
 
-- **[Architecture › AI Layer](../architecture/ai.md)** *(coming soon)* — agent loop, tool spec
+- **[Architecture › AI Layer](../architecture/ai.md)** — agent loop, tool spec
 - **[Catalog browser](catalog.md)** — when the assistant is overkill
 - **[SDK Quickstart](../sdk/quickstart.md)** — programmatic alternative for repeatable queries

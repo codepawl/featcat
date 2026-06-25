@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from .storage import read_parquet_columns, read_parquet_schema
+
 if TYPE_CHECKING:
     import polars as pl
 
@@ -53,7 +55,7 @@ def _find_common_columns(source_paths: dict[str, str]) -> list[str]:
     """Find columns present in ALL sources."""
     column_sets: list[set[str]] = []
     for path in source_paths.values():
-        schema = pq.ParquetFile(path).schema_arrow
+        schema = read_parquet_schema(path)
         column_sets.append({f.name for f in schema})
     if not column_sets:
         return []
@@ -68,7 +70,7 @@ def _read_source_columns(
     columns: list[str],
 ) -> pa.Table:
     """Read specific columns from a parquet file."""
-    return pq.read_table(path, columns=columns)
+    return read_parquet_columns(path, columns)
 
 
 def _to_polars_dataframe(table: pa.Table) -> pl.DataFrame:

@@ -67,7 +67,7 @@ Common causes:
 JSON parse failures. Re-run with verbose logging:
 
 ```bash
-FEATCAT_LOG_LEVEL=debug featcat docs generate user_behavior.session_count_30d
+featcat doc generate user_behavior.session_count_30d --no-cache
 ```
 
 Look for "JSON parse failed" in the output. If the model is consistently producing malformed output, the prompt template may be at fault for that model — try a different quant or model file.
@@ -116,7 +116,7 @@ curl http://localhost:8000/api/scheduler/jobs | jq '.[] | select(.name == "monit
 Check `next_run_at`. If it's in the past:
 
 - Scheduler is down. Restart: `docker compose restart featcat`.
-- Cron expression is wrong. Reset: `featcat schedule set monitor_check --cron "0 */6 * * *"`.
+- Cron expression is wrong. Reset: `featcat job schedule monitor_check "0 */6 * * *"`.
 
 If `next_run_at` is in the future but jobs aren't logging, look at `job_logs`:
 
@@ -131,7 +131,7 @@ SELECT * FROM job_logs WHERE job_name='monitor_check' ORDER BY started_at DESC L
 You set a new baseline against a non-representative window. Reset:
 
 ```bash
-featcat baseline set <feature-name> --notes "reset 2026-05-08 after window-was-thin error"
+featcat monitor baseline
 ```
 
 Drift on the next check should be near-zero.
@@ -190,13 +190,15 @@ Browser cache. Hard reload (Ctrl-Shift-R). The Vite build adds content hashes to
 ### "I'm not getting drift notifications"
 
 ```bash
-featcat features show <name> | jq '.owner'
+featcat feature info <name>
 ```
 
 If `null`, set an owner:
 
 ```bash
-featcat features update <name> --owner alice
+curl -X PATCH 'http://localhost:8000/api/features/by-name?name=<name>' \
+    -H 'Content-Type: application/json' \
+    -d '{"owner": "alice"}'
 ```
 
 Notifications route to the feature's owner. No owner → goes to the `__catchall__` actor visible only on the dashboard.

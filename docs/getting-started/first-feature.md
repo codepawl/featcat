@@ -15,9 +15,9 @@ A *source* is a file path featcat will scan. Sources own *features* (one per col
 === "CLI"
 
     ```bash
-    featcat add-source \
-        --name user_behavior \
-        --path tests/fixtures/user_behavior_30d.parquet \
+    featcat source add \
+        user_behavior \
+        tests/fixtures/user_behavior_30d.parquet \
         --description "Synthetic 30-day user behavior fixture"
     ```
 
@@ -46,7 +46,7 @@ The source appears in the catalog but has no features yet — we still need to s
 Scanning reads the Parquet schema + lightweight column statistics (mean, std, null ratio, etc.) and registers a *feature* per column.
 
 ```bash
-featcat scan user_behavior
+featcat source scan user_behavior
 ```
 
 Output:
@@ -68,28 +68,28 @@ Each one is now in the catalog with auto-extracted dtype + stats.
 Most of the value of a catalog comes from explanations a human can read. featcat asks the local LLM for a short + long description per feature, plus expected ranges and potential issues.
 
 ```bash
-featcat docs generate --source user_behavior
+featcat doc generate
 ```
 
-This kicks off an async batch. Watch progress in the web UI's **Generate docs** banner, or:
+This generates docs for all currently undocumented features. For one feature:
 
 ```bash
-featcat docs status
-# Documented: 6 / 6 (100% coverage)
+featcat doc generate user_behavior.session_count_30d
+featcat doc stats
 ```
 
 !!! tip "Generation hints"
-    Pass `--hint "30-day window per user"` to `docs generate` and the LLM uses it as context. Hints get persisted on the feature so future regenerations stay consistent. You can also set hints per-feature: `featcat hints set user_behavior.session_count_30d "Counts distinct sessions"`.
+    Persist context with `featcat feature set-hint user_behavior.session_count_30d --hint "Counts distinct sessions over a trailing 30-day window"`. Future doc generation includes that hint.
 
 ## Step 4 — set up monitoring
 
 To know when a feature *drifts*, we save a baseline now and let the scheduler check against it daily:
 
 ```bash
-featcat baseline set --source user_behavior          # current stats become the baseline
+featcat monitor baseline          # current stats become the baseline
 ```
 
-The default scheduler runs `monitor_check` every 6 hours. Each check computes PSI (Population Stability Index) against the saved baseline; a PSI > 0.1 trips a warning, > 0.25 trips critical. Critical drift fires an [in-app notification](../user-guide/notifications.md) *(coming soon)*.
+The default scheduler runs `monitor_check` every 6 hours. Each check computes PSI (Population Stability Index) against the saved baseline; a PSI > 0.1 trips a warning, > 0.25 trips critical. Critical drift appears in [in-app notifications](../user-guide/notifications.md).
 
 ## Step 5 — explore in the web UI
 
@@ -116,9 +116,9 @@ print(df.head())
 
 ## What's next
 
-- **Group related features** so you can pull them as a single joined frame: see [User Guide › Feature Groups](../user-guide/groups.md) *(coming soon)*.
+- **Group related features** so you can pull them as a single joined frame: see [User Guide › Feature Groups](../user-guide/groups.md).
 - **Certify a feature for production**: when it has a doc + baseline + owner + group membership, run `featcat status set user_behavior.session_count_30d certified --notes "Q4 sign-off"`.
-- **Search across the catalog** with full-text or natural-language queries: see [User Guide › Catalog Browser](../user-guide/catalog.md) *(coming soon)*.
+- **Search across the catalog** with full-text or natural-language queries: see [User Guide › Catalog Browser](../user-guide/catalog.md).
 
 ## Common first-feature questions
 

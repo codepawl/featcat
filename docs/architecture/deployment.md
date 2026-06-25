@@ -95,7 +95,7 @@ Use a `.env` file at the compose root (gitignored). For k8s: pass via Secret obj
 
 ## Observability hooks
 
-- **Logs**: `docker compose logs -f featcat`. Structured JSON when `FEATCAT_LOG_JSON=true`.
+- **Logs**: `docker compose logs -f featcat`.
 - **Health**: `GET /api/health` returns `{db, llm, scheduler}` status. Uptime: 2xx vs 503.
 - **Metrics**: Prometheus exporter is on the roadmap; today, scrape `/api/health/stats/*` for catalog counts.
 
@@ -107,7 +107,7 @@ Single-direction. Not automated.
 2. `featcat init --backend postgres` to run alembic migrations on the empty postgres DB.
 3. Use a one-off script (`scripts/sqlite_to_postgres.py`, see [Ops › Backup](../ops/backup.md)) to copy rows table-by-table. Order matters: `data_sources → features → feature_docs → ...`.
 4. Switch `FEATCAT_DB_URL` to postgres and restart.
-5. Verify with `featcat features list --limit 5` and the web UI dashboard.
+5. Verify with `featcat feature list` and the web UI dashboard.
 
 After cutover, the SQLite file becomes a backup. Keep it for at least a week before deleting.
 

@@ -102,6 +102,13 @@ make test-cov                             # with coverage report
 
 See [Testing](testing.md) for what's where and how to add new tests.
 
+## Checking docs
+
+```bash
+make docs-check      # command/env/link consistency, no network
+make docs            # MkDocs build; install [docs] first
+```
+
 ## Pre-commit
 
 Hooks run on every commit. To run manually:
@@ -160,10 +167,9 @@ git push origin --delete feat/your-feature  # usually gh pr merge --delete-branc
 
 ```bash
 FEATCAT_DB_URL=sqlite:///./catalog.db   # or postgresql+psycopg://...
-FEATCAT_LLM_BASE_URL=http://localhost:8080
-FEATCAT_LLM_ENABLED=true
-FEATCAT_LOG_LEVEL=info                  # debug for verbose
-FEATCAT_LOG_JSON=false                  # true for JSON logs
+FEATCAT_LLAMACPP_URL=http://localhost:8080
+FEATCAT_LLM_BACKEND=llamacpp
+FEATCAT_CORS_ORIGINS=http://localhost:5173
 FEATCAT_TASKS_BACKEND=apscheduler       # or celery
 FEATCAT_SERVER_URL=http://localhost:8000  # makes the CLI hit the API
 ```

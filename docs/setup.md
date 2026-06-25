@@ -7,7 +7,7 @@
 | Component | Requirement | Required? |
 |-----------|-------------|-----------|
 | Python | >= 3.10 | Yes |
-| Ollama | >= 0.1.0 | No (only needed for AI features) |
+| llama.cpp server | Docker image or local binary | No (only needed for AI features) |
 | OS | Linux, macOS, WSL2 | Yes |
 | Disk | ~100MB for model + DB | Yes |
 
@@ -41,43 +41,19 @@ Available extras:
 > S3 / MinIO support is built into the default install (uses PyArrow's
 > bundled S3FileSystem) — no extra needed. Just set `FEATCAT_S3_*` env vars.
 
-## Step 3: Install Ollama (Optional but Recommended)
+## Step 3: Start llama.cpp (Optional but Recommended)
 
-Ollama is a local LLM server. Install it to use AI Discovery, Auto-doc, and NL Query.
+featcat talks to a llama.cpp-compatible HTTP server for AI Discovery, Auto-doc, and NL Query. The development script can start it for you:
 
 ```bash
-# Linux
-curl -fsSL https://ollama.ai/install.sh | sh
-
-# Start Ollama
-ollama serve
-
-# Pull a model (in another terminal)
-ollama pull lfm2.5-thinking
+./dev.sh
 ```
 
-> **Tip**: `lfm2.5-thinking` runs well on machines with 8GB RAM.
-
-### Auto-start Ollama (systemd)
+Or run the server yourself and point featcat at it:
 
 ```bash
-# Create systemd service
-sudo tee /etc/systemd/system/ollama.service << 'EOF'
-[Unit]
-Description=Ollama LLM Server
-After=network.target
-
-[Service]
-ExecStart=/usr/local/bin/ollama serve
-Restart=always
-User=$USER
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-sudo systemctl daemon-reload
-sudo systemctl enable --now ollama
+export FEATCAT_LLAMACPP_URL=http://localhost:8080
+export FEATCAT_LLM_MODEL=gemma-4-E2B-it
 ```
 
 ## Step 4: Initialize the Catalog
@@ -120,9 +96,9 @@ featcat reads configuration from environment variables (prefix `FEATCAT_`):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `FEATCAT_LLM_BACKEND` | `ollama` | LLM backend: `ollama` or `llamacpp` |
-| `FEATCAT_LLM_MODEL` | `lfm2.5-thinking` | Model name |
-| `FEATCAT_OLLAMA_URL` | `http://localhost:11434` | Ollama server URL |
+| `FEATCAT_LLM_BACKEND` | `llamacpp` | LLM backend |
+| `FEATCAT_LLM_MODEL` | `gemma-4-E2B-it` | Model name |
+| `FEATCAT_LLAMACPP_URL` | `http://localhost:8080` | llama.cpp server URL |
 | `FEATCAT_CATALOG_DB_PATH` | `catalog.db` | Database path |
 | `FEATCAT_MAX_CONTEXT_FEATURES` | `100` | Max features sent to LLM |
 | `FEATCAT_LLM_TIMEOUT` | `120` | Timeout (seconds) for LLM requests |
@@ -142,7 +118,7 @@ roles. See the admin guide for the full credential resolution order.
 
 Example `.env` file:
 ```bash
-FEATCAT_LLM_MODEL=lfm2.5-thinking
+FEATCAT_LLM_MODEL=gemma-4-E2B-it
 FEATCAT_S3_ENDPOINT_URL=http://minio.internal:9000
 FEATCAT_S3_ACCESS_KEY=minioadmin
 FEATCAT_S3_SECRET_KEY=minioadmin
