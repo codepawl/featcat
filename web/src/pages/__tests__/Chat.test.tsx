@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('../../api', () => ({
+  authHeaders: vi.fn(() => ({})),
   invalidateCache: vi.fn(),
   api: {
     health: mocks.health,

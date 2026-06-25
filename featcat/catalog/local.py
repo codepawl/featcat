@@ -604,7 +604,8 @@ class LocalBackend(CatalogBackend):
             s.execute(
                 text(
                     "INSERT INTO data_sources (id, name, path, storage_type, format, description, "
-                    "entity_key, event_timestamp_column, created_timestamp_column, auto_refresh, created_at, updated_at) "
+                    "entity_key, event_timestamp_column, created_timestamp_column, "
+                    "auto_refresh, created_at, updated_at) "
                     "VALUES (:id, :name, :path, :storage_type, :format, :description, "
                     ":entity_key, :event_timestamp_column, :created_timestamp_column, :auto_refresh, "
                     ":created_at, :updated_at)"

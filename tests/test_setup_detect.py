@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+import socket
 from unittest.mock import patch
 
 from featcat.setup.detect import EnvReport, detect_environment, is_port_free
@@ -15,7 +16,10 @@ def test_detect_environment_returns_report() -> None:
 
 
 def test_is_port_free_for_random_high_port() -> None:
-    assert is_port_free(54321) is True
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    assert is_port_free(port) is True
 
 
 def test_detect_environment_reports_no_docker_when_missing(monkeypatch) -> None:

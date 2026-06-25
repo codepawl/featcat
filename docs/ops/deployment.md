@@ -26,9 +26,7 @@ git checkout v1.4.0   # or whatever tag
 cat > .env <<'EOF'
 POSTGRES_PASSWORD=<strong-password>
 FEATCAT_DB_URL=postgresql+psycopg://featcat:<same-password>@postgres:5432/featcat
-FEATCAT_LLM_BASE_URL=http://llm:8080
-FEATCAT_LOG_JSON=true
-FEATCAT_LOG_LEVEL=info
+FEATCAT_LLAMACPP_URL=http://llm:8080
 DATA_DIR=/var/featcat/data       # mounted to /sources read-only
 EOF
 
@@ -113,7 +111,7 @@ git checkout v1.5.0
 cd deploy
 docker compose pull && docker compose up -d
 docker compose exec featcat alembic upgrade head
-docker compose exec featcat featcat health-check  # smoke
+docker compose exec featcat featcat doctor  # smoke
 ```
 
 If alembic fails (multi-head, version mismatch), see [Troubleshooting](troubleshooting.md).

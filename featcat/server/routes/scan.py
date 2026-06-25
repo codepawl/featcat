@@ -88,10 +88,10 @@ async def bulk_scan(body: BulkScanRequest, db=Depends(get_db)):  # noqa: B008
             source: DataSource | None = None
             try:
                 source = DataSource(name=final_name, path=abs_path, format=detect_file_format(abs_path))
+                columns = scan_source(abs_path)
                 db.add_source(source)
                 registered_sources += 1
 
-                columns = scan_source(abs_path)
                 for col in columns:
                     feature = Feature(
                         name=f"{final_name}.{col.column_name}",

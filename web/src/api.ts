@@ -128,6 +128,7 @@ export interface DataSourceDTO {
   storage_type: 'local' | 's3'
   format: string
   description: string
+  auto_refresh: boolean
   created_at: string
   updated_at: string
 }
@@ -312,12 +313,14 @@ export interface SourceCreate {
   path: string
   format?: string
   description?: string
+  auto_refresh?: boolean
   // storage_type intentionally omitted — server auto-derives from path scheme.
 }
 
 export interface SourceUpdate {
   description?: string
   format?: string
+  auto_refresh?: boolean
 }
 
 export interface SourceImpactGroup {
