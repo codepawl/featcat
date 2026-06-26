@@ -8,15 +8,15 @@
 ![Codecov](https://codecov.io/gh/codepawl/featcat/branch/main/graph/badge.svg)
 ![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/codepawl/featcat/badge)
 
-**AI-powered Feature Catalog with CLI, TUI, REST API, and Web UI**
+**AI-powered Feature Store with CLI, TUI, REST API, and Web UI**
 
 [Tiếng Việt](docs/README-vi.md)
 
 <p align="center">
-  <img src="assets/01-dashboard-stats.png" alt="featcat dashboard — catalog stats, recent scans, drift warnings" width="900">
+  <img src="assets/01-dashboard-stats.png" alt="featcat dashboard — store stats, recent scans, drift warnings" width="900">
 </p>
 
-featcat is a lightweight Feature Catalog for data teams. It is **not** a Feature Store (no online serving) — it's a metadata management tool with an AI layer for searching, documenting, monitoring, and tracing the lineage of features sitting in Parquet files on disk, S3, or MinIO.
+featcat is a lightweight Feature Store for data teams. It combines a searchable feature registry, offline source scanning, training dataset building, materialization audit history, and online feature serving, with an AI layer for searching, documenting, monitoring, and tracing lineage across features in Parquet files, S3, MinIO, PostgreSQL, and Redis-backed online stores.
 
 ## The Problem
 
@@ -30,7 +30,7 @@ featcat is a lightweight Feature Catalog for data teams. It is **not** a Feature
 
 | Module | Description |
 |--------|-------------|
-| **Catalog** | Register data sources, scan Parquet to auto-extract schema + stats; SQLite or PostgreSQL backend |
+| **Feature Store** | Register data sources, scan Parquet to auto-extract schema + stats; SQLite or PostgreSQL backend |
 | **Agentic Chat** | Tool-calling AI agent with intent classifier, conversation memory across turns, and Vietnamese/English support |
 | **Discovery** | Describe a use case → AI recommends relevant features and suggests new ones |
 | **Auto-doc** | LLM-generated documentation for each feature, with batch generation jobs |
@@ -38,6 +38,7 @@ featcat is a lightweight Feature Catalog for data teams. It is **not** a Feature
 | **Lineage** | Track parent/child relationships between features; auto-detect from SQL definitions |
 | **Similarity** | TF-IDF + embedding-backed feature similarity matrix and graph; duplicate detection |
 | **Monitoring** | PSI / KL-divergence / Wasserstein drift metrics, null spikes, range violations, scheduled checks |
+| **Materialization** | Build online feature values from feature views, record audits, and read latest serving values |
 | **Web UI** | React SPA with a sticky top-bar global search (autocomplete + keyboard nav on every route): dashboard, feature browser, chat, lineage graph, similarity matrix, audit log |
 | **TUI** | Terminal UI with dashboard, feature browser, AI chat |
 | **REST API** | FastAPI server; every CLI/TUI/Web operation goes through the same endpoints |

@@ -1,4 +1,4 @@
-"""Helpers to extract catalog data as text for LLM context."""
+"""Helpers to extract feature-store data as text for LLM context."""
 
 from __future__ import annotations
 
@@ -9,16 +9,16 @@ if TYPE_CHECKING:
 
 
 def get_feature_summary(db: CatalogBackend, max_features: int = 100) -> str:
-    """Format catalog features as a text summary for LLM prompts.
+    """Format feature-store features as a text summary for LLM prompts.
 
     Returns a concise table-like text listing all features with key metadata.
-    Truncates to max_features if the catalog is large.
+    Truncates to max_features if the store is large.
     """
     features = db.list_features()
     if not features:
-        return "No features in catalog."
+        return "No features in the feature store."
 
-    lines = ["FEATURE CATALOG SUMMARY", "=" * 60]
+    lines = ["FEATURE STORE SUMMARY", "=" * 60]
     lines.append(f"Total features: {len(features)}")
     lines.append("")
     lines.append(f"{'Name':<40} {'Dtype':<10} {'Tags':<30} {'Nulls'}")
@@ -41,7 +41,7 @@ def get_monitoring_summary(db: CatalogBackend) -> str:
     try:
         features = db.list_features()
         if not features:
-            return "No features in catalog."
+            return "No features in the feature store."
 
         lines = []
         has_baseline = 0

@@ -1,4 +1,4 @@
-"""Remote HTTP backend for the feature catalog.
+"""Remote HTTP backend for the feature store registry.
 
 Connects to a running featcat server via HTTP.
 """

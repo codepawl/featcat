@@ -66,7 +66,7 @@
     },
     "action_item": {
       "label": "Mục hành động",
-      "description": "Khuyến nghị được lưu trong catalog từ giám sát, AI, autodoc hoặc thủ công.",
+      "description": "Khuyến nghị được lưu trong feature store từ giám sát, AI, autodoc hoặc thủ công.",
       "intro": "Dùng action item để biến cảnh báo thành đầu ra có thể theo dõi.",
       "values": {
         "pending": "Khuyến nghị đã tạo nhưng chưa xử lý.",

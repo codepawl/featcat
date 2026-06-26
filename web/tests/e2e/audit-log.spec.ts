@@ -7,15 +7,17 @@ test.describe('Audit log', () => {
     await expect(page.getByRole('heading', { name: 'Audit Log', level: 1 })).toBeVisible()
     await expect(page.getByText(/All metadata changes/i)).toBeVisible()
 
-    const days = page.getByRole('combobox').nth(0)
+    const main = page.getByRole('main')
+    const days = main.getByRole('combobox').nth(0)
     await days.selectOption('30')
     await expect(days).toHaveValue('30')
 
-    const types = page.getByRole('combobox').nth(2)
+    const types = main.getByRole('combobox').nth(2)
     await types.selectOption('doc')
     await expect(types).toHaveValue('doc')
 
-    await expect(page.getByText(/\d+ changes/).first()).toBeVisible()
+    await expect(main.getByText(/^0$/)).toBeVisible()
+    await expect(main.getByText(/No changes recorded|Không có thay đổi/)).toBeVisible()
   })
 
   test('reflects edits made via API after refresh', async ({ page, apiUrl }) => {

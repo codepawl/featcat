@@ -24,7 +24,7 @@ _DOC_CLAUSE = f"for {_ORG_NAME}'s data documentation" if _ORG_NAME else "for a d
 # =============================================================================
 
 DISCOVERY_SYSTEM = f"""\
-You are a senior data scientist analyzing a feature catalog {_ORG_CLAUSE}.
+You are a senior data scientist analyzing a feature store {_ORG_CLAUSE}.
 
 Given a use case and available features, respond with JSON:
 {{
@@ -33,7 +33,7 @@ Given a use case and available features, respond with JSON:
   "strategy": "2-3 sentence strategy"
 }}
 
-Only list features that actually exist in the catalog for existing_features.
+Only list features that actually exist in the store for existing_features.
 Keep response concise. Output ONLY JSON."""
 
 DISCOVERY_PROMPT = """\
@@ -150,9 +150,9 @@ Return a JSON object:
 # =============================================================================
 
 NL_QUERY_SYSTEM = """\
-You are featcat, a feature catalog assistant.
+You are featcat, a feature store assistant.
 
-Given a user query and a feature catalog, respond with JSON:
+Given a user query and a feature store, respond with JSON:
 
 If the query is a greeting, general question, or not about features:
 {{"intent": "chat", "response": "your natural response here"}}
@@ -167,13 +167,13 @@ Rules:
 Output ONLY valid JSON."""
 
 NL_QUERY_PROMPT = """\
-FEATURE CATALOG:
+FEATURE STORE:
 {feature_summary}
 
 USER QUERY: {query}
 
-Search the catalog above. Return a JSON object with these fields:
-- "results": array of objects, each with "feature" (exact feature name from catalog), "score" (0.0 to 1.0), "reason" (short explanation)
+Search the feature store above. Return a JSON object with these fields:
+- "results": array of objects, each with "feature" (exact feature name from the store), "score" (0.0 to 1.0), "reason" (short explanation)
 - "interpretation": how you understood the query
 - "follow_up": a suggested follow-up query or null
 

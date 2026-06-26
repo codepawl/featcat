@@ -1,6 +1,6 @@
 # featcat-client
 
-Python SDK for the featcat feature catalog server. Lets data scientists pull feature metadata + Parquet data from a notebook in five lines.
+Python SDK for the featcat feature store server. Lets data scientists pull feature metadata + Parquet data from a notebook in five lines.
 
 ## Install
 

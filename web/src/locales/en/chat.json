@@ -1,7 +1,7 @@
 {
   "empty": {
     "greeting": "Hi — ask anything about your features",
-    "subtitle": "featcat AI helps you discover, analyze, and understand your catalog"
+    "subtitle": "featcat AI helps you discover, analyze, and understand your feature store"
   },
   "suggestions": {
     "discover": {
@@ -20,7 +20,7 @@
       "prompt": "Features similar to client_logs.rssi"
     },
     "improve": {
-      "title": "Improve catalog",
+      "title": "Improve feature store",
       "example": "E.g. \"which features need urgent documentation\"",
       "prompt": "Which features need urgent documentation?"
     }

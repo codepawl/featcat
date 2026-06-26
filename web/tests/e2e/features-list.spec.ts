@@ -10,7 +10,7 @@ test.describe('Features list', () => {
     await expect(main.getByText(/device_performance\./).first()).toBeVisible()
     await expect(main.getByText(/user_behavior_30d\./).first()).toBeVisible()
 
-    const sourceSelect = page.getByRole('combobox').first()
+    const sourceSelect = main.getByRole('combobox').first()
     await sourceSelect.selectOption('device_performance')
 
     await expect(main.getByText(/device_performance\./).first()).toBeVisible()

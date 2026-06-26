@@ -501,7 +501,7 @@ class TestCatalogAgent:
         # VI intro + tool output should appear inline.
         from featcat.ai.agent import _VI_RESULT_INTROS
 
-        assert "Catalog:" in tokens  # from _tool_catalog_summary output
+        assert "Feature store:" in tokens  # from _tool_catalog_summary output
         assert any(intro in tokens for intro in _VI_RESULT_INTROS)
         assert events[-1]["type"] == "done"
 

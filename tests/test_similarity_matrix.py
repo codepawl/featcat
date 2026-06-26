@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 
 @pytest.fixture
 def db_with_features(tmp_path: Path) -> LocalBackend:
-    """Three-feature catalog: two near-duplicates plus an unrelated outlier."""
+    """Three-feature store fixture: two near-duplicates plus an unrelated outlier."""
     db = LocalBackend(str(tmp_path / "matrix.db"))
     db.init_db()
     src = db.add_source(DataSource(name="billing", path="/billing.parquet"))

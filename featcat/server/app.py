@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import logging
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
+from uuid import uuid4
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import FileResponse
 
+from .. import __version__
 from ..catalog.local import LocalBackend
 from ..config import load_settings
 from .auth import can_access, resolve_principal
@@ -22,8 +25,8 @@ STATIC_DIR = Path(__file__).parent / "static"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize backend and LLM on startup, close on shutdown."""
-    settings = load_settings()
-    backend = LocalBackend(settings.catalog_db_path)
+    settings = getattr(app.state, "settings", None) or load_settings()
+    backend = LocalBackend(settings.catalog_db_path, db_backend=settings.db_backend, db_url=settings.db_url)
     backend.init_db()
     app.state.backend = backend
     app.state.settings = settings
@@ -40,23 +43,28 @@ async def lifespan(app: FastAPI):
     # `llm.chat(...)` and the SSE token stream) pass through unchanged,
     # which is intentional: response freshness matters more than cache hits
     # for interactive chat, and tool-call replies aren't deterministic on key.
-    try:
-        from ..llm import create_llm
-        from ..llm.cached import CachedLLM
-        from ..utils.cache import ResponseCache
-
-        inner = create_llm(
-            backend=settings.llm_backend,
-            model=settings.llm_model,
-            base_url=settings.llamacpp_url,
-            timeout=settings.llm_timeout,
-        )
-        cache = ResponseCache(settings.catalog_db_path)
-        app.state.llm = CachedLLM(inner, cache)
-        app.state.llm_cache = cache
-    except Exception:
+    if settings.llm_backend == "disabled":
         app.state.llm = None
         app.state.llm_cache = None
+    else:
+        try:
+            from ..llm import create_llm
+            from ..llm.cached import CachedLLM
+            from ..utils.cache import ResponseCache
+
+            inner = create_llm(
+                backend=settings.llm_backend,
+                model=settings.llm_model,
+                base_url=settings.llamacpp_url,
+                timeout=settings.llm_timeout,
+            )
+            cache = ResponseCache(settings.catalog_db_path)
+            app.state.llm = CachedLLM(inner, cache)
+            app.state.llm_cache = cache
+        except Exception:
+            logger.exception("LLM startup failed; AI features will be unavailable")
+            app.state.llm = None
+            app.state.llm_cache = None
 
     # Start scheduler unless explicitly disabled for test/headless use.
     if settings.scheduler_enabled:
@@ -68,6 +76,7 @@ async def lifespan(app: FastAPI):
             scheduler.start()
             app.state.scheduler = scheduler
         except Exception:
+            logger.exception("Scheduler startup failed; scheduled jobs will be unavailable")
             app.state.scheduler = None
     else:
         app.state.scheduler = None
@@ -82,32 +91,64 @@ async def lifespan(app: FastAPI):
 
 def build_app(*, use_lifespan: bool = True) -> FastAPI:
     """Create the FastAPI application with all routes."""
+    settings = load_settings()
     app = FastAPI(
         title="featcat",
-        description="AI-Powered Feature Catalog API",
-        version="0.1.0",
+        description="AI-Powered Feature Store API",
+        version=__version__,
         lifespan=lifespan if use_lifespan else None,
     )
+    app.state.settings = settings
 
     # CORS
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=settings.cors_origin_list(),
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
 
+    @app.middleware("http")
+    async def request_logging_middleware(request: Request, call_next):
+        started = time.perf_counter()
+        request_id = request.headers.get("X-Request-Id") or uuid4().hex
+        try:
+            response = await call_next(request)
+        except Exception:
+            duration_ms = (time.perf_counter() - started) * 1000
+            logger.exception(
+                "request_failed method=%s path=%s status=500 duration_ms=%.2f request_id=%s",
+                request.method,
+                request.url.path,
+                duration_ms,
+                request_id,
+            )
+            raise
+        duration_ms = (time.perf_counter() - started) * 1000
+        response.headers["X-Request-Id"] = request_id
+        logger.info(
+            "request method=%s path=%s status=%s duration_ms=%.2f request_id=%s",
+            request.method,
+            request.url.path,
+            response.status_code,
+            duration_ms,
+            request_id,
+        )
+        return response
+
     # Optional auth middleware
-    settings = load_settings()
     if settings.auth_required or settings.server_auth_token:
 
         @app.middleware("http")
         async def auth_middleware(request: Request, call_next):
             path = request.url.path
-            if path == "/api/health" or path.startswith("/api/auth"):
+            health_paths = {f"{settings.api_prefix}/health", f"{settings.api_prefix}/ready"}
+            versioned_health_paths = {f"{settings.api_version_prefix}/health", f"{settings.api_version_prefix}/ready"}
+            auth_prefixes = (f"{settings.api_prefix}/auth", f"{settings.api_version_prefix}/auth")
+            if path in health_paths or path in versioned_health_paths or path.startswith(auth_prefixes):
                 return await call_next(request)
-            if not path.startswith("/api/"):
+            if not path.startswith((f"{settings.api_prefix}/", f"{settings.api_version_prefix}/")):
                 return await call_next(request)
 
             principal = resolve_principal(request, settings)
@@ -149,33 +190,42 @@ def build_app(*, use_lifespan: bool = True) -> FastAPI:
     from .routes.usage import router as usage_router
     from .routes.versions import router as versions_router
 
-    app.include_router(health_router, prefix="/api", tags=["health"])
-    app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
-    app.include_router(sources_router, prefix="/api/sources", tags=["sources"])
-    app.include_router(features_router, prefix="/api/features", tags=["features"])
-    app.include_router(entities_router, prefix="/api/entities", tags=["entities"])
-    app.include_router(entity_relationships_router, prefix="/api/entity-relationships", tags=["entity-relationships"])
-    app.include_router(feature_views_router, prefix="/api/feature-views", tags=["feature-views"])
-    app.include_router(feature_sets_router, prefix="/api/feature-sets", tags=["feature-sets"])
-    app.include_router(docs_router, prefix="/api/docs", tags=["docs"])
-    app.include_router(monitor_router, prefix="/api/monitor", tags=["monitor"])
-    app.include_router(ai_router, prefix="/api/ai", tags=["ai"])
-    app.include_router(jobs_router, prefix="/api/jobs", tags=["jobs"])
-    app.include_router(scheduler_router, prefix="/api/scheduler", tags=["scheduler"])
-    app.include_router(groups_router, prefix="/api/groups", tags=["groups"])
-    app.include_router(actions_router, prefix="/api/actions", tags=["actions"])
-    app.include_router(admin_router, prefix="/api/admin", tags=["admin"])
-    app.include_router(business_metrics_router, prefix="/api/business-metrics", tags=["business-metrics"])
-    app.include_router(usage_router, prefix="/api/usage", tags=["usage"])
-    app.include_router(scan_router, prefix="/api/scan-bulk", tags=["scan"])
-    app.include_router(export_router, prefix="/api/export", tags=["export"])
-    app.include_router(datasets_router, prefix="/api/datasets", tags=["datasets"])
-    app.include_router(online_router, prefix="/api/online", tags=["online"])
-    app.include_router(versions_router, prefix="/api/versions", tags=["versions"])
-    app.include_router(lineage_router, prefix="/api/lineage", tags=["lineage"])
-    app.include_router(bulk_router, prefix="/api/features/bulk", tags=["bulk"])
-    app.include_router(search_router, prefix="/api/search", tags=["search"])
-    app.include_router(notifications_router, prefix="/api/notifications", tags=["notifications"])
+    def include_api_routes(prefix: str) -> None:
+        app.include_router(health_router, prefix=prefix, tags=["health"])
+        app.include_router(auth_router, prefix=f"{prefix}/auth", tags=["auth"])
+        app.include_router(sources_router, prefix=f"{prefix}/sources", tags=["sources"])
+        app.include_router(features_router, prefix=f"{prefix}/features", tags=["features"])
+        app.include_router(entities_router, prefix=f"{prefix}/entities", tags=["entities"])
+        app.include_router(
+            entity_relationships_router,
+            prefix=f"{prefix}/entity-relationships",
+            tags=["entity-relationships"],
+        )
+        app.include_router(feature_views_router, prefix=f"{prefix}/feature-views", tags=["feature-views"])
+        app.include_router(feature_sets_router, prefix=f"{prefix}/feature-sets", tags=["feature-sets"])
+        app.include_router(docs_router, prefix=f"{prefix}/docs", tags=["docs"])
+        app.include_router(monitor_router, prefix=f"{prefix}/monitor", tags=["monitor"])
+        app.include_router(ai_router, prefix=f"{prefix}/ai", tags=["ai"])
+        app.include_router(jobs_router, prefix=f"{prefix}/jobs", tags=["jobs"])
+        app.include_router(scheduler_router, prefix=f"{prefix}/scheduler", tags=["scheduler"])
+        app.include_router(groups_router, prefix=f"{prefix}/groups", tags=["groups"])
+        app.include_router(actions_router, prefix=f"{prefix}/actions", tags=["actions"])
+        app.include_router(admin_router, prefix=f"{prefix}/admin", tags=["admin"])
+        app.include_router(business_metrics_router, prefix=f"{prefix}/business-metrics", tags=["business-metrics"])
+        app.include_router(usage_router, prefix=f"{prefix}/usage", tags=["usage"])
+        app.include_router(scan_router, prefix=f"{prefix}/scan-bulk", tags=["scan"])
+        app.include_router(export_router, prefix=f"{prefix}/export", tags=["export"])
+        app.include_router(datasets_router, prefix=f"{prefix}/datasets", tags=["datasets"])
+        app.include_router(online_router, prefix=f"{prefix}/online", tags=["online"])
+        app.include_router(versions_router, prefix=f"{prefix}/versions", tags=["versions"])
+        app.include_router(lineage_router, prefix=f"{prefix}/lineage", tags=["lineage"])
+        app.include_router(bulk_router, prefix=f"{prefix}/features/bulk", tags=["bulk"])
+        app.include_router(search_router, prefix=f"{prefix}/search", tags=["search"])
+        app.include_router(notifications_router, prefix=f"{prefix}/notifications", tags=["notifications"])
+
+    include_api_routes(settings.api_prefix)
+    if settings.api_version_prefix != settings.api_prefix:
+        include_api_routes(settings.api_version_prefix)
 
     # Mount static assets (js, css) under /assets if present
     assets_dir = STATIC_DIR / "assets"

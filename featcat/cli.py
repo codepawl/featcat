@@ -20,7 +20,7 @@ from rich.table import Table
 from sqlalchemy import text
 
 from .catalog.factory import get_backend
-from .catalog.local import DEFAULT_DB, LocalBackend
+from .catalog.local import LocalBackend
 from .catalog.models import (
     BusinessMetric,
     DataSource,
@@ -42,7 +42,7 @@ if TYPE_CHECKING:
 
     from .diagnostics import AggregateReport, GroupReport
 
-app = typer.Typer(name="featcat", help="Lightweight AI-powered Feature Catalog")
+app = typer.Typer(name="featcat", help="Lightweight AI-powered Feature Store")
 source_app = typer.Typer(help="Manage data sources")
 feature_app = typer.Typer(help="Manage features")
 entity_app = typer.Typer(help="Manage entities")
@@ -223,15 +223,16 @@ def _get_llm(use_cache: bool = True):
 
 @app.command()
 def init() -> None:
-    """Initialize the catalog database."""
-    db = LocalBackend(DEFAULT_DB)
+    """Initialize the feature store database."""
+    settings = load_settings()
+    db = LocalBackend(settings.catalog_db_path, db_backend=settings.db_backend, db_url=settings.db_url)
     db.init_db()
     # Also create cache table
     from .utils.cache import ResponseCache
 
-    ResponseCache(DEFAULT_DB).close()
+    ResponseCache(settings.catalog_db_path).close()
     db.close()
-    console.print(f"[green]Catalog initialized:[/green] {DEFAULT_DB}")
+    console.print(f"[green]Feature store initialized:[/green] {settings.catalog_db_path}")
 
 
 @app.command("quickstart")
@@ -955,7 +956,7 @@ def export_catalog(
         text = "\n".join(lines)
 
     elif fmt == "markdown":
-        lines = ["# Feature Catalog Export", ""]
+        lines = ["# Feature Store Export", ""]
         lines.append("| Name | Dtype | Tags | Owner | Null Ratio |")
         lines.append("|------|-------|------|-------|------------|")
         for f in all_features:

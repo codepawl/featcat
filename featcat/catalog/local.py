@@ -35,7 +35,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import bindparam, text
 from sqlalchemy.exc import OperationalError
 
-from ..db.connection import make_engine, make_session_factory, resolve_backend
+from ..db.connection import Backend, make_engine, make_session_factory, resolve_backend, resolve_url
 from ..db.models import Base
 from .backend import CatalogBackend
 from .models import (
@@ -311,13 +311,13 @@ def _coerce_utc_datetime(value: Any) -> datetime:
 class LocalBackend(CatalogBackend):
     """Catalog backend backed by SQLite (default) or PostgreSQL."""
 
-    def __init__(self, db_path: str = DEFAULT_DB) -> None:
+    def __init__(self, db_path: str = DEFAULT_DB, *, db_backend: str | None = None, db_url: str | None = None) -> None:
         self.db_path = db_path
-        # Backend resolution — driven by FEATCAT_DB_BACKEND env var. Tests and
-        # default dev/CI runs leave it unset → "sqlite". Production deploys set
-        # "postgres".
-        self.backend = resolve_backend()
-        self.engine = make_engine(backend=self.backend, db_path=db_path)
+        # Backend resolution is settings-driven for the app/server path. The
+        # env fallback in resolve_backend keeps legacy tests and ad-hoc LocalBackend
+        # construction working.
+        self.backend: Backend = resolve_backend(db_backend)
+        self.engine = make_engine(backend=self.backend, url=resolve_url(self.backend, db_path, db_url), db_path=db_path)
         self.session_factory = make_session_factory(self.engine)
 
     @contextmanager

@@ -17,7 +17,7 @@ CSS_PATH = Path(__file__).parent / "styles" / "app.tcss"
 class FeatcatApp(App):
     """featcat Terminal UI Application."""
 
-    TITLE = "featcat | Feature Catalog"
+    TITLE = "featcat | Feature Store"
     CSS_PATH = CSS_PATH
 
     MODES = {

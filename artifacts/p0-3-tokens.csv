@@ -26,4 +26,4 @@ E1,"Single tool, correct params",(fallback),True,14,4,1441,501,65.2,1851,1053,43
 E2,Multi-tool chain,"drift,search",False,14,2,1441,201,86.1,1852,780,57.9,"Tìm feature về user behavior, sau đó kiểm tra cái nào đang drift"
 E3,Tool with multiple params,"duplicate,search",False,14,3,1441,418,71.0,1854,989,46.7,"Tìm duplicate features với threshold 0.8, chỉ trong source device_logs"
 E4,Tool fail recovery,"source_list,list",False,14,2,1441,295,79.5,1849,871,52.9,Liệt kê features của source non_existent_source
-E5,No tool needed,(fallback),True,14,4,1441,501,65.2,1848,1050,43.2,Feature catalog là gì? Giải thích ngắn gọn.
+E5,No tool needed,(fallback),True,14,4,1441,501,65.2,1848,1050,43.2,Feature store là gì? Giải thích ngắn gọn.

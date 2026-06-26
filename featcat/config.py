@@ -57,6 +57,11 @@ class Settings(BaseSettings):
     catalog_db_path: str = "catalog.db"
     max_context_features: int = 100
 
+    # Database. SQLite is kept as the local/dev default; production deploys
+    # should set db_backend=postgres and a matching db_url.
+    db_backend: str = "sqlite"
+    db_url: str | None = None
+
     # S3 / MinIO
     s3_endpoint_url: str | None = None
     s3_access_key_id: str | None = None
@@ -77,6 +82,8 @@ class Settings(BaseSettings):
     server_url: str | None = None  # If set, use RemoteBackend instead of local SQLite
     server_host: str = "0.0.0.0"
     server_port: int = 8000
+    api_prefix: str = "/api"
+    api_version_prefix: str = "/api/v1"
     server_auth_token: str | None = None
     cors_origins: str | list[str] = "*"
 
@@ -172,6 +179,10 @@ class Settings(BaseSettings):
                 f"(currently: access_key={'set' if has_access else 'unset'}, "
                 f"secret_key={'set' if has_secret else 'unset'})"
             )
+        if self.db_url and not self.db_url_matches_backend():
+            raise ValueError(
+                f"FEATCAT_DB_URL must match FEATCAT_DB_BACKEND (backend={self.db_backend!r}, url={self.db_url!r})"
+            )
         return self
 
     def cors_origin_list(self) -> list[str]:
@@ -181,6 +192,16 @@ class Settings(BaseSettings):
             parts = [p.strip() for p in raw.split(",") if p.strip()]
             return parts or ["*"]
         return raw or ["*"]
+
+    def db_url_matches_backend(self) -> bool:
+        """Return whether db_url, when set, uses the configured DB backend."""
+        if not self.db_url:
+            return True
+        if self.db_backend == "sqlite":
+            return self.db_url.startswith("sqlite:")
+        if self.db_backend == "postgres":
+            return self.db_url.startswith(("postgresql:", "postgresql+", "postgres:"))
+        return True
 
 
 # Keep a record of which keys came from which source for `config show`

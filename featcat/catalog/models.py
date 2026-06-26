@@ -1,4 +1,4 @@
-"""Pydantic models for the feature catalog."""
+"""Pydantic models for the feature store registry."""
 
 from __future__ import annotations
 

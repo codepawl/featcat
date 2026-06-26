@@ -83,7 +83,7 @@ def _embedding_search(db: CatalogBackend, query: str, top_k: int = 50) -> list[d
 
 
 class NLQueryPlugin(BasePlugin):
-    """Search the feature catalog using natural language queries."""
+    """Search the feature store using natural language queries."""
 
     @property
     def name(self) -> str:

@@ -69,7 +69,7 @@ export function DriftRateTrend({ alertThresholdPct = 10 }: DriftRateTrendProps) 
         <div>
           <h3 className="text-sm font-semibold">{t('drift_trend.title', 'Drift rate trend')}</h3>
           <p className="text-[11px] text-[var(--text-tertiary)] mt-0.5">
-            {t('drift_trend.subtitle', '% of catalog features in critical / warning status per day')}
+            {t('drift_trend.subtitle', '% of feature-store features in critical / warning status per day')}
           </p>
         </div>
         <div className="flex items-center gap-2">

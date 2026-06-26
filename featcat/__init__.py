@@ -1,4 +1,4 @@
-"""featcat: AI-Powered Feature Catalog for Data Science teams."""
+"""featcat: AI-Powered Feature Store for Data Science teams."""
 
 from .sdk import FeatcatSDK as FeatcatSDK
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
+from featcat import __version__
 from featcat.catalog.health import compute_health_score
 from featcat.catalog.local import LocalBackend
 from featcat.config import load_settings
@@ -166,7 +167,8 @@ class TestHealthAPI:
         assert resp.status_code == 200
         data = resp.json()
         # Legacy fields (back-compat).
-        assert {"status", "db", "llm", "model"} <= set(data)
+        assert {"status", "version", "db", "llm", "model"} <= set(data)
+        assert data["version"] == __version__
         # New structured surface.
         assert "checks" in data
         assert isinstance(data["checks"], list)
@@ -174,6 +176,20 @@ class TestHealthAPI:
         names = {c["name"] for c in data["checks"]}
         assert "db_reachable" in names
         assert "db_backend" in names
+
+    def test_api_ready_returns_database_readiness(self, client):
+        resp = client.get("/api/ready")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "ready"
+        assert data["version"] == __version__
+        assert data["db"] is True
+        assert data["db_backend"] == "sqlite"
+
+    def test_api_v1_health_alias(self, client):
+        resp = client.get("/api/v1/health")
+        assert resp.status_code == 200
+        assert resp.json()["version"] == __version__
 
     def test_health_summary_empty(self, client):
         resp = client.get("/api/features/health-summary")

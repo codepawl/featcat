@@ -20,7 +20,7 @@
       "prompt": "Có features nào tương đồng với client_logs.rssi không?"
     },
     "improve": {
-      "title": "Cải thiện catalog",
+      "title": "Cải thiện feature store",
       "example": "Ví dụ: \"features nào cần bổ sung tài liệu gấp\"",
       "prompt": "Features nào cần bổ sung tài liệu gấp?"
     }

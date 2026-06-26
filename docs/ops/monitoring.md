@@ -6,9 +6,9 @@ This page is about *operational* monitoring — keeping featcat itself healthy. 
 
 | Signal | Why | Source |
 |---|---|---|
-| API uptime | Tells you if anyone can use the catalog | `GET /api/health` |
+| API uptime | Tells you if anyone can use the feature store | `GET /api/ready` |
 | LLM uptime | Tells you if doc gen + chat work | `GET /api/health` (`llm` field) |
-| DB latency | Catalog browsing slows when this rises | Postgres `pg_stat_statements` or app logs |
+| DB latency | Feature browsing slows when this rises | Postgres `pg_stat_statements` or app logs |
 | Scheduler heartbeat | Drift checks need this. Silent failure is the worst kind. | `job_logs` table |
 | Disk usage | Postgres + GGUF model are the big eaters | host metrics |
 | RAM | llama.cpp peaks at ~8 GB; OOM kills the LLM | host metrics |
@@ -19,28 +19,29 @@ This page is about *operational* monitoring — keeping featcat itself healthy. 
 ```bash
 curl http://localhost:8000/api/health
 {
-  "version": "1.4.0",
-  "db": "ok",
-  "llm": "ok",
-  "scheduler": {
-    "running": true,
-    "last_check": "2026-05-08T05:00:00Z"
-  },
-  "uptime_seconds": 14400
+  "status": "ok",
+  "version": "0.4.0",
+  "db": true,
+  "llm": true,
+  "model": "gemma-4-E2B-it",
+  "checks": []
 }
 ```
 
-Returns 200 if all green; 503 if any required component is down (db, scheduler). LLM-down returns 200 with `llm: "down"` because most features still work.
+Returns 200 for process-level health. If the DB metadata query fails, the response is still JSON but `status` becomes `degraded` and `db` is `false`. LLM-down returns 200 with `llm: false` because most feature-store paths still work.
 
-For a load-balancer probe, hit `GET /api/health/ready`. Returns 200 only when all migrations are applied (`alembic_version` matches) — useful for blue/green where you don't want traffic until schema is ready.
+For a load-balancer probe, hit `GET /api/ready`. It returns 200 only when the feature-store database can answer a cheap metadata query:
+
+```json
+{"status":"ready","version":"0.4.0","db_backend":"postgres","db":true}
+```
 
 ## Logging
 
 Default: application logs go to stdout/stderr and can be collected by Docker or your host logging agent.
 
 ```json
-{"ts": "2026-05-08T05:01:23Z", "level": "info", "logger": "featcat.api", "msg": "request",
- "method": "GET", "path": "/api/features", "status": 200, "duration_ms": 12, "actor": "alice"}
+request method=GET path=/api/features status=200 duration_ms=12.34 request_id=...
 ```
 
 Ship to your stack of choice — Loki / OpenSearch / Datadog / CloudWatch — via the Docker logging driver:
@@ -138,9 +139,9 @@ These print after every completion. For load monitoring, instrument at the app s
 
 | Alert | Trigger | Why it matters |
 |---|---|---|
-| `featcat-api-down` | `/api/health/ready` 5xx for > 2 min | Catalog unreachable |
+| `featcat-api-down` | `/api/ready` 5xx for > 2 min | Feature store unreachable |
 | `featcat-db-slow` | p99 request `duration_ms > 1000` over 5 min | UX degraded |
-| `featcat-llm-down` | `/api/health` `llm=down` for > 5 min | Doc gen + chat broken |
+| `featcat-llm-down` | `/api/health` `llm=false` for > 5 min | Doc gen + chat broken |
 | `featcat-scheduler-stale` | `monitor_check` last_run > 12 h ago | Drift detection silent |
 | `featcat-disk-low` | host `/var/lib/docker` > 85 % full | Postgres at risk |
 | `featcat-high-error-rate` | `level=error` count > 50/min | Something cascading |
@@ -149,7 +150,7 @@ These print after every completion. For load monitoring, instrument at the app s
 
 Status changes (`features.status`) are logged in `feature_versions` with `changed_by` and `notes`. Useful for "who certified `churn_v2.feature_X` and when?"
 
-Source changes (path / description) are logged to the audit table when `FEATCAT_AUDIT_LOG=true` (off by default — adds write overhead).
+Source scans, dataset builds, materialization runs, feature versions, and access requests have dedicated audit tables. Source metadata changes should be tracked through the feature-store API and database backups until a separate source-change audit table is added.
 
 ## Related
 

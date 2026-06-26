@@ -1,5 +1,5 @@
 site_name: featcat documentation
-site_description: AI-powered feature catalog for data science teams
+site_description: AI-powered feature store for data science teams
 site_url: https://featcat.local/docs/
 repo_url: https://github.com/codepawl/featcat
 repo_name: codepawl/featcat
@@ -37,6 +37,9 @@ theme:
 plugins:
   - search
   - mermaid2
+
+extra_javascript:
+  - https://unpkg.com/mermaid@10.4.0/dist/mermaid.min.js
 
 markdown_extensions:
   - admonition

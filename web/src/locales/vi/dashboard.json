@@ -10,14 +10,14 @@
   },
   "sections": {
     "quality_debt": "Chất lượng & Nợ",
-    "quality_debt_subtitle": "Độ bao phủ tài liệu và cảnh báo drift trên toàn catalog",
+    "quality_debt_subtitle": "Độ bao phủ tài liệu và cảnh báo drift trên toàn feature store",
     "activity_usage": "Hoạt động & Sử dụng",
-    "activity_usage_subtitle": "Hoạt động catalog và mức độ sử dụng features gần đây",
+    "activity_usage_subtitle": "Hoạt động feature store và mức độ sử dụng features gần đây",
     "system": "Hệ thống",
     "system_subtitle": "Các tác vụ nền theo lịch"
   },
   "health_card": {
-    "title": "Sức khỏe Catalog",
+    "title": "Sức khỏe Feature Store",
     "of_100": "/100"
   },
   "certification_card": {
@@ -49,7 +49,7 @@
   },
   "drift_trend": {
     "title": "Xu hướng tỷ lệ Drift",
-    "subtitle": "% features trong catalog ở trạng thái critical / warning theo ngày",
+    "subtitle": "% features trong feature store ở trạng thái critical / warning theo ngày",
     "show_warning": "Hiện warning",
     "range_days_one": "{{count}} ngày",
     "range_days_other": "{{count}} ngày",
@@ -96,7 +96,7 @@
   "donut": {
     "title": "Độ bao phủ tài liệu",
     "documented": "có tài liệu",
-    "empty": "Không có features nào trong catalog",
+    "empty": "Không có features nào trong feature store",
     "segments": {
       "documented": "Có tài liệu",
       "hints_only": "Chỉ có gợi ý",
@@ -122,7 +122,7 @@
   "debt": {
     "title": "Nợ tài liệu theo chủ sở hữu và nguồn",
     "subtitle": "Nhấn một ô để xem features tương ứng",
-    "empty": "Không có features nào trong catalog",
+    "empty": "Không có features nào trong feature store",
     "owner": "Chủ sở hữu",
     "total": "Tổng"
   },
@@ -130,7 +130,7 @@
     "title": "Bức tranh sử dụng Feature (30 ngày qua)",
     "subtitle": "Kích thước bong bóng = số lượt truy vấn. Viền đỏ = bỏ quên.",
     "empty": "Chưa có dữ liệu sử dụng",
-    "empty_long": "Chưa có dữ liệu sử dụng. Features sẽ xuất hiện sau khi nhóm bắt đầu truy vấn catalog.",
+    "empty_long": "Chưa có dữ liệu sử dụng. Features sẽ xuất hiện sau khi nhóm bắt đầu truy vấn feature store.",
     "orphaned_label": "Bị bỏ quên",
     "axis_days": "Ngày trước",
     "axis_usage": "Sử dụng",

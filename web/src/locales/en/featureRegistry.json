@@ -2,7 +2,7 @@
   "entities": {
     "page": {
       "title": "Entities",
-      "subtitle": "Catalog grains used for joins and serving",
+      "subtitle": "Store grains used for joins and serving",
       "count_one": "{{count}} entity",
       "count_other": "{{count}} entities"
     },

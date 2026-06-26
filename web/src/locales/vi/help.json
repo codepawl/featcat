@@ -21,7 +21,7 @@
   "quick_links": {
     "dashboard": {
       "label": "Dashboard",
-      "description": "Xem tổng thể sức khỏe catalog và tín hiệu gần đây."
+      "description": "Xem tổng thể sức khỏe feature store và tín hiệu gần đây."
     },
     "monitoring": {
       "label": "Monitoring",

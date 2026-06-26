@@ -298,7 +298,7 @@ class TestDuplicatesEndpoint:
         """Stub-style: directly verify the cap path returns the expected
         ``summary`` without needing 2001 features.
 
-        We monkey-patch the class constant down to 2 so a 3-feature catalog
+        We monkey-patch the class constant down to 2 so a 3-feature store
         trips the cap.
         """
         db = LocalBackend(str(tmp_path / "cap.db"))

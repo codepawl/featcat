@@ -10,14 +10,14 @@
   },
   "sections": {
     "quality_debt": "Quality & Debt",
-    "quality_debt_subtitle": "Documentation coverage and drift alerts across your catalog",
+    "quality_debt_subtitle": "Documentation coverage and drift alerts across your feature store",
     "activity_usage": "Activity & Usage",
-    "activity_usage_subtitle": "Recent catalog activity and feature adoption",
+    "activity_usage_subtitle": "Recent feature-store activity and feature adoption",
     "system": "System",
     "system_subtitle": "Scheduled background jobs"
   },
   "health_card": {
-    "title": "Catalog Health",
+    "title": "Feature Store Health",
     "of_100": "/100"
   },
   "certification_card": {
@@ -49,7 +49,7 @@
   },
   "drift_trend": {
     "title": "Drift rate trend",
-    "subtitle": "% of catalog features in critical / warning status per day",
+    "subtitle": "% of feature-store features in critical / warning status per day",
     "show_warning": "Show warning",
     "range_days_one": "{{count}} day",
     "range_days_other": "{{count}} days",
@@ -96,7 +96,7 @@
   "donut": {
     "title": "Documentation Coverage",
     "documented": "documented",
-    "empty": "No features in catalog",
+    "empty": "No features in the feature store",
     "segments": {
       "documented": "Documented",
       "hints_only": "Hints only",
@@ -122,7 +122,7 @@
   "debt": {
     "title": "Documentation debt by owner and source",
     "subtitle": "Click a cell to view those features",
-    "empty": "No features in catalog",
+    "empty": "No features in the feature store",
     "owner": "Owner",
     "total": "Total"
   },
@@ -130,7 +130,7 @@
     "title": "Feature usage landscape (last 30 days)",
     "subtitle": "Bubble size = query count. Red outline = orphaned.",
     "empty": "No usage data yet",
-    "empty_long": "No usage data yet. Features will appear here after team members start querying the catalog.",
+    "empty_long": "No usage data yet. Features will appear here after team members start querying the feature store.",
     "orphaned_label": "Orphaned",
     "axis_days": "Days ago",
     "axis_usage": "Usage",

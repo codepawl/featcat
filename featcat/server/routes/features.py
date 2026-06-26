@@ -232,7 +232,7 @@ def _list_features_paginated(
 ) -> dict[str, Any]:
     """Paginated path — pushes filters to SQL and enriches only the page slice.
 
-    For 5000+-feature catalogs, this avoids the O(N) full-list load that the
+    For 5000+-feature stores, this avoids the O(N) full-list load that the
     legacy in-memory path does. Health/drift enrichment runs on the returned
     rows only (≤ ``limit``).
     """

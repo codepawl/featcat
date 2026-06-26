@@ -1,7 +1,7 @@
 {
   "page": {
     "title": "Nhật ký Audit",
-    "subtitle": "Mọi thay đổi metadata trên catalog"
+    "subtitle": "Mọi thay đổi metadata trên feature store"
   },
   "filters": {
     "last_n_days": "{{n}} ngày qua",

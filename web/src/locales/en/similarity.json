@@ -19,7 +19,7 @@
   },
   "empty": {
     "title": "Not enough features to compute similarity",
-    "subtitle": "Add at least 2 features to the catalog to see similarity relationships."
+    "subtitle": "Add at least 2 features to the feature store to see similarity relationships."
   },
   "tooltip": {
     "type": "Type",

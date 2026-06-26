@@ -22,6 +22,7 @@ from sqlalchemy import engine_from_config, pool
 # Make sure ``featcat`` is importable when running ``alembic`` from the repo root.
 # ``prepend_sys_path = .`` in alembic.ini covers this; the explicit import below
 # fails fast with a clearer error if the package is missing.
+from featcat.config import load_settings  # noqa: E402
 from featcat.db.connection import resolve_backend, resolve_url  # noqa: E402
 from featcat.db.models import Base  # noqa: E402
 
@@ -33,7 +34,9 @@ if config.config_file_name is not None:
 # Drive the URL through the application's resolver so a misconfigured deploy
 # (backend=sqlite with a leftover postgres FEATCAT_DB_URL, or vice versa) lands
 # on the same answer as the application.
-config.set_main_option("sqlalchemy.url", resolve_url(resolve_backend()))
+settings = load_settings()
+backend = resolve_backend(settings.db_backend)
+config.set_main_option("sqlalchemy.url", resolve_url(backend, settings.catalog_db_path, settings.db_url))
 
 target_metadata = Base.metadata
 

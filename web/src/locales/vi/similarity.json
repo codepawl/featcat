@@ -19,7 +19,7 @@
   },
   "empty": {
     "title": "Không đủ Feature để tính tương đồng",
-    "subtitle": "Thêm ít nhất 2 Feature vào catalog để xem quan hệ tương đồng."
+    "subtitle": "Thêm ít nhất 2 Feature vào feature store để xem quan hệ tương đồng."
   },
   "tooltip": {
     "type": "Loại",

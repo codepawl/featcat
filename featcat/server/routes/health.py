@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import JSONResponse
 
+from ... import __version__
 from ..cache import cache_get, cache_set
 from ..deps import get_db, get_llm, get_settings
 
@@ -19,7 +21,7 @@ def health(db=Depends(get_db), llm=Depends(get_llm), settings=Depends(get_settin
     the web UI and any external monitors don't break; the additional
     ``checks`` field is purely additive.
     """
-    result = {"status": "ok", "db": True, "llm": False}
+    result = {"status": "ok", "version": __version__, "db": True, "llm": False}
 
     try:
         stats = db.get_catalog_stats()
@@ -46,6 +48,29 @@ def health(db=Depends(get_db), llm=Depends(get_llm), settings=Depends(get_settin
         result["checks"] = [c.model_dump(mode="json") for c in report.checks]
 
     return result
+
+
+@router.get("/ready")
+def ready(db=Depends(get_db), settings=Depends(get_settings)):
+    """Readiness check for orchestrators.
+
+    Unlike /health, this endpoint is intentionally strict: it returns 503 when
+    the backing feature-store database cannot answer a cheap metadata query.
+    LLM and scheduler state do not block readiness because they are optional
+    MVP capabilities and report through /health.
+    """
+    payload = {
+        "status": "ready",
+        "version": __version__,
+        "db_backend": settings.db_backend,
+        "db": True,
+    }
+    try:
+        db.get_catalog_stats()
+    except Exception as exc:
+        payload.update({"status": "not_ready", "db": False, "detail": str(exc)})
+        return JSONResponse(payload, status_code=503)
+    return payload
 
 
 @router.get("/stats")

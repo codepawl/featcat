@@ -49,6 +49,6 @@
     "subtitle": "Cạnh lineage liên kết Feature với Feature/cột/nguồn mà nó được dẫn xuất từ đó.",
     "cta_detect": "Tự nhận diện từ file SQL:",
     "cta_detect_cmd": "featcat lineage detect --from sql/*.sql",
-    "cta_apply_hint": "Thêm --apply --confirm sau khi xem preview để ghi các cạnh vào catalog."
+    "cta_apply_hint": "Thêm --apply --confirm sau khi xem preview để ghi các cạnh vào feature store."
   }
 }

@@ -25,4 +25,4 @@ def get_backend() -> CatalogBackend:
     else:
         from .local import LocalBackend
 
-        return LocalBackend(settings.catalog_db_path)
+        return LocalBackend(settings.catalog_db_path, db_backend=settings.db_backend, db_url=settings.db_url)

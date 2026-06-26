@@ -1,4 +1,4 @@
-"""featcat-client — Python SDK for the featcat feature catalog server.
+"""featcat-client — Python SDK for the featcat feature store server.
 
 Quickstart:
 

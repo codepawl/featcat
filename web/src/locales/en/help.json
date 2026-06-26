@@ -21,7 +21,7 @@
   "quick_links": {
     "dashboard": {
       "label": "Dashboard",
-      "description": "Review catalog-wide health and recent signals."
+      "description": "Review feature-store health and recent signals."
     },
     "monitoring": {
       "label": "Monitoring",

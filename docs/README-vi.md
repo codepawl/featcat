@@ -5,11 +5,11 @@
 ![Python](https://img.shields.io/pypi/pyversions/featcat)
 ![License](https://img.shields.io/pypi/l/featcat)
 
-**Feature Catalog tích hợp AI cho các team Data Science**
+**Feature Store tích hợp AI cho các team Data Science**
 
 [English](index.md)
 
-featcat là một Feature Catalog nhẹ, được thiết kế cho các team Data Science. Đây **không phải** là Feature Store (không có online serving) — mà là một công cụ quản lý metadata + AI layer để tìm kiếm, document, và giám sát chất lượng features.
+featcat là một Feature Store nhẹ, được thiết kế cho các team Data Science. Công cụ này kết hợp registry, quét nguồn offline, build training dataset, audit materialization, online serving, và AI layer để tìm kiếm, document, giám sát chất lượng, và theo dõi lineage của features.
 
 ## Vấn đề cần giải quyết
 
@@ -22,11 +22,12 @@ featcat là một Feature Catalog nhẹ, được thiết kế cho các team Dat
 
 | Module | Mô tả | Phase |
 |--------|-------|-------|
-| **Catalog** | Đăng ký data sources, scan Parquet auto-extract schema + stats | 1 |
+| **Feature Store** | Đăng ký data sources, scan Parquet auto-extract schema + stats | 1 |
 | **AI Discovery** | Mô tả use case → AI gợi ý features phù hợp + feature mới cần tạo | 2 |
 | **Auto-doc** | LLM tự động generate documentation cho từng feature | 2 |
 | **NL Query** | Hỏi bằng tiếng Việt/Anh, AI tìm features liên quan | 2 |
 | **Monitoring** | PSI drift detection, null spikes, range violations | 3 |
+| **Materialization** | Ghi audit materialization và phục vụ giá trị online mới nhất | 3 |
 | **TUI** | Terminal UI với dashboard, feature browser, AI chat | 3 |
 | **S3 Support** | Đọc Parquet trực tiếp từ S3/MinIO, không cần copy data về local | 1 |
 | **Caching** | Cache LLM responses, tăng tốc doc generate và NL query | 3 |

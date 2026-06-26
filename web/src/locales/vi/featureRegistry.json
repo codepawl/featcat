@@ -2,7 +2,7 @@
   "entities": {
     "page": {
       "title": "Entity",
-      "subtitle": "Grain catalog dùng để join và serving",
+      "subtitle": "Grain feature store dùng để join và serving",
       "count_one": "{{count}} entity",
       "count_other": "{{count}} entity"
     },

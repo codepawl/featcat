@@ -60,6 +60,10 @@ services:
       - FEATCAT_LLAMACPP_URL=http://llm:8080
       - FEATCAT_LLM_MODEL=${FEATCAT_LLM_MODEL:-gemma-4-E2B-it}
       - FEATCAT_SERVER_AUTH_TOKEN=${SERVER_AUTH:-}
+      - FEATCAT_AUTH_REQUIRED=${FEATCAT_AUTH_REQUIRED:-false}
+      - FEATCAT_AUTH_ALLOWED_EMAIL_DOMAINS=${FEATCAT_AUTH_ALLOWED_EMAIL_DOMAINS:-["fpt.com"]}
+      - FEATCAT_CORS_ORIGINS=${FEATCAT_CORS_ORIGINS:-*}
+      - FEATCAT_TASKS_BACKEND=${FEATCAT_TASKS_BACKEND:-apscheduler}
       - NO_PROXY=llm,postgres,localhost,127.0.0.1
       - no_proxy=llm,postgres,localhost,127.0.0.1
     depends_on:
@@ -67,6 +71,18 @@ services:
         condition: service_started
       postgres:
         condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import json, urllib.request; data=json.load(urllib.request.urlopen('http://127.0.0.1:8000/api/ready', timeout=3)); raise SystemExit(0 if data.get('status') == 'ready' else 1)",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     restart: unless-stopped
 
   featcat-materialization-scheduler:
@@ -132,7 +148,7 @@ services:
       dockerfile: deploy/Dockerfile
     container_name: featcat-worker
     profiles: ["tasks"]
-    command: ["sh", "-c", "uv pip install --system celery[redis]>=5.3 flower>=2.0 && celery -A featcat.tasks.app worker --loglevel=info --concurrency=2"]
+    command: ["celery", "-A", "featcat.tasks.app", "worker", "--loglevel=info", "--concurrency=2"]
     environment:
       - FEATCAT_REDIS_URL=${FEATCAT_REDIS_URL:-redis://redis:6379/0}
       - FEATCAT_DB_BACKEND=${FEATCAT_DB_BACKEND:-postgres}
@@ -140,6 +156,7 @@ services:
       - FEATCAT_CATALOG_DB_PATH=/data/catalog.db
       - FEATCAT_LLAMACPP_URL=http://llm:8080
       - FEATCAT_LLM_MODEL=${FEATCAT_LLM_MODEL:-gemma-4-E2B-it}
+      - FEATCAT_TASKS_BACKEND=celery
     depends_on:
       redis:
         condition: service_healthy
@@ -154,9 +171,13 @@ services:
       dockerfile: deploy/Dockerfile
     container_name: featcat-beat
     profiles: ["tasks"]
-    command: ["sh", "-c", "uv pip install --system celery[redis]>=5.3 && celery -A featcat.tasks.app beat --loglevel=info"]
+    command: ["celery", "-A", "featcat.tasks.app", "beat", "--loglevel=info"]
     environment:
       - FEATCAT_REDIS_URL=${FEATCAT_REDIS_URL:-redis://redis:6379/0}
+      - FEATCAT_DB_BACKEND=${FEATCAT_DB_BACKEND:-postgres}
+      - FEATCAT_DB_URL=${FEATCAT_DB_URL:-postgresql+psycopg2://${POSTGRES_USER:-featcat}:${POSTGRES_PASSWORD:-featcat_local_only}@postgres:5432/${POSTGRES_DB:-featcat}}
+      - FEATCAT_CATALOG_DB_PATH=/data/catalog.db
+      - FEATCAT_TASKS_BACKEND=celery
     depends_on:
       redis:
         condition: service_healthy
@@ -169,7 +190,7 @@ services:
       dockerfile: deploy/Dockerfile
     container_name: featcat-flower
     profiles: ["tasks"]
-    command: ["sh", "-c", "uv pip install --system celery[redis]>=5.3 flower>=2.0 && celery -A featcat.tasks.app flower --port=5555"]
+    command: ["celery", "-A", "featcat.tasks.app", "flower", "--port=5555"]
     ports:
       - "${FEATCAT_FLOWER_PORT:-5555}:5555"
     environment:

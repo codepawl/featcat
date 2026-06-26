@@ -21,7 +21,8 @@ catalog.db
 **/*.parquet
 docs/superpowers
 .superpowers
-deploy
+deploy/*
+!deploy/start-server.sh
 web/node_modules
 web/dist
 web/playwright-report
@@ -40,4 +41,3 @@ featcat-mvp-test-prompts.md
 coverage.xml
 catalog.db-shm
 catalog.db-wal
-

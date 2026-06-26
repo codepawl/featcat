@@ -20,14 +20,18 @@ OS: any Linux with Docker 24+ and Docker Compose v2. Tested on Ubuntu 22.04 LTS 
 ```bash
 git clone https://github.com/codepawl/featcat.git /opt/featcat
 cd /opt/featcat
-git checkout v1.4.0   # or whatever tag
+git checkout v0.4.0   # or whatever tag
 
 # .env at repo root, gitignored
 cat > .env <<'EOF'
 POSTGRES_PASSWORD=<strong-password>
-FEATCAT_DB_URL=postgresql+psycopg://featcat:<same-password>@postgres:5432/featcat
+FEATCAT_DB_BACKEND=postgres
+FEATCAT_DB_URL=postgresql+psycopg2://featcat:<same-password>@postgres:5432/featcat
 FEATCAT_LLAMACPP_URL=http://llm:8080
 DATA_DIR=/var/featcat/data       # mounted to /sources read-only
+FEATCAT_AUTH_REQUIRED=true
+FEATCAT_AUTH_ALLOWED_EMAIL_DOMAINS=["fpt.com"]
+FEATCAT_CORS_ORIGINS=https://featcat.team.example.com
 EOF
 
 # Pull the GGUF model once
@@ -45,15 +49,14 @@ After ~30s the API is up. Verify:
 
 ```bash
 curl http://localhost:8000/api/health
-# {"db": "ok", "llm": "ok", "scheduler": "ok", "version": "1.4.0"}
+# {"status":"ok","version":"0.4.0","db":true,"llm":true,...}
+curl http://localhost:8000/api/ready
+# {"status":"ready","version":"0.4.0","db_backend":"postgres","db":true}
 ```
 
-Initial schema:
-
-```bash
-docker compose exec featcat alembic upgrade head
-docker compose exec featcat featcat init --skip-if-exists
-```
+The container startup script applies Alembic migrations and runs `featcat init`
+before serving traffic. If either step fails, the container exits instead of
+continuing with a partially initialized feature store.
 
 ## Reverse proxy (Caddy example)
 
@@ -107,10 +110,9 @@ Use `docker-compose.override.yml` per host, or move to k8s with the same service
 ```bash
 cd /opt/featcat
 git fetch --tags
-git checkout v1.5.0
+git checkout v0.4.1
 cd deploy
 docker compose pull && docker compose up -d
-docker compose exec featcat alembic upgrade head
 docker compose exec featcat featcat doctor  # smoke
 ```
 
@@ -119,7 +121,7 @@ If alembic fails (multi-head, version mismatch), see [Troubleshooting](troublesh
 Rollback:
 
 ```bash
-git checkout v1.4.0
+git checkout v0.4.0
 docker compose pull && docker compose up -d
 docker compose exec featcat alembic downgrade <prev-head>
 ```
@@ -152,7 +154,11 @@ featcat is public by default. Anyone can browse the app without signing in.
 If you want optional company identity or admin scoping, featcat also supports:
 
 - **Bearer token**: set `FEATCAT_SERVER_AUTH_TOKEN` and the API requires `Authorization: Bearer <token>` on `/api/*`.
-- **Trusted proxy / SSO**: put featcat behind an SSO proxy (oauth2-proxy / Pomerium / Cloudflare Access) that injects an `X-Auth-User` header, then set `FEATCAT_TRUST_HEADER=X-Auth-User`.
+- **Trusted proxy / SSO**: put featcat behind an SSO proxy (oauth2-proxy / Pomerium / Cloudflare Access), set `FEATCAT_AUTH_REQUIRED=true`, and configure the proxy to send one of the trusted identity headers: `X-Auth-Request-Email`, `X-Forwarded-Email`, `Cf-Access-Authenticated-User-Email`, or `X-User-Email`.
+
+Role mapping is configured with `FEATCAT_AUTH_ADMIN_USERS`, `FEATCAT_AUTH_EDITOR_USERS`,
+`FEATCAT_AUTH_ADMIN_GROUPS`, and `FEATCAT_AUTH_EDITOR_GROUPS`. Group headers are
+read from `X-Auth-Request-Groups`, `X-Forwarded-Groups`, or `Cf-Access-Groups`.
 
 For company onboarding, the UI also exposes an `@fpt.com` request-access form. Control the accepted email domains with `FEATCAT_AUTH_ALLOWED_EMAIL_DOMAINS` (default: `["fpt.com"]`).
 

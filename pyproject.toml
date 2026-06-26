@@ -5,12 +5,12 @@ build-backend = "hatchling.build"
 [project]
 name = "featcat"
 dynamic = ["version"]
-description = "AI-Powered Feature Catalog for Data Science teams"
+description = "AI-Powered Feature Store for Data Science teams"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
 authors = [{name = "Codepawl", email = "hi@codepawl.dev"}]
-keywords = ["feature-catalog", "feature-store", "data-science", "mlops", "ai"]
+keywords = ["feature-store", "feature-registry", "data-science", "mlops", "ai"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "License :: OSI Approved :: MIT License",
@@ -55,9 +55,9 @@ server = ["fastapi>=0.110,<0.136", "starlette<1", "uvicorn[standard]>=0.27", "ss
 # optional extra so default installs stay lean. Feature embedding + similarity
 # search degrade to the existing TF-IDF path when this isn't installed.
 embeddings = ["sentence-transformers>=2.2"]
-# T1.5 — Celery + Redis broker + Flower (web UI for queue inspection).
-# Operators install on the worker / beat / flower nodes; the API server
-# itself doesn't need them unless it enqueues tasks (T1.5c+).
+# T1.5 — Celery + Redis broker + Flower (web UI for queue inspection). The
+# Docker image installs this extra so optional worker/beat/flower services are
+# reproducible and do not install dependencies at container startup.
 tasks = ["celery[redis]>=5.3", "redis>=5.0", "flower>=2.0"]
 # T3.3 — MkDocs site. Operators install when building docs locally or in CI;
 # the runtime container doesn't need them.
@@ -89,6 +89,8 @@ dev = [
     "mypy>=1.8",
     "pre-commit>=3.0",
     "pytest-timeout>=2.0",
+    "build>=1.2",
+    "twine>=5.0",
 ]
 
 [project.urls]

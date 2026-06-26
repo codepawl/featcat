@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 
 class ChatScreen(Screen):
-    """Interactive AI chat for querying the feature catalog."""
+    """Interactive AI chat for querying the feature store."""
 
     BINDINGS = [
         ("d", "switch_screen('dashboard')", "Dashboard"),

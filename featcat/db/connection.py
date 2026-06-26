@@ -35,15 +35,20 @@ DEFAULT_POSTGRES_URL = "postgresql+psycopg2://featcat:featcat_local_only@postgre
 DEFAULT_SQLITE_PATH = "catalog.db"
 
 
-def resolve_backend() -> Backend:
-    """Resolve the configured DB backend from env var (default sqlite)."""
-    raw = os.environ.get("FEATCAT_DB_BACKEND", "sqlite").lower().strip()
+def resolve_backend(raw: str | None = None) -> Backend:
+    """Resolve the configured DB backend.
+
+    ``raw`` is preferred so application code can pass the already-loaded
+    Settings value. The env fallback is retained for Alembic and older call
+    sites that have not been settings-wired yet.
+    """
+    raw = (raw or os.environ.get("FEATCAT_DB_BACKEND", "sqlite")).lower().strip()
     if raw not in ("sqlite", "postgres"):
         raise ValueError(f"Unsupported FEATCAT_DB_BACKEND={raw!r}; expected 'sqlite' or 'postgres'.")
     return raw  # type: ignore[return-value]
 
 
-def resolve_url(backend: Backend, db_path: str | None = None) -> str:
+def resolve_url(backend: Backend, db_path: str | None = None, explicit_url: str | None = None) -> str:
     """Resolve the SQLAlchemy URL for a given backend.
 
     Priority: explicit ``FEATCAT_DB_URL`` (only when scheme matches backend) >
@@ -54,7 +59,7 @@ def resolve_url(backend: Backend, db_path: str | None = None) -> str:
     ``FEATCAT_DB_BACKEND=sqlite``: prefer the resolved-by-backend URL over a
     mismatched explicit URL rather than silently routing to postgres.
     """
-    explicit = os.environ.get("FEATCAT_DB_URL")
+    explicit = explicit_url if explicit_url is not None else os.environ.get("FEATCAT_DB_URL")
     if explicit and _url_matches_backend(explicit, backend):
         return explicit
     if backend == "sqlite":

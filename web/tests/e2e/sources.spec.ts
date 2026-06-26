@@ -63,7 +63,7 @@ test.describe('Sources', () => {
     await dialog.getByPlaceholder(/e\.g\.|vd:/).fill('e2e-added')
 
     // Disable scan-after so the test stays fast and deterministic.
-    const scanAfter = dialog.getByRole('checkbox')
+    const scanAfter = dialog.getByRole('checkbox', { name: /Scan immediately|Quét ngay/ })
     if (await scanAfter.isChecked()) await scanAfter.click()
 
     await dialog.getByRole('button', { name: /^Add$|^Thêm$/ }).click()

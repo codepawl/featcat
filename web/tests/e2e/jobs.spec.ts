@@ -11,7 +11,8 @@ test.describe('Jobs', () => {
     await expect(page.getByText(/source_scan/i).first()).toBeVisible()
     await expect(page.getByText(/baseline_refresh/i).first()).toBeVisible()
 
-    const editScheduleBtn = page.getByRole('button', { name: /Edit Schedule/ }).first()
+    await page.getByTestId('job-card-menu-button').first().click()
+    const editScheduleBtn = page.getByRole('menuitem', { name: /Edit Schedule/ })
     await expect(editScheduleBtn).toBeVisible()
     await editScheduleBtn.click()
 
@@ -35,7 +36,8 @@ test.describe('Jobs', () => {
 
     await page.goto('/jobs')
 
-    const runBtn = page.getByRole('button', { name: /Run Now/ }).first()
+    await page.getByTestId('job-card-menu-button').first().click()
+    const runBtn = page.getByRole('menuitem', { name: /Run Now/ })
     await runBtn.click()
 
     await expect.poll(() => triggered).toBe(true)

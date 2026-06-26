@@ -76,6 +76,8 @@ def resolve_principal(request: Request, settings: Settings) -> AuthPrincipal | N
 def required_role_for_request(method: str, path: str) -> AuthRole | None:
     """Return the minimum role required for this request, or None if viewer is enough."""
     method = method.upper()
+    if path.startswith("/api/v1/"):
+        path = "/api/" + path.removeprefix("/api/v1/")
     if method in {"GET", "HEAD", "OPTIONS"}:
         return None
     if path.startswith("/api/admin"):

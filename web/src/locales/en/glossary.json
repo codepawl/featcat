@@ -66,7 +66,7 @@
     },
     "action_item": {
       "label": "Action Item",
-      "description": "Tracked recommendation persisted in the catalog, from monitoring, AI, autodoc, or manual assignment.",
+      "description": "Tracked recommendation persisted in the feature store, from monitoring, AI, autodoc, or manual assignment.",
       "intro": "Use actions to avoid recommendations being lost in team handoffs.",
       "values": {
         "pending": "Recommended and waiting for action.",

@@ -209,7 +209,7 @@ class ToolExecutor:
         documented = int(stats.get("documented") or 0)
         coverage = float(stats.get("coverage") or 0.0)
         lines = [
-            f"Catalog: {total} features, {stats.get('sources', 0)} sources, {len(groups)} groups",
+            f"Feature store: {total} features, {stats.get('sources', 0)} sources, {len(groups)} groups",
             f"Doc coverage: {documented}/{total} ({coverage}%)",
         ]
         sev_counts = self._severity_counts()
