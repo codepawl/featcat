@@ -50,7 +50,7 @@ tui = ["textual>=0.50"]
 # break; ``s3fs`` was previously declared here but never imported anywhere
 # in the codebase (vestigial). Set ``FEATCAT_S3_*`` env vars to use S3.
 s3 = []
-server = ["fastapi>=0.110,<0.136", "starlette<1", "uvicorn[standard]>=0.27", "sse-starlette>=1.6", "apscheduler>=3.10"]
+server = ["fastapi>=0.138.1,<0.139", "starlette<1", "uvicorn[standard]>=0.27", "sse-starlette>=1.6", "apscheduler>=3.10"]
 # T1.2 — sentence-transformers is heavy (pulls torch ~1GB). Keeping it in an
 # optional extra so default installs stay lean. Feature embedding + similarity
 # search degrade to the existing TF-IDF path when this isn't installed.
