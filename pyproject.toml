@@ -75,7 +75,7 @@ lineage-sql = ["sqlglot>=20.0"]
 # separate from [dev] so ``make check`` runs don't pull pytest-benchmark and
 # so opting into bench infra is an explicit choice. See
 # docs/contributing/benchmarks.md for the live-DB setup.
-bench = ["pytest-benchmark>=4"]
+bench = ["pytest-benchmark>=5.2.3"]
 all = ["featcat[tui,s3,server,embeddings,tasks,docs,lineage-sql,bench]"]
 dev = [
     "pytest>=7.0",
