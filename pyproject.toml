@@ -58,7 +58,7 @@ embeddings = ["sentence-transformers>=2.2"]
 # T1.5 — Celery + Redis broker + Flower (web UI for queue inspection). The
 # Docker image installs this extra so optional worker/beat/flower services are
 # reproducible and do not install dependencies at container startup.
-tasks = ["celery[redis]>=5.3", "redis>=5.0", "flower>=2.0"]
+tasks = ["celery[redis]>=5.6.3", "redis>=5.0", "flower>=2.0"]
 # T3.3 — MkDocs site. Operators install when building docs locally or in CI;
 # the runtime container doesn't need them.
 docs = [
